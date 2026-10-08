@@ -42,17 +42,20 @@ export default defineConfig({
   retries: 0,
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
   use: {
-    baseURL: 'http://localhost:8080',
+    // BASE_URL runs the suite against a deployed site instead of the local server.
+    baseURL: process.env.BASE_URL ?? 'http://localhost:8080',
     viewport: { width: 1280, height: 720 },
     // Traces would hold the 15 to 70 MB wasm bodies and overflow; keep screenshots.
     trace: 'off',
     screenshot: 'only-on-failure',
   },
   projects,
-  webServer: {
-    command: 'node scripts/serve.mjs dist 8080',
-    url: 'http://localhost:8080/index.html',
-    reuseExistingServer: !process.env.CI,
-    timeout: 30_000,
-  },
+  webServer: process.env.BASE_URL
+    ? undefined
+    : {
+        command: 'node scripts/serve.mjs dist 8080',
+        url: 'http://localhost:8080/index.html',
+        reuseExistingServer: !process.env.CI,
+        timeout: 30_000,
+      },
 });

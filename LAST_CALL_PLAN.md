@@ -409,13 +409,13 @@ The cloud session has no GPU, so GPU frame time cannot be measured there. Automa
 Each phase ends with a demo build at a URL and a checklist. Do not start the next phase until every box is checked.
 
 ### Phase 0: Skeleton (week 1)
-- [ ] Workspace compiles for `wasm32-unknown-unknown` and native.
-- [ ] Bevy window renders a cube in headless Chromium, Firefox, and WebKit through Playwright. The WebGPU path is compiled in and feature-detected; it is tested wherever the cloud browser exposes a WebGPU adapter, and the WebGL2 fallback is tested everywhere. Log in `docs/DECISIONS.md` which paths could and could not be verified in the cloud.
-- [ ] Host sim boots headless natively and inside a Web Worker in Chromium, and reports its tick rate.
-- [ ] Signaling Worker runs under `wrangler dev` and answers `/health`.
-- [ ] CI runs fmt, clippy with `-D warnings`, tests, wasm build, native build, Worker build.
-- [ ] `docs/DECISIONS.md` created with crate versions chosen.
-- [ ] `docs/YOU_DO_THIS.md` lists the Cloudflare account and API token steps. Deploy jobs in CI skip cleanly while the secrets are missing.
+- [x] Workspace compiles for `wasm32-unknown-unknown` and native.
+- [x] Bevy window renders a cube in headless Chromium, Firefox, and WebKit through Playwright. The WebGPU path is compiled in and feature-detected; it is tested wherever the cloud browser exposes a WebGPU adapter, and the WebGL2 fallback is tested everywhere. Log in `docs/DECISIONS.md` which paths could and could not be verified in the cloud.
+- [x] Host sim boots headless natively and inside a Web Worker in Chromium, and reports its tick rate.
+- [x] Signaling Worker runs under `wrangler dev` and answers `/health`.
+- [x] CI runs fmt, clippy with `-D warnings`, tests, wasm build, native build, Worker build.
+- [x] `docs/DECISIONS.md` created with crate versions chosen.
+- [x] `docs/YOU_DO_THIS.md` lists the Cloudflare account and API token steps. Deploy jobs in CI skip cleanly while the secrets are missing.
 
 ### Phase 1: Lobby and netcode (weeks 2 to 3)
 - [ ] Create Room returns a code and a link. Opening `/?room=CODE` joins the host over WebRTC.

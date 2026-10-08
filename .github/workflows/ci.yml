@@ -172,10 +172,33 @@ jobs:
         if: steps.secrets.outputs.ready == 'true'
         run: command -v worker-build || cargo install worker-build --version 0.8.7 --locked
       - name: deploy signaling Worker
+        id: worker
         if: steps.secrets.outputs.ready == 'true'
-        run: npx wrangler deploy
+        run: |
+          npx wrangler deploy | tee worker.log
+          url=$(grep -oE 'https://[a-z0-9.-]+\.workers\.dev' worker.log | head -1)
+          echo "url=$url" >> "$GITHUB_OUTPUT"
       - name: deploy client to Pages
+        id: pages
         if: steps.secrets.outputs.ready == 'true'
         run: |
           npx wrangler pages project create last-call --production-branch main || true
-          npx wrangler pages deploy dist --project-name last-call --branch "${GITHUB_REF_NAME}" --commit-dirty=true
+          npx wrangler pages deploy dist --project-name last-call --branch "${GITHUB_REF_NAME}" --commit-dirty=true | tee pages.log
+          url=$(grep -oE 'https://[a-z0-9]+\.[a-z0-9-]+\.pages\.dev' pages.log | head -1)
+          alias=$(grep -oE 'alias URL: https://[^ ]+' pages.log | sed 's/alias URL: //' | head -1)
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "### Deployed" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Client: $url (branch alias: ${alias:-none})" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Signaling Worker: ${{ steps.worker.outputs.url }}" >> "$GITHUB_STEP_SUMMARY"
+      - name: smoke test the live Worker
+        if: steps.secrets.outputs.ready == 'true'
+        run: curl -sf "${{ steps.worker.outputs.url }}/health"
+      - name: smoke test the live site (Chromium)
+        if: steps.secrets.outputs.ready == 'true'
+        env:
+          BASE_URL: ${{ steps.pages.outputs.url }}
+          PW_BROWSERS: chromium
+        run: |
+          npx playwright install --with-deps chromium
+          sleep 10
+          xvfb-run -a npx playwright test
