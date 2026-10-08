@@ -50,7 +50,7 @@ async function openTab(browser: Browser, url: string, tag: string, size = { widt
   const page = await context.newPage();
   page.on('pageerror', (e) => console.log(`[${tag}] pageerror: ${e.message.slice(0, 300)}`));
   page.on('console', (m) => {
-    if (m.type() === 'error') console.log(`[${tag}] console.error: ${m.text().slice(0, 300)}`);
+    if (m.type() === 'error') console.log(`[${tag}] console.error: ${m.text().slice(0, m.text().startsWith('host worker stack') ? 8000 : 300)}`);
   });
   await page.goto(url);
   return page;
