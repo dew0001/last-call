@@ -4,7 +4,7 @@ main = "crates/signal/build/worker/shim.mjs"
 compatibility_date = "2026-09-01"
 
 [build]
-command = "cd crates/signal && worker-build --release"
+command = "./scripts/build-signal.sh"
 
 [[durable_objects.bindings]]
 name = "ROOMS"

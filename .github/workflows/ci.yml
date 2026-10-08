@@ -95,10 +95,15 @@ jobs:
           done
       - name: signaling relay tests
         run: node --test tests/signal/relay.test.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: signal-build
+          path: crates/signal/build
+          retention-days: 7
 
   e2e:
     name: Playwright (${{ matrix.browser }})
-    needs: web
+    needs: [web, signal]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -116,9 +121,14 @@ jobs:
         with:
           name: dist
           path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: signal-build
+          path: crates/signal/build
       - name: run e2e
         env:
           PW_BROWSERS: ${{ matrix.browser }}
+          SKIP_SIGNAL_BUILD: '1'
         run: xvfb-run -a npx playwright test
       - uses: actions/upload-artifact@v4
         if: always()

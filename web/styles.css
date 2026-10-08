@@ -18,3 +18,51 @@ canvas#bevy {
   text-align: center;
   opacity: 0.8;
 }
+#banner {
+  position: fixed;
+  top: 0.75rem;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: calc(100% - 2rem);
+  padding: 0.4rem 0.8rem;
+  border-radius: 0.4rem;
+  background: rgba(20, 13, 8, 0.85);
+  font-size: 0.95rem;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+#banner.alert {
+  background: #7a1030;
+  color: #fff;
+  font-size: 1.4rem;
+  top: 40%;
+}
+#lobby {
+  position: fixed;
+  left: 1rem;
+  bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem;
+  border-radius: 0.6rem;
+  background: rgba(20, 13, 8, 0.85);
+}
+#lobby h1 {
+  margin: 0;
+  color: #ff3d9a;
+  letter-spacing: 0.1em;
+  font-size: 1.4rem;
+}
+#lobby button, #lobby input {
+  font: inherit;
+  padding: 0.45rem 0.7rem;
+  border-radius: 0.35rem;
+  border: 1px solid #5a3a22;
+  background: #2a1a10;
+  color: #f5d9b0;
+}
+#lobby button { cursor: pointer; }
+#join-form-wrap { display: flex; gap: 0.4rem; }
+#join-code { width: 7rem; text-transform: uppercase; }
+[hidden] { display: none !important; }

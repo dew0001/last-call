@@ -1,10 +1,59 @@
-// Picks the renderer, loads the matching client bundle, and exposes test hooks.
+// Boots LAST CALL: picks the renderer, then runs one of three modes.
 //
-// Bevy's WebGPU build cannot fall back to WebGL2, so there are two bundles.
-// `?gpu=webgl2` or `?gpu=webgpu` forces one; otherwise WebGPU is used when the
-// browser gives us an adapter.
+//   /               title screen with the lobby (Open the bar / join by code)
+//   /?create        host a room: start the host Worker, show the join link
+//   /?room=CODE     join a room over WebRTC
+//   /?hostonly      test page: only the host Worker, no renderer
+//
+// Bevy's WebGPU build cannot fall back to WebGL2, so there are two client
+// bundles. `?gpu=webgl2` or `?gpu=webgpu` forces one; otherwise WebGPU is used
+// when the browser gives us an adapter.
+import { hostRoom, joinRoom, newRoomCode, parseRoomCode } from './net.js';
 
 const params = new URLSearchParams(location.search);
+const lobby = document.getElementById('lobby');
+const banner = document.getElementById('banner');
+
+function show(el, text) {
+  if (!el) return;
+  el.hidden = false;
+  if (text !== undefined) el.textContent = text;
+}
+
+// ---------- identity ----------
+
+function storageGet(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function storageSet(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {}
+}
+
+/** Player UUID from localStorage, so a refreshed tab gets its old player back. */
+function playerUuid() {
+  // `?player=` gives test tabs in one browser profile separate identities.
+  const forced = params.get('player');
+  if (forced) return forced;
+  let id = storageGet('lastcall.uuid');
+  if (!id) {
+    id = crypto.randomUUID();
+    storageSet('lastcall.uuid', id);
+  }
+  return id;
+}
+
+function displayName() {
+  return params.get('name') ?? storageGet('lastcall.name') ?? 'Patron';
+}
+
+// ---------- renderer selection ----------
 
 async function webgpuAvailable() {
   try {
@@ -50,7 +99,6 @@ function watchWebgpu() {
       try {
         sessionStorage.setItem(FALLBACK_KEY, '1');
       } catch {
-        // No storage: reload with an explicit flag instead.
         location.search = '?gpu=webgl2';
         return;
       }
@@ -58,17 +106,6 @@ function watchWebgpu() {
     }
   }, 500);
 }
-
-// Host simulation in a dedicated Web Worker. Tick reports land in window.__hostTicks.
-window.__hostTicks = [];
-window.startHostWorker = () => {
-  const worker = new Worker(new URL('./host-worker.js', import.meta.url), { type: 'module' });
-  worker.onmessage = (e) => {
-    if (e.data?.type === 'tick') window.__hostTicks.push(e.data);
-  };
-  worker.onerror = (e) => console.error('host worker error', e.message);
-  return worker;
-};
 
 // A browser can fail to create its first GL or GPU context right after it
 // starts (seen in WebKit). If the renderer fails before the first frame,
@@ -106,36 +143,166 @@ function watchStartFailure() {
       location.reload();
       return;
     }
-    const el = document.getElementById('boot');
-    if (el) el.textContent = 'Your browser could not start the 3D renderer. Try another browser.';
+    show(banner, 'Your browser could not start the 3D renderer. Try another browser.');
   }, 200);
 }
 
-async function boot() {
+/** Load the client module for the chosen renderer. Returns its exports. */
+async function loadClient() {
   const variant = await pickVariant();
   window.__lastCallVariant = variant;
   if (variant === 'webgpu' && !params.has('gpu')) watchWebgpu();
   watchStartFailure();
   const mod = await import(`./pkg/client_${variant}.js`);
+  await mod.default();
+  return mod;
+}
+
+/** Start the Bevy app. winit hands control to the browser by throwing on purpose. */
+function runClient(mod, config) {
   try {
-    await mod.default();
+    mod.client_start(config);
   } catch (e) {
-    // winit hands control to the browser event loop by throwing on purpose.
     if (!String(e).includes('Using exceptions for control flow')) throw e;
   }
   document.getElementById('boot')?.remove();
 }
 
-if (params.has('hostonly')) {
-  // Test page: boot only the host worker, no renderer.
-  window.__lastCallVariant = 'none';
-  document.getElementById('boot').textContent = 'Host worker only';
-  window.startHostWorker();
-} else {
-  boot().catch((e) => {
-    console.error(e);
-    const el = document.getElementById('boot');
-    if (el) el.textContent = `Failed to start: ${e}`;
-    window.__lastCallError = String(e);
+// ---------- host worker ----------
+
+// Tick reports land in window.__hostTicks.
+window.__hostTicks = [];
+function startHostWorker() {
+  const worker = new Worker(new URL('./host-worker.js', import.meta.url), { type: 'module' });
+  worker.addEventListener('message', (e) => {
+    if (e.data?.t === 'tick') window.__hostTicks.push(e.data);
   });
+  worker.onerror = (e) => console.error('host worker error', e.message);
+  return worker;
+}
+window.startHostWorker = startHostWorker;
+
+// ---------- modes ----------
+
+async function runHost() {
+  const mod = await loadClient();
+  const worker = startHostWorker();
+
+  // The host's own client talks to the Worker over a private port (peer 0).
+  const channel = new MessageChannel();
+  worker.postMessage({ t: 'local', port: channel.port2 }, [channel.port2]);
+  channel.port1.onmessage = (e) => mod.client_deliver(new Uint8Array(e.data));
+  globalThis.__clientOut = (bytes) => {
+    const copy = bytes.slice();
+    channel.port1.postMessage(copy.buffer, [copy.buffer]);
+  };
+
+  // Remote players: data channel ids <-> small numeric keys for the Worker.
+  const keyOf = new Map();
+  const idOf = new Map();
+  let nextKey = 1;
+  let room = null;
+
+  const open = (code) =>
+    hostRoom(code, {
+      onPeer(id) {
+        const key = nextKey++;
+        keyOf.set(id, key);
+        idOf.set(key, id);
+        worker.postMessage({ t: 'peer', peer: key });
+      },
+      onPacket(id, bytes) {
+        const key = keyOf.get(id);
+        if (key !== undefined) worker.postMessage({ t: 'pkt', peer: key, data: bytes.buffer }, [bytes.buffer]);
+      },
+      onPeerLeft(id) {
+        const key = keyOf.get(id);
+        if (key === undefined) return;
+        keyOf.delete(id);
+        idOf.delete(key);
+        worker.postMessage({ t: 'leave', peer: key });
+      },
+      onClosed(code) {
+        // 4409: someone else holds this code. Pick another.
+        if (code === 4409) start(newRoomCode());
+      },
+    });
+
+  worker.addEventListener('message', (e) => {
+    if (e.data?.t !== 'out' || !room) return;
+    for (const [key, data] of e.data.items) {
+      const id = idOf.get(key);
+      if (id) room.send(id, data);
+    }
+  });
+
+  const start = (code) => {
+    room = open(code);
+    const link = `${location.origin}${location.pathname}?room=${code}`;
+    window.__lcRoom = { code, link, role: 'host' };
+    show(banner, `Room ${code}  ·  invite: ${link}`);
+    return code;
+  };
+  const code = start(params.get('code') ?? newRoomCode());
+  runClient(mod, { online: true, code, uuid: playerUuid(), name: displayName() });
+}
+
+async function runPlayer(code) {
+  const mod = await loadClient();
+  window.__lcRoom = { code, role: 'player' };
+  show(banner, `Joining room ${code}…`);
+  let started = false;
+  const net = joinRoom(code, {
+    onOpen() {
+      show(banner, `Room ${code}`);
+      if (!started) {
+        started = true;
+        runClient(mod, { online: true, code, uuid: playerUuid(), name: displayName() });
+      }
+    },
+    onPacket: (bytes) => mod.client_deliver(bytes),
+    onHostLeft(reason) {
+      window.__lcHostLeft = reason;
+      show(banner, reason === 'host left' ? 'Host left. The bar is closed.' : `Could not join: ${reason}`);
+      banner.classList.add('alert');
+    },
+  });
+  globalThis.__clientOut = (bytes) => net.send(bytes);
+}
+
+async function runTitle() {
+  const mod = await loadClient();
+  show(lobby);
+  document.getElementById('create')?.addEventListener('click', () => {
+    location.search = '?create';
+  });
+  document.getElementById('join-form')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const code = parseRoomCode(document.getElementById('join-code').value);
+    if (code) location.search = `?room=${code}`;
+  });
+  runClient(mod, { online: false });
+}
+
+// Pointer lock for mouse look once the player clicks the game.
+document.getElementById('bevy')?.addEventListener('click', (e) => e.target.requestPointerLock?.());
+
+const fail = (e) => {
+  console.error(e);
+  show(document.getElementById('boot') ?? banner, `Failed to start: ${e}`);
+  window.__lastCallError = String(e);
+};
+
+if (params.has('hostonly')) {
+  window.__lastCallVariant = 'none';
+  show(document.getElementById('boot'), 'Host worker only');
+  startHostWorker();
+} else if (params.has('room')) {
+  const code = parseRoomCode(params.get('room'));
+  if (code) runPlayer(code).catch(fail);
+  else fail('that room link is not valid');
+} else if (params.has('create')) {
+  runHost().catch(fail);
+} else {
+  runTitle().catch(fail);
 }

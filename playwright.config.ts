@@ -50,12 +50,22 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
   projects,
+  // The static site, plus the signaling Worker under wrangler dev for the
+  // multiplayer specs. BASE_URL runs against a deployed site instead.
   webServer: process.env.BASE_URL
     ? undefined
-    : {
-        command: 'node scripts/serve.mjs dist 8080',
-        url: 'http://localhost:8080/index.html',
-        reuseExistingServer: !process.env.CI,
-        timeout: 30_000,
-      },
+    : [
+        {
+          command: 'node scripts/serve.mjs dist 8080',
+          url: 'http://localhost:8080/index.html',
+          reuseExistingServer: !process.env.CI,
+          timeout: 30_000,
+        },
+        {
+          command: 'npx wrangler dev --port 8787 --ip 127.0.0.1',
+          url: 'http://127.0.0.1:8787/health',
+          reuseExistingServer: !process.env.CI,
+          timeout: 600_000,
+        },
+      ],
 });

@@ -10,6 +10,16 @@
 <body>
   <canvas id="bevy" tabindex="0"></canvas>
   <div id="boot">Opening the bar…</div>
+  <div id="banner" hidden></div>
+  <form id="lobby" hidden onsubmit="return false">
+    <h1>LAST CALL</h1>
+    <button id="create" type="button">Open the bar</button>
+    <div id="join-form-wrap">
+      <input id="join-code" maxlength="5" placeholder="ROOM CODE" autocomplete="off" aria-label="Room code">
+      <button id="join" type="submit" form="join-form">Join</button>
+    </div>
+  </form>
+  <form id="join-form" hidden></form>
   <script type="module" src="./boot.js"></script>
 </body>
 </html>
