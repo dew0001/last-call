@@ -41,6 +41,17 @@ pub struct NetStatus {
     pub players_seen: usize,
     pub own_pos: Option<Vec3>,
     pub refused: Option<String>,
+    pub props_seen: usize,
+    pub holding: bool,
+    /// Bottles and chips no longer on the counter top (thrown or knocked off).
+    pub props_on_floor: usize,
+    /// Every player this client draws: (id, position).
+    pub players: Vec<(u64, Vec3)>,
+    /// Link round-trip time and jitter, milliseconds.
+    pub rtt_ms: f32,
+    pub jitter_ms: f32,
+    /// This client's simulation tick.
+    pub tick: u32,
 }
 
 /// Add online play to the app.
@@ -65,14 +76,11 @@ pub fn add(app: &mut App, cfg: OnlineConfig) {
         ReplicationReceiver,
         ReplicationSender,
     ));
-    app.add_systems(Startup, (setup_bar, connect));
-    app.add_systems(Update, (read_input, dress_players, place_players, follow_camera, update_status).chain());
-}
-
-fn connect(clients: Query<Entity, With<Client>>, mut commands: Commands) {
-    for entity in &clients {
-        commands.trigger(Connect { entity });
-    }
+    app.add_systems(Startup, setup_bar);
+    app.add_systems(
+        Update,
+        (read_input, dress_players, place_players, dress_props, place_props, follow_camera, update_status).chain(),
+    );
 }
 
 fn setup_bar(
@@ -190,6 +198,64 @@ fn place_players(mut q: Query<(&PlayerPos, &PlayerYaw, &mut Transform), With<Dre
     }
 }
 
+#[derive(Component)]
+struct DressedProp;
+
+/// Give every replicated prop a mesh once. Shared meshes and materials per
+/// kind let Bevy batch them.
+fn dress_props(
+    mut commands: Commands,
+    props: Query<(Entity, &PropKind), (With<Interpolated>, Without<DressedProp>)>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut cache: Local<Option<[(Handle<Mesh>, Handle<StandardMaterial>); 3]>>,
+) {
+    if props.is_empty() {
+        return;
+    }
+    let looks = cache.get_or_insert_with(|| {
+        let mut mat =
+            |c: Color| materials.add(StandardMaterial { base_color: c, perceptual_roughness: 0.6, ..default() });
+        [
+            (meshes.add(Cylinder::new(0.04, 0.28)), mat(Color::srgb(0.2, 0.55, 0.25))),
+            (meshes.add(Cylinder::new(0.02, 0.012)), mat(Color::srgb(0.85, 0.15, 0.15))),
+            (meshes.add(Cuboid::new(0.4, 0.75, 0.4)), mat(Color::srgb(0.4, 0.25, 0.12))),
+        ]
+    });
+    for (entity, kind) in &props {
+        let (mesh, mat) = &looks[match kind {
+            PropKind::Bottle => 0,
+            PropKind::Chip => 1,
+            PropKind::Stool => 2,
+        }];
+        commands.entity(entity).insert((
+            DressedProp,
+            Mesh3d(mesh.clone()),
+            MeshMaterial3d(mat.clone()),
+            Transform::default(),
+        ));
+    }
+}
+
+/// Draw props at their interpolated pose, except the one this player holds:
+/// that one follows the predicted hand, so carrying feels instant.
+fn place_props(
+    session: Res<Session>,
+    look: Res<Look>,
+    own: Query<&PlayerPos, (With<Predicted>, With<Player>)>,
+    mut props: Query<(&PropPose, Option<&HeldBy>, &mut Transform), With<DressedProp>>,
+) {
+    let hand = own.single().ok().map(|p| Vec3::from_array(shared::movement::hand_point(p.0.to_array(), look.yaw)));
+    for (pose, held, mut t) in &mut props {
+        let mine = held.and_then(|h| h.0).is_some_and(|id| Some(id) == session.player_id);
+        t.translation = match (mine, hand) {
+            (true, Some(h)) => h,
+            _ => pose.pos,
+        };
+        t.rotation = pose.rot;
+    }
+}
+
 fn follow_camera(
     look: Res<Look>,
     own: Query<&PlayerPos, (With<Predicted>, With<Player>)>,
@@ -206,9 +272,20 @@ fn update_status(
     session: Res<Session>,
     connected: Query<(), (With<Client>, With<Connected>)>,
     players: Query<&Player>,
+    drawn: Query<(&Player, &PlayerPos), Or<(With<Predicted>, With<Interpolated>)>>,
     own: Query<&PlayerPos, (With<Predicted>, With<Player>)>,
+    props: Query<(&PropKind, &PropPose, &HeldBy), With<Interpolated>>,
+    link: Query<&Link, With<Client>>,
+    timeline: Option<Res<LocalTimeline>>,
     mut status: ResMut<NetStatus>,
 ) {
+    let (rtt_ms, jitter_ms) = link
+        .single()
+        .map(|l| (l.stats.rtt.as_secs_f32() * 1000.0, l.stats.jitter.as_secs_f32() * 1000.0))
+        .unwrap_or_default();
+    let on_floor =
+        props.iter().filter(|(k, p, _)| **k != PropKind::Stool && p.pos.y < bar::COUNTER_HEIGHT - 0.3).count();
+    let holding = props.iter().any(|(_, _, h)| h.0.is_some() && h.0 == session.player_id);
     let mut ids: Vec<u64> = players.iter().map(|p| p.id).collect();
     ids.sort_unstable();
     ids.dedup();
@@ -218,5 +295,12 @@ fn update_status(
         players_seen: ids.len(),
         own_pos: own.single().ok().map(|p| p.0),
         refused: session.refused.clone(),
+        props_seen: props.iter().count(),
+        holding,
+        props_on_floor: on_floor,
+        players: drawn.iter().map(|(p, pos)| (p.id, pos.0)).collect(),
+        rtt_ms,
+        jitter_ms,
+        tick: timeline.map(|t| t.tick().0).unwrap_or(0),
     };
 }

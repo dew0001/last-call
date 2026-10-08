@@ -7,7 +7,9 @@
 //! movement with the same code the host runs.
 
 use bevy::prelude::*;
+use lightyear::prelude::SyncConfig;
 use lightyear::prelude::client::input::InputSystems;
+use lightyear::prelude::client::{Connect, Connecting, InputTimelineConfig};
 use lightyear::prelude::input::native::{ActionState, InputMarker};
 use lightyear::prelude::*;
 
@@ -41,12 +43,50 @@ impl Plugin for ClientNetPlugin {
         if !app.is_plugin_added::<crate::pipe::PipePlugin>() {
             app.add_plugins(crate::pipe::PipePlugin);
         }
-        app.init_resource::<LocalInput>().init_resource::<Session>();
+        app.init_resource::<LocalInput>().init_resource::<Session>().init_resource::<ConnectAfterFrames>();
+        // Margin for jitter: 2x covers about 95% of packets. lightyear's default
+        // (4x) put browser clients more than a second ahead of the host.
+        app.insert_resource(
+            InputTimelineConfig::default().with_sync_config(SyncConfig { jitter_multiple: 2, ..default() }),
+        );
+        app.add_systems(Update, connect_when_warm);
         app.add_systems(Update, (send_join, read_join_reply));
         app.add_systems(FixedPreUpdate, write_input.in_set(InputSystems::WriteClientInputs));
         app.add_systems(FixedUpdate, predict_movement);
         app.add_observer(mark_controlled);
     }
+}
+
+/// Frames to draw before connecting. A page's first frames stutter while it
+/// compiles shaders; pings measured then inflate the round-trip estimate and
+/// push the client's timeline far ahead of the host. Native bots use 0.
+#[derive(Resource, Clone, Copy, Debug)]
+pub struct ConnectAfterFrames(pub u32);
+
+impl Default for ConnectAfterFrames {
+    fn default() -> Self {
+        Self(15)
+    }
+}
+
+fn connect_when_warm(
+    wait: Res<ConnectAfterFrames>,
+    mut frames: Local<u32>,
+    clients: Query<Entity, (With<Client>, Without<Connected>, Without<Connecting>)>,
+    mut done: Local<bool>,
+    mut commands: Commands,
+) {
+    if *done {
+        return;
+    }
+    *frames += 1;
+    if *frames <= wait.0 {
+        return;
+    }
+    for entity in &clients {
+        commands.trigger(Connect { entity });
+    }
+    *done = true;
 }
 
 fn send_join(

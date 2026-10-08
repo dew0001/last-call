@@ -51,8 +51,16 @@ fn now_ms(scope: &DedicatedWorkerGlobalScope) -> f64 {
     scope.performance().map(|p| p.now()).unwrap_or_default()
 }
 
-fn post_report(scope: &DedicatedWorkerGlobalScope, tick: u64, tps: f32) {
+fn post_report(scope: &DedicatedWorkerGlobalScope, sim: &mut HostSim, tps: f32) {
+    let tick = sim.tick_count();
+    let players = js_sys::Array::new();
+    for (id, pos) in sim.player_positions() {
+        let row =
+            js_sys::Array::of4(&JsValue::from_str(&format!("{id:016x}")), &pos.x.into(), &pos.y.into(), &pos.z.into());
+        players.push(&row);
+    }
     let msg = Object::new();
+    let _ = Reflect::set(&msg, &"players".into(), &players);
     let _ = Reflect::set(&msg, &"t".into(), &"tick".into());
     let _ = Reflect::set(&msg, &"type".into(), &"tick".into());
     let _ = Reflect::set(&msg, &"tick".into(), &JsValue::from_f64(tick as f64));
@@ -127,7 +135,7 @@ pub fn host_worker_start() {
                 flush_outgoing(s);
             }
             if let Some(tps) = s.pacer.poll_rate(now) {
-                post_report(&scope, s.sim.tick_count(), tps);
+                post_report(&scope, &mut s.sim, tps);
             }
             s.pacer.wait_ms(now)
         })

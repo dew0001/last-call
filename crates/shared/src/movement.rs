@@ -40,6 +40,18 @@ pub fn step(pos: [f32; 3], mv: [f32; 2], yaw: f32, buttons: u16, dt: f32) -> [f3
     collide([pos[0] + dx, pos[1], pos[2] + dz])
 }
 
+/// Unit vector the player faces (horizontal). Yaw 0 faces -Z.
+pub fn forward(yaw: f32) -> [f32; 3] {
+    let (s, c) = yaw.sin_cos();
+    [-s, 0.0, -c]
+}
+
+/// Where a player's hand is, in front of the chest. Held props sit here.
+pub fn hand_point(pos: [f32; 3], yaw: f32) -> [f32; 3] {
+    let f = forward(yaw);
+    [pos[0] + f[0] * 0.7, pos[1] + 1.15, pos[2] + f[2] * 0.7]
+}
+
 /// Keep a player inside the walls and out of the counter.
 pub fn collide(mut p: [f32; 3]) -> [f32; 3] {
     let r = PLAYER_RADIUS;

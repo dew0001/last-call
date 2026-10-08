@@ -47,7 +47,7 @@ signal-test:
 
 # PW_BROWSERS limits browsers (the cloud session can only run chromium).
 e2e: node-deps
-	xvfb-run -a npx playwright test
+	./scripts/e2e.sh
 
 test: lint unit web-debug e2e
 

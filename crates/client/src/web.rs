@@ -129,6 +129,18 @@ fn publish_status(status: Res<RenderStatus>, net: Option<Res<NetStatus>>) {
             net.own_pos.map(|p| Array::of3(&p.x.into(), &p.y.into(), &p.z.into()).into()).unwrap_or(JsValue::NULL),
         );
         set("refused", net.refused.as_deref().map(JsValue::from_str).unwrap_or(JsValue::NULL));
+        set("propsSeen", JsValue::from_f64(net.props_seen as f64));
+        set("holding", JsValue::from_bool(net.holding));
+        set("propsOnFloor", JsValue::from_f64(net.props_on_floor as f64));
+        let players = Array::new();
+        for (id, p) in &net.players {
+            let row = Array::of4(&JsValue::from_str(&format!("{id:016x}")), &p.x.into(), &p.y.into(), &p.z.into());
+            players.push(&row);
+        }
+        set("players", players.into());
+        set("rttMs", JsValue::from_f64(f64::from(net.rtt_ms)));
+        set("jitterMs", JsValue::from_f64(f64::from(net.jitter_ms)));
+        set("tick", JsValue::from_f64(f64::from(net.tick)));
     }
     let _ = Reflect::set(&window, &"__lastCall".into(), &obj);
 }

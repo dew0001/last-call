@@ -39,10 +39,15 @@ echo "== client (webgl2)"
 cargo build --profile "$PROFILE" --target "$TARGET" -p last_call_client --lib
 bindgen "target/$TARGET/$OUT/client.wasm" client_webgl2
 
-echo "== client (webgpu)"
-# Separate target dir: switching the feature would otherwise rebuild Bevy every time.
-cargo build --profile "$PROFILE" --target "$TARGET" -p last_call_client --lib --features webgpu --target-dir target/webgpu
-bindgen "target/webgpu/$TARGET/$OUT/client.wasm" client_webgpu
+if [ "${SKIP_WEBGPU:-}" = 1 ]; then
+  # Fast local iteration only; pages must then use ?gpu=webgl2.
+  echo "== client (webgpu) skipped (SKIP_WEBGPU=1)"
+else
+  echo "== client (webgpu)"
+  # Separate target dir: switching the feature would otherwise rebuild Bevy every time.
+  cargo build --profile "$PROFILE" --target "$TARGET" -p last_call_client --lib --features webgpu --target-dir target/webgpu
+  bindgen "target/webgpu/$TARGET/$OUT/client.wasm" client_webgpu
+fi
 
 echo "== host"
 cargo build --profile "$PROFILE" --target "$TARGET" -p last_call_host --lib

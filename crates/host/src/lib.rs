@@ -21,6 +21,7 @@ use shared::pipe::{PipeIo, PipePlugin};
 use shared::protocol::ProtocolPlugin;
 
 pub mod game;
+pub mod physics;
 pub mod runner;
 #[cfg(target_arch = "wasm32")]
 mod web;
@@ -56,7 +57,7 @@ impl HostSim {
         app.insert_resource(ReplicationMetadata::new(shared::SNAPSHOT_INTERVAL));
         app.init_resource::<TickCount>();
         app.add_systems(FixedUpdate, advance_tick);
-        app.add_plugins(game::GamePlugin);
+        app.add_plugins((game::GamePlugin, physics::HostPhysicsPlugin));
 
         let server = app.world_mut().spawn((Name::new("Server"), RawServer)).id();
         app.finish();
@@ -106,6 +107,13 @@ impl HostSim {
     /// Ticks simulated so far.
     pub fn tick_count(&self) -> u64 {
         self.app.world().resource::<TickCount>().0
+    }
+
+    /// Every player's authoritative position: (id, position).
+    pub fn player_positions(&mut self) -> Vec<(u64, Vec3)> {
+        let world = self.app.world_mut();
+        let mut q = world.query::<(&shared::protocol::Player, &shared::protocol::PlayerPos)>();
+        q.iter(world).map(|(p, pos)| (p.id, pos.0)).collect()
     }
 
     pub fn world(&self) -> &World {

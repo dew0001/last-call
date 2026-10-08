@@ -21,6 +21,8 @@ pub enum Script {
     Idle,
     /// Walk forward while turning, so the bot circles. `phase` offsets bots.
     Circle { phase: f32 },
+    /// Walk to the counter, pick up a prop, turn around, and throw it.
+    GrabAndThrow,
 }
 
 #[derive(Resource, Default)]
@@ -30,8 +32,29 @@ fn drive(script: Res<Script>, mut clock: ResMut<BotClock>, mut input: ResMut<Loc
     clock.0 += 1;
     input.0 = match *script {
         Script::Idle => PlayerInput::default(),
+        Script::GrabAndThrow => grab_and_throw(clock.0),
         Script::Circle { phase } => PlayerInput::new(Vec2::new(0.0, 1.0), phase + clock.0 as f32 * 0.02, 0.0, 0),
     };
+}
+
+/// The [`Script::GrabAndThrow`] timeline, by frame (one frame per tick).
+fn grab_and_throw(frame: u64) -> PlayerInput {
+    use shared::movement::buttons::{INTERACT, THROW};
+    let half_turn = std::f32::consts::PI;
+    match frame {
+        // Wait to join and sync.
+        0..200 => PlayerInput::default(),
+        // Walk forward (-Z) into the counter.
+        200..400 => PlayerInput::new(Vec2::Y, 0.0, 0.0, 0),
+        // Press E.
+        400..410 => PlayerInput::new(Vec2::ZERO, 0.0, 0.0, INTERACT),
+        410..420 => PlayerInput::new(Vec2::ZERO, 0.0, 0.0, 0),
+        // Turn around.
+        420..480 => PlayerInput::new(Vec2::ZERO, half_turn * (frame - 420) as f32 / 60.0, 0.0, 0),
+        // Charge the throw for half a second, then release.
+        480..512 => PlayerInput::new(Vec2::ZERO, half_turn, 0.0, THROW),
+        _ => PlayerInput::new(Vec2::ZERO, half_turn, 0.0, 0),
+    }
 }
 
 /// Build a bot client app connected through `io`. Call [`App::update`] once per frame.
@@ -69,9 +92,11 @@ pub fn bot_app(io: PipeIo, index: u8, script: Script) -> App {
             ReplicationSender,
         ))
         .id();
+    // Native bots have no shader warm-up; connect on the first frame.
+    app.insert_resource(shared::client::ConnectAfterFrames(0));
+    let _ = client;
     app.finish();
     app.cleanup();
-    app.world_mut().trigger(Connect { entity: client });
     app
 }
 
@@ -142,6 +167,13 @@ impl LocalRoom {
     /// Host-side player position by id.
     pub fn host_pos(&mut self, id: u64) -> Option<Vec3> {
         self.host_players().into_iter().find(|(pid, _)| *pid == id).map(|(_, p)| p)
+    }
+
+    /// Every prop on the host: (kind, pose, held by).
+    pub fn host_props(&mut self) -> Vec<(PropKind, PropPose, HeldBy)> {
+        let world = self.host.world_mut();
+        let mut q = world.query::<(&PropKind, &PropPose, &HeldBy)>();
+        q.iter(world).map(|(k, p, h)| (*k, *p, *h)).collect()
     }
 
     /// The bot's own predicted position, if it has one yet.

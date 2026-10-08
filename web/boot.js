@@ -9,6 +9,7 @@
 // bundles. `?gpu=webgl2` or `?gpu=webgpu` forces one; otherwise WebGPU is used
 // when the browser gives us an adapter.
 import { hostRoom, joinRoom, newRoomCode, parseRoomCode } from './net.js';
+import { startVoice } from './voice.js';
 
 const params = new URLSearchParams(location.search);
 const lobby = document.getElementById('lobby');
@@ -168,6 +169,33 @@ function runClient(mod, config) {
   document.getElementById('boot')?.remove();
 }
 
+// ---------- voice ----------
+
+/** Positions for proximity voice, read from the client's status object. */
+function voicePositions() {
+  const s = window.__lastCall ?? {};
+  const others = new Map();
+  for (const [id, x, y, z] of s.players ?? []) {
+    if (id !== s.playerId) others.set(id, [x, y, z]);
+  }
+  return { me: s.ownPos ?? null, others };
+}
+
+/** Start voice once the client knows its player id. `?novoice` turns it off. */
+function startVoiceWhenJoined(code) {
+  if (params.has('novoice')) return;
+  const timer = setInterval(async () => {
+    const playerId = window.__lastCall?.playerId;
+    if (!playerId) return;
+    clearInterval(timer);
+    try {
+      window.__lcVoice = await startVoice({ code, playerId, positions: voicePositions });
+    } catch (e) {
+      console.warn('voice failed to start', e);
+    }
+  }, 250);
+}
+
 // ---------- host worker ----------
 
 // Tick reports land in window.__hostTicks.
@@ -245,6 +273,7 @@ async function runHost() {
   };
   const code = start(params.get('code') ?? newRoomCode());
   runClient(mod, { online: true, code, uuid: playerUuid(), name: displayName() });
+  startVoiceWhenJoined(code);
 }
 
 async function runPlayer(code) {
@@ -258,6 +287,7 @@ async function runPlayer(code) {
       if (!started) {
         started = true;
         runClient(mod, { online: true, code, uuid: playerUuid(), name: displayName() });
+        startVoiceWhenJoined(code);
       }
     },
     onPacket: (bytes) => mod.client_deliver(bytes),

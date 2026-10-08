@@ -31,6 +31,14 @@ export function signalUrl() {
   return 'wss://last-call-signal.drewduncanjr.workers.dev';
 }
 
+// Firefox throws while a channel is closing. Game packets are unreliable by
+// design, so a dropped one is fine.
+function trySend(dc, bytes) {
+  try {
+    dc.send(bytes);
+  } catch {}
+}
+
 function openSignal(code, role) {
   const ws = new WebSocket(`${signalUrl()}/room/${code}?role=${role}`);
   const send = (obj) => ws.readyState === WebSocket.OPEN && ws.send(JSON.stringify(obj));
@@ -117,7 +125,7 @@ export function hostRoom(code, { onPeer, onPacket, onPeerLeft, onClosed }) {
     code,
     send(id, bytes) {
       const p = peers.get(id);
-      if (p && p.dc.readyState === 'open') p.dc.send(bytes);
+      if (p && p.dc.readyState === 'open') trySend(p.dc, bytes);
     },
     peers: () => [...peers.keys()],
     close() {
@@ -186,7 +194,7 @@ export function joinRoom(code, { onOpen, onPacket, onHostLeft }) {
 
   return {
     send(bytes) {
-      if (dc && dc.readyState === 'open') dc.send(bytes);
+      if (dc && dc.readyState === 'open') trySend(dc, bytes);
     },
     close() {
       end('left');

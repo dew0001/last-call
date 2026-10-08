@@ -11,10 +11,14 @@ pub const RECONNECT_GRACE_SECS: f32 = 30.0;
 
 pub struct GamePlugin;
 
+/// Player movement for the tick. Hands and physics run after it.
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct MovePlayers;
+
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Update, handle_joins);
-        app.add_systems(FixedUpdate, move_players);
+        app.add_systems(FixedUpdate, move_players.in_set(MovePlayers));
     }
 }
 
@@ -29,6 +33,10 @@ fn handle_joins(
     mut links: Query<(Entity, &RemoteId, &mut MessageReceiver<Join>, &mut MessageSender<JoinReply>), With<ClientOf>>,
     players: Query<(Entity, &Player)>,
 ) {
+    // Slots taken, including players spawned earlier in this same pass (their
+    // spawn commands have not been applied yet).
+    let mut taken: Vec<u8> = players.iter().map(|(_, p)| p.slot).collect();
+    let mut spawned: Vec<(u64, Entity)> = Vec::new();
     for (link, remote, mut receiver, mut sender) in &mut links {
         for join in receiver.receive() {
             if join.protocol != PROTOCOL_VERSION {
@@ -37,20 +45,27 @@ fn handle_joins(
             }
             let player_id = player_id_from_uuid(&join.player_uuid);
             let peer = remote.0;
-            let existing = players.iter().find(|(_, p)| p.id == player_id).map(|(e, _)| e);
+            let existing = players
+                .iter()
+                .find(|(_, p)| p.id == player_id)
+                .map(|(e, _)| e)
+                .or_else(|| spawned.iter().find(|(id, _)| *id == player_id).map(|(_, e)| *e));
             let entity = match existing {
                 Some(e) => e,
                 None => {
-                    let slot = players.iter().count();
-                    let spawn = shared::bar::spawn_point(slot);
+                    let slot = free_slot(&taken);
+                    taken.push(slot);
+                    let spawn = shared::bar::spawn_point(usize::from(slot));
                     let name = clean_name(&join.display_name);
-                    commands
+                    let e = commands
                         .spawn((
-                            Player { id: player_id, name, slot: slot as u8 },
+                            Player { id: player_id, name, slot },
                             PlayerPos(Vec3::from_array(spawn)),
                             PlayerYaw(0.0),
                         ))
-                        .id()
+                        .id();
+                    spawned.push((player_id, e));
+                    e
                 }
             };
             commands.entity(entity).remove::<AwaitingReconnect>().insert((
@@ -63,6 +78,11 @@ fn handle_joins(
             info!("player {player_id:x} joined on {peer:?} (rejoin: {})", existing.is_some());
         }
     }
+}
+
+/// The lowest slot not in `taken`.
+pub fn free_slot(taken: &[u8]) -> u8 {
+    (0..=u8::MAX).find(|s| !taken.contains(s)).unwrap_or(0)
 }
 
 /// Display names: printable, trimmed, at most 16 characters.
@@ -81,6 +101,12 @@ fn move_players(mut players: Query<(&mut PlayerPos, &mut PlayerYaw, &ActionState
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn slots_fill_lowest_first() {
+        assert_eq!(free_slot(&[]), 0);
+        assert_eq!(free_slot(&[0, 1, 3]), 2);
+    }
 
     #[test]
     fn names_are_cleaned() {

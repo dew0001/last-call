@@ -117,6 +117,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps ${{ matrix.browser }}
+      - name: audio sink for voice tests
+        run: sudo apt-get install -y pulseaudio
       - uses: actions/download-artifact@v4
         with:
           name: dist
@@ -129,7 +131,7 @@ jobs:
         env:
           PW_BROWSERS: ${{ matrix.browser }}
           SKIP_SIGNAL_BUILD: '1'
-        run: xvfb-run -a npx playwright test
+        run: ./scripts/e2e.sh
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -214,4 +216,4 @@ jobs:
         run: |
           npx playwright install --with-deps chromium
           sleep 10
-          xvfb-run -a npx playwright test
+          ./scripts/e2e.sh

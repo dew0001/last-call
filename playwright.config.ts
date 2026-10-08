@@ -13,6 +13,11 @@ const chromiumArgs = [
   '--enable-features=Vulkan',
   '--use-webgpu-adapter=swiftshader',
   '--ignore-gpu-blocklist',
+  // Voice tests: a fake microphone (a beeping tone), no permission prompt, and
+  // audio that may start without a click.
+  '--use-fake-device-for-media-stream',
+  '--use-fake-ui-for-media-stream',
+  '--autoplay-policy=no-user-gesture-required',
 ];
 
 const projects = [
@@ -27,7 +32,15 @@ const projects = [
     use: {
       ...devices['Desktop Firefox'],
       headless: !process.env.DISPLAY,
-      launchOptions: { firefoxUserPrefs: { 'webgl.force-enabled': true } },
+      launchOptions: {
+        firefoxUserPrefs: {
+          'webgl.force-enabled': true,
+          'media.navigator.streams.fake': true,
+          'media.navigator.permission.disabled': true,
+          'media.autoplay.default': 0,
+          'media.autoplay.block-webaudio': false,
+        },
+      },
     },
   },
   { name: 'webkit', use: { ...devices['Desktop Safari'] } },
