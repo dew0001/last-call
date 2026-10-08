@@ -13,25 +13,31 @@ fn props_rest_and_a_bot_throws_a_bottle() {
     assert_eq!(props.iter().filter(|p| p.1 == PropKind::Chip).count(), 100);
     assert_eq!(props.iter().filter(|p| p.1 == PropKind::Stool).count(), 10);
 
-    // Let things settle while the bot walks to the counter.
-    room.run_realtime(6.0);
-    let id = room.session(2).player_id.expect("bot 2 joined");
-
-    // Find the bottle it carries, then follow the throw until it lands. The
-    // test runs in real time, so wait on events with a generous deadline
-    // rather than a fixed window: a busy machine only makes it slower.
+    // Follow the bot from the first tick: it walks to the counter, picks up a
+    // bottle and throws it. Bot scripts run on real time while the host
+    // advances one tick per step, so on a slow machine the bot gets further
+    // per host tick. Watching from the start (with a generous deadline) keeps
+    // the test independent of machine speed.
+    let mut id = None;
     let mut held_seen = false;
     let mut thrown = None;
     let mut start = None;
     let mut released_at = None;
     let mut worst_tick = std::time::Duration::ZERO;
-    for tick in 0..(64 * 20) {
+    for tick in 0..(64 * 40) {
         let t = std::time::Instant::now();
         room.host.tick();
         worst_tick = worst_tick.max(t.elapsed());
         for bot in &mut room.bots {
             bot.update();
         }
+        if id.is_none() {
+            id = room.session(2).player_id;
+        }
+        let Some(id) = id else {
+            std::thread::sleep(shared::TICK);
+            continue;
+        };
         for (e, kind, pose, held) in room.host_props() {
             if held == HeldBy(Some(id)) {
                 held_seen = true;
@@ -71,13 +77,18 @@ fn props_rest_and_a_bot_throws_a_bottle() {
 #[test]
 fn a_dropped_prop_falls_to_the_floor() {
     let mut room = LocalRoom::new(3, |i| if i == 2 { Script::GrabAndDrop } else { Script::Idle });
-    room.run_realtime(6.0);
-    let id = room.session(2).player_id.expect("bot 2 joined");
+    // Watch from the first tick, as in the throw test above.
+    let mut id = None;
     let mut carried = None;
-    for _ in 0..(64 * 20) {
+    for _ in 0..(64 * 40) {
         room.step();
         std::thread::sleep(shared::TICK);
-        if carried.is_none() {
+        if id.is_none() {
+            id = room.session(2).player_id;
+        }
+        if carried.is_none()
+            && let Some(id) = id
+        {
             carried = room.host_props().into_iter().find(|p| p.3 == HeldBy(Some(id))).map(|p| p.0);
         }
         if let Some(e) = carried {

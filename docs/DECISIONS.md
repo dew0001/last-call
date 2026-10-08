@@ -165,4 +165,8 @@ JavaScriptCore options tried on the release build (each confirmed applied with `
 - An 8 MB wasm stack (instead of 1 MB): still crashes, so it is not a stack overflow.
 - A host build that keeps function names shows the trap inside avian's `NarrowPhase::update_contacts`, a very large function. A JIT miscompile in WebKit 26.0 fits all results (UNVERIFIED).
 
-Next step taken: Playwright 1.64.0, which ships WebKit 27.2 (build 2370).
+Result: Playwright 1.64.0 ships WebKit 27.2 (build 2370). The WebKit e2e job passed in CI on the first run with it (run 37854696748), with no host memory errors. The cause stays UNVERIFIED; the old WebKit build is the only change. Locally, WebKit 2370 opens no WebRTC connection in this container (no ICE candidates), so WebKit runs in CI only.
+
+### Props tests watch from the first tick
+
+Bot scripts run on real time, but `LocalRoom` advances the host one tick per step. On a CI runner about 3 times slower than the cloud session, the 6-second settle phase took about 19 seconds of real time. The bot then picked up and threw its bottle before the test started to watch, and the test failed with "bot never picked anything up". Both props tests now watch from the first tick, with a 40-second deadline.
