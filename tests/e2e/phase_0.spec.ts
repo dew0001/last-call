@@ -15,8 +15,9 @@ test.beforeEach(({ page }, info) => {
 });
 
 // Wait until the client has drawn `frames` frames. Fails at once on a start-up
-// error or a Rust panic instead of waiting for the timeout.
-async function waitForFrames(page: Page, frames = 30, timeoutMs = 150_000) {
+// error or a Rust panic instead of waiting for the timeout. Returns false
+// early, without failing, once `stop()` returns true.
+async function waitForFrames(page: Page, frames = 30, timeoutMs = 150_000, stop = () => false): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
   let last = 0;
   while (Date.now() < deadline) {
@@ -30,7 +31,8 @@ async function waitForFrames(page: Page, frames = 30, timeoutMs = 150_000) {
       .catch(() => ({ error: undefined, retrying: true, frames: 0 }));
     if (s.error && !s.retrying) throw new Error(`client failed to start: ${s.error.slice(0, 400)}`);
     last = s.frames;
-    if (last > frames) return;
+    if (last > frames) return true;
+    if (stop()) return false;
     await page.waitForTimeout(500);
   }
   throw new Error(`only ${last} frames drawn in ${timeoutMs / 1000} s`);
@@ -85,15 +87,14 @@ test('WebGPU path boots and renders where the browser allows it', async ({ page 
     .poll(async () => page.evaluate(() => (window as any).__lastCall?.backend ?? ''), { timeout: 150_000 })
     .toBe('browserwebgpu');
 
-  // Headless Chromium on SwiftShader loses the device right after start
-  // ("A valid external Instance reference no longer exists"). Plain WebGPU JS
-  // hits the same loss there, so it is the environment, not the game.
-  await page.waitForTimeout(5_000);
-  const lost = errors.some((e) => e.includes('external Instance reference no longer exists'));
-  test.info().annotations.push({ type: 'webgpu-device-lost-by-browser', description: String(lost) });
-  test.skip(lost, 'browser lost the SwiftShader WebGPU device; render path unverifiable here, see docs/DECISIONS.md');
-
-  await waitForFrames(page);
+  // Headless Chromium on SwiftShader loses the device soon after start
+  // ("A valid external Instance reference no longer exists"); on a slow runner
+  // the loss can come many seconds later. Plain WebGPU JS hits the same loss
+  // there, so it is the environment, not the game.
+  const lost = () => errors.some((e) => e.includes('external Instance reference no longer exists'));
+  const drawn = await waitForFrames(page, 30, 150_000, lost);
+  test.info().annotations.push({ type: 'webgpu-device-lost-by-browser', description: String(lost()) });
+  test.skip(!drawn, 'browser lost the SwiftShader WebGPU device; render path unverifiable here, see docs/DECISIONS.md');
   expect(await cubePixelShare(page)).toBeGreaterThan(0.01);
 });
 
