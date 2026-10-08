@@ -59,6 +59,12 @@ function handle(msg) {
   }
 }
 
+// Uncaught errors (a wasm trap in the tick loop) go to the page with their
+// stack, so a test log shows where the host died.
+addEventListener('error', (e) => {
+  postMessage({ t: 'error', message: String(e.message), stack: String(e.error?.stack ?? '') });
+});
+
 onmessage = (e) => (ready ? handle(e.data) : pending.push(e.data));
 
 await init();
