@@ -42,7 +42,7 @@ unit:
 
 # PW_BROWSERS limits browsers (the cloud session can only run chromium).
 e2e: node-deps
-	npx playwright test
+	xvfb-run -a npx playwright test
 
 test: lint unit web-debug e2e
 

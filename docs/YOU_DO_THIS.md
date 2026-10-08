@@ -1,12 +1,14 @@
 # You do this
 
+Status 2026-10-08: steps 1 to 4 are done. Nothing is waiting on you.
+
 One-time steps only you can do. Everything else runs in the cloud session and GitHub Actions. Nothing installs on your PC.
 
 ## 1. Free Cloudflare account (needed to put the game online)
 
 No credit card. The game builds and tests without this. CI skips the deploy step until steps 1 to 3 are done.
 
-Note: the cloud session cannot open Cloudflare's docs site, so I could not check these click paths against it. Cloudflare sometimes renames menu items. If a name below does not match, look for the closest one.
+Checked against Cloudflare's Pages CI guide (developers.cloudflare.com/pages/how-to/use-direct-upload-with-continuous-integration). That guide needs the **Account, Cloudflare Pages, Edit** permission, which step 2 adds.
 
 1. Go to https://dash.cloudflare.com/sign-up and sign up with email and password. Skip any paid plan offer. Do not add a card.
 2. Confirm your email from the message Cloudflare sends.
@@ -28,7 +30,7 @@ Note: the cloud session cannot open Cloudflare's docs site, so I could not check
 3. Find your account ID: go to https://dash.cloudflare.com, click **Workers & Pages** in the left menu. The **Account ID** is in the right column. Copy it.
 4. Click **New repository secret** again. Name: `CLOUDFLARE_ACCOUNT_ID`. Value: the account ID. Click **Add secret**.
 
-The next push to `main` deploys the game to `https://last-call.pages.dev` (or the closest free name) and the signaling Worker to `*.workers.dev`.
+Every push deploys. `main` goes to the game `https://last-call.pages.dev` (or the closest free name). Other branches get a preview URL. The signaling Worker goes to `*.workers.dev`.
 
 ## 4. Optional: let the cloud session download Firefox and WebKit
 

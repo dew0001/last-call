@@ -8,7 +8,13 @@ use crate::RenderStatus;
 
 #[wasm_bindgen(start)]
 pub fn start() {
-    console_error_panic_hook::set_once();
+    std::panic::set_hook(Box::new(|info| {
+        console_error_panic_hook::hook(info);
+        // Tests and the boot screen read this to fail fast.
+        if let Some(window) = web_sys::window() {
+            let _ = Reflect::set(&window, &"__lastCallError".into(), &JsValue::from_str(&format!("panic: {info}")));
+        }
+    }));
     crate::build_app().run();
 }
 

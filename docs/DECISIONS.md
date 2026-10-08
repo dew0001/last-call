@@ -39,8 +39,10 @@ The cloud session has no GPU and runs headless Chromium 141 only.
 
 - WebGL2 in Chromium (SwiftShader through ANGLE): verified. The cube renders.
 - WebGPU in Chromium: partly verified. The browser gives a SwiftShader WebGPU adapter. The WebGPU bundle loads, wgpu creates a device, and Bevy reports the `BrowserWebGpu` backend. Then the browser loses the device with "A valid external Instance reference no longer exists." Plain WebGPU JavaScript with no Bevy loses the device the same way, with every flag set tried. So actual WebGPU drawing is not verified here. The automatic WebGL2 fallback is verified.
-- Firefox and WebKit: not run in the cloud session. The network policy blocks the Playwright browser download (`cdn.playwright.dev`). They run in GitHub Actions instead.
-- WebGPU in Firefox and WebKit: depends on whether the CI browsers expose an adapter. The test skips with a note when they do not.
+- WebGL2 in Firefox 142: verified, after a fix. Headless Firefox finds no GL driver ("Exhausted GL driver options"), even with `webgl.force-enabled`. Headed Firefox on a virtual display (`xvfb-run`) uses Mesa llvmpipe and gets WebGL2. So Playwright runs under `xvfb-run`, and Firefox runs headed whenever `DISPLAY` is set.
+- WebGL2 in WebKit 26 (Playwright build 2215): verified.
+- WebGPU in Firefox and WebKit: not verified. Neither exposes a WebGPU adapter in this environment, so the test skips.
+- Firefox and WebKit first ran in CI only, because the network policy blocked the browser download. The user opened network access, and all three browsers now run in the cloud session too.
 
 ### Host simulation loop
 
@@ -53,3 +55,11 @@ Bevy's built-in schedule runner calls `window.setTimeout`, and a Web Worker has 
 ### Rust edition
 
 All crates use edition 2024.
+
+### Deploy on every push
+
+The working branch is not `main`. Every push runs the deploy job when the Cloudflare secrets exist. `main` deploys the Pages production site. Other branches deploy a Pages preview URL. There is one signaling Worker, deployed from whichever branch pushed last. This is fine while there is one line of work.
+
+### Playwright traces off
+
+A trace stores every response body, and the debug wasm is about 70 MB. WebKit traces overflowed ("Invalid string length"). Tests keep screenshots on failure and print all browser console output instead.

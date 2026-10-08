@@ -9,7 +9,9 @@ const params = new URLSearchParams(location.search);
 async function webgpuAvailable() {
   try {
     if (!('gpu' in navigator)) return false;
-    return (await navigator.gpu.requestAdapter()) !== null;
+    // Some browsers never settle this promise; treat 2 s of silence as "no".
+    const timeout = new Promise((resolve) => setTimeout(() => resolve(null), 2000));
+    return (await Promise.race([navigator.gpu.requestAdapter(), timeout])) !== null;
   } catch {
     return false;
   }

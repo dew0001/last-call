@@ -20,7 +20,16 @@ const projects = [
     name: 'chromium',
     use: { ...devices['Desktop Chrome'], channel: 'chromium', launchOptions: { args: chromiumArgs } },
   },
-  { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
+  {
+    name: 'firefox',
+    // Headless Firefox finds no GL driver on a machine with no GPU. Run it
+    // headed on a virtual display (`xvfb-run`) so it uses Mesa llvmpipe.
+    use: {
+      ...devices['Desktop Firefox'],
+      headless: !process.env.DISPLAY,
+      launchOptions: { firefoxUserPrefs: { 'webgl.force-enabled': true } },
+    },
+  },
   { name: 'webkit', use: { ...devices['Desktop Safari'] } },
 ].filter((p) => wanted.includes(p.name));
 
@@ -35,7 +44,9 @@ export default defineConfig({
   use: {
     baseURL: 'http://localhost:8080',
     viewport: { width: 1280, height: 720 },
-    trace: 'retain-on-failure',
+    // Traces would hold the 15 to 70 MB wasm bodies and overflow; keep screenshots.
+    trace: 'off',
+    screenshot: 'only-on-failure',
   },
   projects,
   webServer: {

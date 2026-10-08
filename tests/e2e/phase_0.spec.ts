@@ -5,13 +5,29 @@ import { PNG } from 'pngjs';
 
 const CLEAR = { r: 0.08, g: 0.05, b: 0.03 };
 
-async function waitForFrames(page: Page, frames = 30) {
-  await expect
-    .poll(async () => page.evaluate(() => (window as any).__lastCallError ?? (window as any).__lastCall?.frames ?? 0), {
-      timeout: 150_000,
-      intervals: [500],
-    })
-    .toBeGreaterThan(frames);
+// Print every browser message so CI logs show why a browser did not draw.
+test.beforeEach(({ page }, info) => {
+  const tag = `[${info.project.name}]`;
+  page.on('console', (m) => console.log(`${tag} console.${m.type()}: ${m.text().slice(0, 500)}`));
+  page.on('pageerror', (e) => console.log(`${tag} pageerror: ${e.message.slice(0, 500)}`));
+});
+
+// Wait until the client has drawn `frames` frames. Fails at once on a start-up
+// error or a Rust panic instead of waiting for the timeout.
+async function waitForFrames(page: Page, frames = 30, timeoutMs = 150_000) {
+  const deadline = Date.now() + timeoutMs;
+  let last = 0;
+  while (Date.now() < deadline) {
+    const s = await page.evaluate(() => ({
+      error: (window as any).__lastCallError as string | undefined,
+      frames: ((window as any).__lastCall?.frames ?? 0) as number,
+    }));
+    if (s.error) throw new Error(`client failed to start: ${s.error.slice(0, 400)}`);
+    last = s.frames;
+    if (last > frames) return;
+    await page.waitForTimeout(500);
+  }
+  throw new Error(`only ${last} frames drawn in ${timeoutMs / 1000} s`);
 }
 
 // Count pixels that are clearly the pink cube and not the dark clear color.
@@ -27,8 +43,11 @@ async function cubePixelShare(page: Page): Promise<number> {
 
 async function hasWebGPUAdapter(page: Page): Promise<boolean> {
   return page.evaluate(async () => {
+    const gpu = (navigator as any).gpu;
+    if (!gpu) return false;
+    const timeout = new Promise<null>((r) => setTimeout(() => r(null), 2000));
     try {
-      return !!(navigator as any).gpu && (await (navigator as any).gpu.requestAdapter()) !== null;
+      return (await Promise.race([gpu.requestAdapter(), timeout])) !== null;
     } catch {
       return false;
     }
@@ -36,7 +55,6 @@ async function hasWebGPUAdapter(page: Page): Promise<boolean> {
 }
 
 test('WebGL2 fallback renders a cube', async ({ page }) => {
-  page.on('console', (m) => m.type() === 'error' && console.log(`[console] ${m.text()}`));
   await page.goto('/?gpu=webgl2');
   await waitForFrames(page);
   const status = await page.evaluate(() => (window as any).__lastCall);
