@@ -23,7 +23,7 @@ Every deviation from `LAST_CALL_PLAN.md`, and every choice the plan left open, w
 | `worker-build` | 0.8.7 | |
 | `trunk` | not used | See below. |
 | `wrangler` | 4.140.0 | npm devDependency. |
-| `@playwright/test` | 1.56.1 | Matches the Chromium 141 build (r1194) already in the cloud session. |
+| `@playwright/test` | 1.64.0 | Newest release. Was 1.56.1 to match the Chromium build already in the cloud session; raised because its WebKit 26.0 build crashed the host (see "WebKit host crash"). The cloud session downloads the 1.64 browsers. |
 
 ### `trunk` replaced by a build script
 
@@ -162,3 +162,7 @@ JavaScriptCore options tried on the release build (each confirmed applied with `
 - `JSC_useWasmFastMemory=0`: passed one full run, then crashed 4 times in the next two. Not the cause.
 - `JSC_useWasmOSR=0` with `JSC_freeRetiredWasmCode=0`: still crashes.
 - `JSC_useBBQJIT=0`: no memory errors, but wasm runs in the interpreter and is too slow for the tests.
+- An 8 MB wasm stack (instead of 1 MB): still crashes, so it is not a stack overflow.
+- A host build that keeps function names shows the trap inside avian's `NarrowPhase::update_contacts`, a very large function. A JIT miscompile in WebKit 26.0 fits all results (UNVERIFIED).
+
+Next step taken: Playwright 1.64.0, which ships WebKit 27.2 (build 2370).
