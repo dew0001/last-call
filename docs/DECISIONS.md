@@ -152,3 +152,14 @@ CI run 7 showed more failures, all on GitHub's 4-core runners with software rend
 - **Tabs starved of frames.** Multi-tab tests check game state, not pixels, so their tabs pass `?nodraw`: the full client runs with no camera. Phase 0 still checks rendering.
 - **Start-up tick spike.** All 130 props settled at once when the room started, and one second in Firefox ticked at 56 Hz. Props are placed at rest, so they now start asleep. Picking one up wakes it. `crates/host/tests/settle.rs` wakes them all and checks they sleep again within 6 seconds.
 - **Lost start-up error.** In WebKit, a start-up GPU panic was followed by a memory error. The generic handler kept the second message, so the one-time renderer retry never matched. The first error is now kept.
+
+### WebKit test browser runs without wasm fast memory
+
+WebKit (Playwright build 2215, WebKitGTK) sometimes killed the host simulation with "Out of bounds memory access", then "access to a null reference", in the tick callback. It happened only in WebKit, only with other pages loaded, and failed 3 tests per full suite run, in CI and locally. The same wasm never failed in Chromium or Firefox. Earlier WebKit-only oddities (a replicon "scope not registered" panic, a zstd failure) look like the same memory damage.
+
+JavaScriptCore checks wasm memory bounds with a guard-page trap ("fast memory") by default. Results on the local release build:
+- Default options: the full WebKit suite failed 3 tests in each of 2 runs.
+- `JSC_useOMGJIT=0` (optimizing tier off, confirmed applied with `JSC_dumpOptions`): still failed.
+- `JSC_useWasmFastMemory=0` (explicit bounds checks): the full suite passed.
+
+The `webkit` Playwright project sets `JSC_useWasmFastMemory=0`. This changes only the test browser. The cause inside WebKit is UNVERIFIED, and no WebKit bug report was found. Real Safari on macOS and iOS uses its own memory setup; Phase 7 testing on a real Safari must check for this crash.
