@@ -272,7 +272,7 @@ async function runHost() {
     return code;
   };
   const code = start(params.get('code') ?? newRoomCode());
-  runClient(mod, { online: true, code, uuid: playerUuid(), name: displayName() });
+  runClient(mod, { online: true, code, uuid: playerUuid(), name: displayName(), nodraw: params.has('nodraw') });
   startVoiceWhenJoined(code);
 }
 
@@ -286,7 +286,7 @@ async function runPlayer(code) {
       show(banner, `Room ${code}`);
       if (!started) {
         started = true;
-        runClient(mod, { online: true, code, uuid: playerUuid(), name: displayName() });
+        runClient(mod, { online: true, code, uuid: playerUuid(), name: displayName(), nodraw: params.has('nodraw') });
         startVoiceWhenJoined(code);
       }
     },
@@ -320,7 +320,9 @@ document.getElementById('bevy')?.addEventListener('click', (e) => e.target.reque
 const fail = (e) => {
   console.error(e);
   show(document.getElementById('boot') ?? banner, `Failed to start: ${e}`);
-  window.__lastCallError = String(e);
+  // Keep the first error: a Rust panic message is more useful than the crash
+  // that follows it, and the start-up retry looks for it.
+  window.__lastCallError ??= String(e);
 };
 
 if (params.has('hostonly')) {

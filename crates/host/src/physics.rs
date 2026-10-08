@@ -115,6 +115,9 @@ fn spawn_props(mut commands: Commands) {
             Transform::from_translation(at),
             Replicate::to_clients(NetworkTarget::All),
             InterpolationTarget::to_clients(NetworkTarget::All),
+            // Placed at rest: start asleep so the room does not spend its first
+            // seconds settling 130 bodies (a CPU spike, and a burst of pose updates).
+            Sleeping,
         ));
         if kind == PropKind::Chip {
             // Thin discs in tall stacks jitter forever at the default sleep
@@ -178,7 +181,7 @@ fn hands(
                 && let Ok((_, _, mut held, ..)) = props.get_mut(e)
             {
                 held.0 = Some(player.id);
-                commands.entity(e).insert(RigidBody::Kinematic);
+                commands.entity(e).insert(RigidBody::Kinematic).remove::<Sleeping>();
                 hands.held = Some(e);
                 hands.charge = 0;
             }

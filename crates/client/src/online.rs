@@ -14,7 +14,14 @@ use shared::protocol::*;
 #[derive(Clone, Debug)]
 pub struct OnlineConfig {
     pub identity: Identity,
+    /// Run the full client without a camera (nothing is drawn). Browser bot
+    /// tabs use it: the netcode and game logic still run every frame.
+    pub nodraw: bool,
 }
+
+/// Present when the client draws nothing.
+#[derive(Resource)]
+pub struct NoDraw;
 
 /// The outside end of the client's pipe. The web bridge feeds received bytes
 /// into it and drains bytes to send.
@@ -61,6 +68,9 @@ pub fn add(app: &mut App, cfg: OnlineConfig) {
     app.add_plugins(ClientNetPlugin);
     app.insert_resource(PredictionManager::default());
     app.insert_resource(cfg.identity);
+    if cfg.nodraw {
+        app.insert_resource(NoDraw);
+    }
     app.init_resource::<Look>().init_resource::<ScriptedInput>().init_resource::<NetStatus>();
 
     let (io, end) = PipeIo::new();

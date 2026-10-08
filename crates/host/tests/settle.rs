@@ -1,5 +1,6 @@
-//! With nobody in the room, every prop comes to rest and falls asleep within
-//! 6 seconds, so resting props cost no CPU and no bandwidth.
+//! Props start asleep. Woken all at once (as if the room were shaken), every
+//! prop comes to rest and falls asleep again within 6 seconds, so resting
+//! props cost no CPU and no bandwidth.
 
 use avian3d::prelude::*;
 use bevy::prelude::Has;
@@ -9,6 +10,14 @@ use shared::protocol::{PropKind, PropPose};
 #[test]
 fn props_settle_and_sleep() {
     let mut sim = HostSim::new();
+    let world = sim.world_mut();
+    let mut asleep =
+        world.query_filtered::<bevy::prelude::Entity, (bevy::prelude::With<PropKind>, bevy::prelude::With<Sleeping>)>();
+    let props: Vec<_> = asleep.iter(world).collect();
+    assert_eq!(props.len(), 130, "props should start asleep");
+    for e in props {
+        world.entity_mut(e).remove::<Sleeping>();
+    }
     for _ in 0..(64 * 6) {
         sim.tick();
     }

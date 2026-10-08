@@ -58,9 +58,13 @@ impl Plugin for ClientNetPlugin {
 
 /// Frames to draw before connecting. A page's first frames stutter while it
 /// compiles shaders; pings measured then inflate the round-trip estimate and
-/// push the client's timeline far ahead of the host. Native bots use 0.
+/// push the client's timeline far ahead of the host. Native bots use 0. A
+/// very slow device connects after [`CONNECT_AFTER_MAX`] anyway.
 #[derive(Resource, Clone, Copy, Debug)]
 pub struct ConnectAfterFrames(pub u32);
+
+/// Connect after this long even if few frames were drawn.
+pub const CONNECT_AFTER_MAX: core::time::Duration = core::time::Duration::from_secs(3);
 
 impl Default for ConnectAfterFrames {
     fn default() -> Self {
@@ -70,6 +74,7 @@ impl Default for ConnectAfterFrames {
 
 fn connect_when_warm(
     wait: Res<ConnectAfterFrames>,
+    time: Res<Time<Real>>,
     mut frames: Local<u32>,
     clients: Query<Entity, (With<Client>, Without<Connected>, Without<Connecting>)>,
     mut done: Local<bool>,
@@ -79,7 +84,7 @@ fn connect_when_warm(
         return;
     }
     *frames += 1;
-    if *frames <= wait.0 {
+    if *frames <= wait.0 && time.elapsed() < CONNECT_AFTER_MAX {
         return;
     }
     for entity in &clients {

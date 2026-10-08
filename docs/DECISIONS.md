@@ -144,3 +144,11 @@ The host keeps a player whose link dropped for 30 seconds (`AwaitingReconnect`).
 ### PROTOCOL.md from a tool, not a build script
 
 Plan section 3.3 asks for a build script. A build script that writes into `docs/` would edit the source tree during every build. Instead, `cargo run -p last_call_tools -- protocol_doc` writes `docs/PROTOCOL.md`, and CI runs it with `--check` to fail when the file is stale.
+
+### CI hardening for slow GPU-less runners
+
+CI run 7 showed more failures, all on GitHub's 4-core runners with software rendering:
+- **Tabs never connected.** A tab drawing 12 frames in a minute never reached the 15-frame warm-up, so it never connected. Clients now connect after 15 frames or 3 seconds, whichever comes first. A slow real device needs this too.
+- **Tabs starved of frames.** Multi-tab tests check game state, not pixels, so their tabs pass `?nodraw`: the full client runs with no camera. Phase 0 still checks rendering.
+- **Start-up tick spike.** All 130 props settled at once when the room started, and one second in Firefox ticked at 56 Hz. Props are placed at rest, so they now start asleep. Picking one up wakes it. `crates/host/tests/settle.rs` wakes them all and checks they sleep again within 6 seconds.
+- **Lost start-up error.** In WebKit, a start-up GPU panic was followed by a memory error. The generic handler kept the second message, so the one-time renderer retry never matched. The first error is now kept.

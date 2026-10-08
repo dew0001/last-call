@@ -40,6 +40,10 @@ async function waitFor(page: Page, what: string, check: (s: Status) => boolean, 
 
 /** Each tab gets its own browser context, like a separate player's machine. */
 async function openTab(browser: Browser, url: string, tag: string, size = { width: 160, height: 90 }) {
+  // These tests check game state, not pixels (phase 0 covers rendering), so
+  // tabs run the full client without drawing. Software rendering on a
+  // GPU-less CI runner otherwise starves eight tabs of frames.
+  url += url.includes('?') ? '&nodraw' : '?nodraw';
   // Small viewports: the cloud and CI have no GPU, and software rendering cost
   // grows with pixels. Many tabs share 4 CPU cores.
   const context = await browser.newContext({ viewport: size });
@@ -268,7 +272,7 @@ test('a hidden host tab keeps a 64 Hz tick for 60 s', async ({ browserName }, in
   const base = String(info.project.use.baseURL ?? 'http://localhost:8080');
   const raw = await RawChromium.launch();
   try {
-    const { tab: host } = await raw.firstTab(`${base}/?create&gpu=webgl2&novoice&name=Host`);
+    const { tab: host } = await raw.firstTab(`${base}/?create&gpu=webgl2&novoice&nodraw&name=Host`);
     let link: string | undefined;
     for (let i = 0; i < 120 && !link; i++) {
       await new Promise((r) => setTimeout(r, 500));
@@ -277,7 +281,7 @@ test('a hidden host tab keeps a 64 Hz tick for 60 s', async ({ browserName }, in
     expect(link).toBeTruthy();
     // The player tab shares the profile, so give it its own identity.
     const { id: playerId, tab: player } = await raw.newTab(
-      `${link}&gpu=webgl2&novoice&name=Witness&player=00000000-0000-4000-8000-00000000beef`,
+      `${link}&gpu=webgl2&novoice&nodraw&name=Witness&player=00000000-0000-4000-8000-00000000beef`,
     );
     await raw.activate(playerId);
     let me: string | null = null;

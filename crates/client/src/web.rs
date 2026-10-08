@@ -37,6 +37,8 @@ struct StartConfig {
     uuid: String,
     #[serde(default)]
     name: String,
+    #[serde(default)]
+    nodraw: bool,
 }
 
 fn parse_uuid(hex: &str) -> [u8; 16] {
@@ -70,6 +72,7 @@ pub fn client_start(config: JsValue) -> Result<(), JsValue> {
             display_name: cfg.name,
             cosmetic_id: 0,
         },
+        nodraw: cfg.nodraw,
     });
     let mut app = crate::build_app(online);
     if let Some(bridge) = app.world().get_resource::<NetBridge>() {
