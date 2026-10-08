@@ -1,0 +1,2 @@
+# Bevy queries are long by nature.
+type-complexity-threshold = 600

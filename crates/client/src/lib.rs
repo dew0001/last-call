@@ -1,9 +1,15 @@
-//! LAST CALL client. Phase 0: one lit, spinning cube on a dark bar-amber
-//! background, plus a status bridge that tells the page which GPU backend runs.
+//! LAST CALL client.
+//!
+//! Offline (no room): a spinning neon cube as the title backdrop.
+//! Online: the lightyear client, the gray-box bar, every player as a capsule
+//! (own player predicted, others interpolated), WASD plus mouse look.
+//! On the web, `web.rs` bridges packets to `web/net.js` and mirrors status
+//! into `window.__lastCall` for the page and the tests.
 
 use bevy::prelude::*;
 use bevy::render::renderer::RenderAdapterInfo;
 
+pub mod online;
 #[cfg(target_arch = "wasm32")]
 mod web;
 
@@ -20,8 +26,8 @@ pub struct RenderStatus {
 #[derive(Component)]
 struct Spinner;
 
-/// Build the client app.
-pub fn build_app() -> App {
+/// Build the client app. `online` joins a room; `None` shows the title backdrop.
+pub fn build_app(online: Option<online::OnlineConfig>) -> App {
     let mut app = App::new();
     app.insert_resource(ClearColor(CLEAR_COLOR))
         .init_resource::<RenderStatus>()
@@ -35,12 +41,19 @@ pub fn build_app() -> App {
             }),
             ..default()
         }))
-        .add_systems(Startup, setup_scene)
-        .add_systems(Update, (spin, track_status));
+        .add_systems(Update, track_status);
+    match online {
+        Some(cfg) => {
+            online::add(&mut app, cfg);
+        }
+        None => {
+            app.add_systems(Startup, setup_backdrop).add_systems(Update, spin);
+        }
+    }
     app
 }
 
-fn setup_scene(
+fn setup_backdrop(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -75,6 +88,4 @@ fn track_status(mut status: ResMut<RenderStatus>, adapter: Option<Res<RenderAdap
         status.backend = format!("{:?}", info.backend).to_lowercase();
         info!("render backend: {} ({})", status.backend, info.name);
     }
-    #[cfg(target_arch = "wasm32")]
-    web::publish_status(&status);
 }

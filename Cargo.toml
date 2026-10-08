@@ -32,6 +32,11 @@ js-sys = "0.3"
 web-sys = "0.3"
 console_error_panic_hook = "0.1.7"
 proptest = "1.8"
+crossbeam-channel = "0.5.17"
+bytes = "1.12"
+aeronet_io = "=0.21.0"
+lightyear = { version = "=0.30.1", default-features = false, features = ["std", "client", "server", "raw_connection", "crossbeam", "prediction", "interpolation", "replication", "input_native"] }
+avian3d = { version = "=0.7.0", default-features = false, features = ["3d", "f32", "parry-f32", "enhanced-determinism"] }
 
 [profile.dev]
 opt-level = 1
