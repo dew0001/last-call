@@ -43,16 +43,7 @@ const projects = [
       },
     },
   },
-  {
-    name: 'webkit',
-    // WebKitGTK's signal-based wasm bounds checks ("fast memory") fail under
-    // load in this test browser: the host simulation dies with "Out of bounds
-    // memory access". Explicit bounds checks avoid it; see docs/DECISIONS.md.
-    use: {
-      ...devices['Desktop Safari'],
-      launchOptions: { env: { ...process.env, JSC_useWasmFastMemory: '0' } },
-    },
-  },
+  { name: 'webkit', use: { ...devices['Desktop Safari'] } },
 ].filter((p) => wanted.includes(p.name));
 
 export default defineConfig({
