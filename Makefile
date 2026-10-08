@@ -39,6 +39,7 @@ lint:
 
 unit:
 	cargo test --workspace
+	cargo run -q -p last_call_tools -- protocol_doc --check
 	cd crates/signal && cargo test
 
 # Needs `make dev` (or wrangler dev) running on :8787.

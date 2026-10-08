@@ -126,3 +126,21 @@ Test notes:
 ### Firefox 8-tab test skipped
 
 Headed Firefox runs the frame loop only for the window in front, and `bringToFront` does not restart a covered window. With 8 windows on one virtual display, most never draw. The 8-tab test runs in Chromium and WebKit. Firefox runs the 2-tab join, move, throw and voice tests. Native bots cover 8 players.
+
+### Hidden host tab test drives Chromium directly
+
+Playwright keeps every page "visible": it emulates focus and turns off background throttling. A covered window, a minimized window, or another tab all left the host page reporting `visible`. The hidden-tab test (`tests/e2e/raw-chromium.ts`) starts a plain headed Chromium over the DevTools protocol, opens the player in a second tab, and activates it. The host tab then reports `hidden`, and its main-thread timers slow to about 1 per second, like a real background tab. The host Worker held above 62 ticks per second for 60 s, and the player kept moving in the host sim. This test runs in the Chromium project only.
+
+### Input authorization and the input marker
+
+A client kept lightyear's input marker on another player after that player's controller changed during a reconnect. Its idle (zero) inputs then overrode the real player's. Two fixes:
+- Clients mark only the player whose id came in their Welcome.
+- The host runs lightyear's `authorize_controlled_targets`, so a client's inputs for an entity it does not control are dropped. This also stops a modified client from driving someone else.
+
+### Reconnect
+
+The host keeps a player whose link dropped for 30 seconds (`AwaitingReconnect`). A client that joins with the same UUID (from `localStorage`) gets the same entity, position and slot. After 30 seconds the player is removed.
+
+### PROTOCOL.md from a tool, not a build script
+
+Plan section 3.3 asks for a build script. A build script that writes into `docs/` would edit the source tree during every build. Instead, `cargo run -p last_call_tools -- protocol_doc` writes `docs/PROTOCOL.md`, and CI runs it with `--check` to fail when the file is stale.

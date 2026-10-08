@@ -38,6 +38,8 @@ jobs:
         run: cd crates/signal && cargo test
       - name: test
         run: cargo test --workspace
+      - name: docs/PROTOCOL.md is up to date
+        run: cargo run -p last_call_tools -- protocol_doc --check
       - name: native build
         run: cargo build --workspace
       - name: native host tick rate

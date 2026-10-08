@@ -1,6 +1,7 @@
 // Phase 1: rooms, WebRTC netcode, movement.
 // Needs the signaling Worker under `wrangler dev` (started by playwright.config.ts).
 import { expect, test, type Browser, type Page } from '@playwright/test';
+import { RawChromium } from './raw-chromium';
 
 test.beforeEach(({ page }, info) => {
   const tag = `[${info.project.name}]`;
@@ -259,38 +260,55 @@ test('closing the host tab shows "Host left" on every client within 5 s', async 
   for (const p of players) await p.context().close();
 });
 
-test('a hidden host tab keeps a 64 Hz tick for 60 s', async ({ browser, browserName }) => {
+test('a hidden host tab keeps a 64 Hz tick for 60 s', async ({ browserName }, info) => {
+  // Playwright keeps every page "visible", so this test drives a plain headed
+  // Chromium where a background tab is really hidden and throttled.
+  test.skip(browserName !== 'chromium', 'drives Chromium directly over the DevTools protocol');
   test.setTimeout(180_000);
-  const { host, room } = await createRoom(browser);
-  const player = await openTab(browser, `${room.link}&gpu=webgl2&novoice&name=Witness`, 'player');
-  const ps = await waitFor(player, 'player joined', (s) => !!s.playerId);
+  const base = String(info.project.use.baseURL ?? 'http://localhost:8080');
+  const raw = await RawChromium.launch();
+  try {
+    const { tab: host } = await raw.firstTab(`${base}/?create&gpu=webgl2&novoice&name=Host`);
+    let link: string | undefined;
+    for (let i = 0; i < 120 && !link; i++) {
+      await new Promise((r) => setTimeout(r, 500));
+      link = await host.eval<string | undefined>('window.__lcRoom?.link');
+    }
+    expect(link).toBeTruthy();
+    // The player tab shares the profile, so give it its own identity.
+    const { id: playerId, tab: player } = await raw.newTab(
+      `${link}&gpu=webgl2&novoice&name=Witness&player=00000000-0000-4000-8000-00000000beef`,
+    );
+    await raw.activate(playerId);
+    let me: string | null = null;
+    for (let i = 0; i < 120 && !me; i++) {
+      await new Promise((r) => setTimeout(r, 500));
+      me = await player.eval<string | null>('window.__lastCall?.playerId ?? null');
+    }
+    expect(me).toBeTruthy();
+    expect(await host.eval('document.visibilityState')).toBe('hidden');
 
-  // Hide the host tab: open another tab in the host's window and show it.
-  const cover = await host.context().newPage();
-  await cover.goto('about:blank');
-  await cover.bringToFront();
-  const visibility = await host.evaluate(() => document.visibilityState);
-  test.info().annotations.push({ type: 'host-visibility', description: `${browserName}: ${visibility}` });
-
-  const startCount = await host.evaluate(() => (window as any).__hostTicks.length);
-  // The player keeps walking while the host is hidden; the host sim moves it.
-  await setInput(player, { mx: 0, my: 1, yaw: Math.PI, pitch: 0, buttons: 0 });
-  await host.waitForTimeout(60_000);
-  const reports: { tps: number; players: [string, number, number, number][] }[] = await host.evaluate(
-    (n) => (window as any).__hostTicks.slice(n),
-    startCount,
-  );
-  const rates = reports.map((r) => r.tps);
-  test.info().annotations.push({
-    type: 'hidden-tps',
-    description: `min ${Math.min(...rates).toFixed(1)} over ${rates.length} reports`,
-  });
-  expect(rates.length).toBeGreaterThanOrEqual(55);
-  // The first report after hiding can include the moment of the switch.
-  for (const tps of rates.slice(1)) expect(tps).toBeGreaterThan(62);
-  const last = reports[reports.length - 1].players.find((r) => r[0] === ps.playerId)!;
-  const first = reports[0].players.find((r) => r[0] === ps.playerId)!;
-  expect(last[3]).not.toBe(first[3]);
-  await player.context().close();
-  await host.context().close();
+    // The player walks while the host tab is hidden; the host sim moves it.
+    await player.eval('window.__lcInput = { mx: 0, my: 1, yaw: Math.PI, pitch: 0, buttons: 0 }');
+    const start = await host.eval<number>('window.__hostTicks.length');
+    await new Promise((r) => setTimeout(r, 60_000));
+    const reports = await host.eval<{ tps: number; players: [string, number, number, number][] }[]>(
+      `window.__hostTicks.slice(${start})`,
+    );
+    expect(await host.eval('document.visibilityState')).toBe('hidden');
+    const rates = reports.map((r) => r.tps);
+    info.annotations.push({
+      type: 'hidden-tps',
+      description: `min ${Math.min(...rates).toFixed(1)} over ${rates.length} reports, tab hidden`,
+    });
+    expect(rates.length).toBeGreaterThanOrEqual(55);
+    for (const tps of rates.slice(1)) expect(tps).toBeGreaterThan(62);
+    const track = reports.map((r) => r.players.find((p) => p[0] === me)).filter(Boolean) as [string, number, number, number][];
+    expect(track.length).toBeGreaterThan(10);
+    expect(track[track.length - 1][3]).not.toBe(track[0][3]);
+    host.close();
+    player.close();
+  } finally {
+    raw.close();
+  }
 });

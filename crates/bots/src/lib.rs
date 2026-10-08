@@ -23,6 +23,8 @@ pub enum Script {
     Circle { phase: f32 },
     /// Walk to the counter, pick up a prop, turn around, and throw it.
     GrabAndThrow,
+    /// Walk to the counter, pick up a prop, turn around, and drop it.
+    GrabAndDrop,
 }
 
 #[derive(Resource, Default)]
@@ -33,6 +35,7 @@ fn drive(script: Res<Script>, mut clock: ResMut<BotClock>, mut input: ResMut<Loc
     input.0 = match *script {
         Script::Idle => PlayerInput::default(),
         Script::GrabAndThrow => grab_and_throw(clock.0),
+        Script::GrabAndDrop => grab_and_drop(clock.0),
         Script::Circle { phase } => PlayerInput::new(Vec2::new(0.0, 1.0), phase + clock.0 as f32 * 0.02, 0.0, 0),
     };
 }
@@ -53,6 +56,17 @@ fn grab_and_throw(frame: u64) -> PlayerInput {
         420..480 => PlayerInput::new(Vec2::ZERO, half_turn * (frame - 420) as f32 / 60.0, 0.0, 0),
         // Charge the throw for half a second, then release.
         480..512 => PlayerInput::new(Vec2::ZERO, half_turn, 0.0, THROW),
+        _ => PlayerInput::new(Vec2::ZERO, half_turn, 0.0, 0),
+    }
+}
+
+/// The [`Script::GrabAndDrop`] timeline: like [`grab_and_throw`], then Q.
+fn grab_and_drop(frame: u64) -> PlayerInput {
+    use shared::movement::buttons::DROP;
+    let half_turn = std::f32::consts::PI;
+    match frame {
+        0..480 => grab_and_throw(frame),
+        480..490 => PlayerInput::new(Vec2::ZERO, half_turn, 0.0, DROP),
         _ => PlayerInput::new(Vec2::ZERO, half_turn, 0.0, 0),
     }
 }
@@ -187,11 +201,17 @@ impl LocalRoom {
         self.host_players().into_iter().find(|(pid, _)| *pid == id).map(|(_, p)| p)
     }
 
-    /// Every prop on the host: (kind, pose, held by).
-    pub fn host_props(&mut self) -> Vec<(PropKind, PropPose, HeldBy)> {
+    /// Every prop on the host: (entity, kind, pose, held by). Track a prop by
+    /// its entity: query order changes when props fall asleep or wake.
+    pub fn host_props(&mut self) -> Vec<(bevy::ecs::entity::Entity, PropKind, PropPose, HeldBy)> {
         let world = self.host.world_mut();
-        let mut q = world.query::<(&PropKind, &PropPose, &HeldBy)>();
-        q.iter(world).map(|(k, p, h)| (*k, *p, *h)).collect()
+        let mut q = world.query::<(bevy::ecs::entity::Entity, &PropKind, &PropPose, &HeldBy)>();
+        q.iter(world).map(|(e, k, p, h)| (e, *k, *p, *h)).collect()
+    }
+
+    /// One prop by entity.
+    pub fn host_prop(&mut self, e: bevy::ecs::entity::Entity) -> Option<(PropKind, PropPose, HeldBy)> {
+        self.host_props().into_iter().find(|p| p.0 == e).map(|(_, k, p, h)| (k, p, h))
     }
 
     /// The bot's own predicted position, if it has one yet.

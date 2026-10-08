@@ -418,14 +418,14 @@ Each phase ends with a demo build at a URL and a checklist. Do not start the nex
 - [x] `docs/YOU_DO_THIS.md` lists the Cloudflare account and API token steps. Deploy jobs in CI skip cleanly while the secrets are missing.
 
 ### Phase 1: Lobby and netcode (weeks 2 to 3)
-- [ ] Create Room returns a code and a link. Opening `/?room=CODE` joins the host over WebRTC.
-- [ ] 8 clients (host plus 7) walk around a gray-box bar with capsule bodies. Client prediction on own movement, interpolation on others.
-- [ ] Physics props: 20 bottles, 100 chips, 10 stools. Pick up, carry, throw, drop. Host-owned, client-predicted while held.
-- [ ] Voice works between two tabs using Chromium's fake media device. Proximity falloff verified automatically: a received-level meter (Web Audio `AnalyserNode`) drops as the bot walks away.
-- [ ] Reconnect: refresh a non-host tab and rejoin the same room as the same player.
-- [ ] Host leaves: closing the host tab shows "Host left" on every client within 5 s.
-- [ ] Host tab hidden for 60 s keeps a 64 Hz tick.
-- [ ] Budgets: time to lobby under 15 s. Net up and down within budget with 8 bots.
+- [x] Create Room returns a code and a link. Opening `/?room=CODE` joins the host over WebRTC.
+- [x] 8 clients (host plus 7) walk around a gray-box bar with capsule bodies. Client prediction on own movement, interpolation on others.
+- [x] Physics props: 20 bottles, 100 chips, 10 stools. Pick up, carry, throw, drop. Host-owned, client-predicted while held.
+- [x] Voice works between two tabs using Chromium's fake media device. Proximity falloff verified automatically: a received-level meter (Web Audio `AnalyserNode`) drops as the bot walks away.
+- [x] Reconnect: refresh a non-host tab and rejoin the same room as the same player.
+- [x] Host leaves: closing the host tab shows "Host left" on every client within 5 s.
+- [x] Host tab hidden for 60 s keeps a 64 Hz tick.
+- [x] Budgets: time to lobby under 15 s. Net up and down within budget with 8 bots.
 
 ### Phase 2: Shift loop and economy (week 4)
 - [ ] Shift phases with timers and server-driven transitions.
