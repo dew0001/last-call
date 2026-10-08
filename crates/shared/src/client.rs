@@ -50,10 +50,9 @@ impl Plugin for ClientNetPlugin {
             InputTimelineConfig::default().with_sync_config(SyncConfig { jitter_multiple: 2, ..default() }),
         );
         app.add_systems(Update, connect_when_warm);
-        app.add_systems(Update, (send_join, read_join_reply));
+        app.add_systems(Update, (send_join, read_join_reply, mark_own_player).chain());
         app.add_systems(FixedPreUpdate, write_input.in_set(InputSystems::WriteClientInputs));
         app.add_systems(FixedUpdate, predict_movement);
-        app.add_observer(mark_controlled);
     }
 }
 
@@ -120,9 +119,22 @@ fn read_join_reply(mut session: ResMut<Session>, mut links: Query<&mut MessageRe
     }
 }
 
-fn mark_controlled(trigger: On<Add, Controlled>, players: Query<(), With<Player>>, mut commands: Commands) {
-    if players.contains(trigger.entity) {
-        commands.entity(trigger.entity).insert(InputMarker::<PlayerInput>::default());
+/// Keep the input marker on exactly one entity: the player this client was
+/// welcomed as, once it is predicted here. Any other marker (left over when a
+/// player's controller changed) is removed, so we never send input for a
+/// player we do not own.
+fn mark_own_player(
+    session: Res<Session>,
+    players: Query<(Entity, &Player, Has<Predicted>, Has<InputMarker<PlayerInput>>)>,
+    mut commands: Commands,
+) {
+    for (entity, player, predicted, marked) in &players {
+        let mine = predicted && Some(player.id) == session.player_id;
+        if mine && !marked {
+            commands.entity(entity).insert(InputMarker::<PlayerInput>::default());
+        } else if !mine && marked {
+            commands.entity(entity).remove::<InputMarker<PlayerInput>>();
+        }
     }
 }
 

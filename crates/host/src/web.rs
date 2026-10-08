@@ -34,6 +34,8 @@ struct State {
     sim: HostSim,
     pacer: Pacer,
     peers: BTreeMap<u32, Peer>,
+    /// Tick cost since the last report: (sum ms, max ms, count).
+    cost: (f64, f64, u32),
 }
 
 /// A self-rescheduling `setTimeout` callback.
@@ -51,7 +53,7 @@ fn now_ms(scope: &DedicatedWorkerGlobalScope) -> f64 {
     scope.performance().map(|p| p.now()).unwrap_or_default()
 }
 
-fn post_report(scope: &DedicatedWorkerGlobalScope, sim: &mut HostSim, tps: f32) {
+fn post_report(scope: &DedicatedWorkerGlobalScope, sim: &mut HostSim, tps: f32, avg_ms: f64, max_ms: f64) {
     let tick = sim.tick_count();
     let players = js_sys::Array::new();
     for (id, pos) in sim.player_positions() {
@@ -65,6 +67,8 @@ fn post_report(scope: &DedicatedWorkerGlobalScope, sim: &mut HostSim, tps: f32) 
     let _ = Reflect::set(&msg, &"type".into(), &"tick".into());
     let _ = Reflect::set(&msg, &"tick".into(), &JsValue::from_f64(tick as f64));
     let _ = Reflect::set(&msg, &"tps".into(), &JsValue::from_f64(f64::from(tps)));
+    let _ = Reflect::set(&msg, &"tickAvgMs".into(), &JsValue::from_f64(avg_ms));
+    let _ = Reflect::set(&msg, &"tickMaxMs".into(), &JsValue::from_f64(max_ms));
     let _ = scope.post_message(&msg);
 }
 
@@ -120,8 +124,12 @@ pub fn host_worker_start() {
     console_error_panic_hook::set_once();
     let scope = scope();
     STATE.with(|s| {
-        *s.borrow_mut() =
-            Some(State { sim: HostSim::new(), pacer: Pacer::new(now_ms(&scope)), peers: BTreeMap::new() });
+        *s.borrow_mut() = Some(State {
+            sim: HostSim::new(),
+            pacer: Pacer::new(now_ms(&scope)),
+            peers: BTreeMap::new(),
+            cost: (0.0, 0.0, 0),
+        });
     });
 
     let callback: TickCallback = Rc::new(RefCell::new(None));
@@ -131,11 +139,16 @@ pub fn host_worker_start() {
         let wait = with_state(|s| {
             let now = now_ms(&scope);
             for _ in 0..s.pacer.due(now) {
+                let t0 = now_ms(&scope);
                 s.sim.tick();
                 flush_outgoing(s);
+                let ms = now_ms(&scope) - t0;
+                s.cost = (s.cost.0 + ms, s.cost.1.max(ms), s.cost.2 + 1);
             }
             if let Some(tps) = s.pacer.poll_rate(now) {
-                post_report(&scope, &mut s.sim, tps);
+                let (sum, max, n) = std::mem::take(&mut s.cost);
+                let avg = if n > 0 { sum / f64::from(n) } else { 0.0 };
+                post_report(&scope, &mut s.sim, tps, avg, max);
             }
             s.pacer.wait_ms(now)
         })

@@ -1,6 +1,8 @@
 //! Host-side game rules: joining, players, movement.
 
 use bevy::prelude::*;
+use lightyear::input::native::prelude::NativeStateSequence;
+use lightyear::input::server::{InputValidationAppExt, authorize_controlled_targets};
 use lightyear::prelude::input::native::ActionState;
 use lightyear::prelude::server::*;
 use lightyear::prelude::*;
@@ -17,7 +19,10 @@ pub struct MovePlayers;
 
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, handle_joins);
+        app.add_systems(Update, (handle_joins, track_disconnects).chain());
+        // A client may only drive the player it controls. Without this, a stale
+        // input marker on another client could overwrite a player's input.
+        app.add_input_validator(authorize_controlled_targets::<NativeStateSequence<PlayerInput>>);
         app.add_systems(FixedUpdate, move_players.in_set(MovePlayers));
     }
 }
@@ -76,6 +81,33 @@ fn handle_joins(
             ));
             sender.send::<Control>(JoinReply::Welcome { player_id });
             info!("player {player_id:x} joined on {peer:?} (rejoin: {})", existing.is_some());
+        }
+    }
+}
+
+/// Mark players whose link is gone; remove them after the grace period.
+/// A player who rejoins in time (same UUID) gets the same entity back.
+fn track_disconnects(
+    mut commands: Commands,
+    tick: Res<crate::TickCount>,
+    players: Query<(Entity, Option<&ControlledBy>, Option<&AwaitingReconnect>), With<Player>>,
+    links: Query<(), (With<ClientOf>, With<Connected>)>,
+) {
+    let grace = (RECONNECT_GRACE_SECS * shared::TICK_HZ as f32) as u64;
+    for (entity, controlled, waiting) in &players {
+        let linked = controlled.is_some_and(|c| links.contains(c.owner));
+        match (linked, waiting) {
+            (false, None) => {
+                commands.entity(entity).insert(AwaitingReconnect { since_tick: tick.0 });
+            }
+            (false, Some(w)) if tick.0.saturating_sub(w.since_tick) > grace => {
+                info!("player entity {entity:?} did not reconnect in time; removing");
+                commands.entity(entity).despawn();
+            }
+            (true, Some(_)) => {
+                commands.entity(entity).remove::<AwaitingReconnect>();
+            }
+            _ => {}
         }
     }
 }

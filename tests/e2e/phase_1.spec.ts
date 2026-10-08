@@ -158,6 +158,14 @@ test('8 clients (host plus 7) walk around the gray-box bar', async ({ browser, b
     });
     test.info().annotations.push({ type: `tab-${i}`, description: `${starts[i]} -> ${s.ownPos}` });
   }
+  // Host tick cost with 8 players (budget: 6 ms per tick).
+  const reports: { tickAvgMs: number; tickMaxMs: number }[] = await host.evaluate(() =>
+    (window as any).__hostTicks.slice(-5),
+  );
+  const avg = Math.max(...reports.map((r) => r.tickAvgMs));
+  const max = Math.max(...reports.map((r) => r.tickMaxMs));
+  test.info().annotations.push({ type: 'host-tick-ms', description: `avg ${avg.toFixed(2)} max ${max.toFixed(2)}` });
+  expect(avg).toBeLessThan(6);
   for (const tab of tabs) await tab.context().close();
 });
 
@@ -204,6 +212,85 @@ test('voice: a remote voice gets quieter as its speaker walks away', async ({ br
   const far = await peak(2000);
   test.info().annotations.push({ type: 'voice-level', description: `near ${near.toFixed(4)} far ${far.toFixed(4)}` });
   expect(far).toBeLessThan(near * 0.2);
+  await player.context().close();
+  await host.context().close();
+});
+
+test('refreshing a player tab rejoins the same player', async ({ browser }) => {
+  const { host, room } = await createRoom(browser);
+  const player = await openTab(browser, `${room.link}&gpu=webgl2&novoice&name=Refresher`, 'player');
+  const before = await waitFor(player, 'player joined', (s) => !!s.playerId && !!s.ownPos);
+  await setInput(player, { mx: 0, my: 1, yaw: 0, pitch: 0, buttons: 0 });
+  await waitFor(player, 'player walked', (s) => !!s.ownPos && s.ownPos[2] < 1.5, 20_000);
+  await setInput(player, { mx: 0, my: 0, yaw: 0, pitch: 0, buttons: 0 });
+  await player.waitForTimeout(1000);
+  const walked = (await status(player)).ownPos!;
+
+  await player.reload();
+  const after = await waitFor(player, 'player rejoined', (s) => !!s.playerId && !!s.ownPos && s.playersSeen === 2);
+  expect(after.playerId).toBe(before.playerId);
+  const moved = Math.hypot(after.ownPos![0] - walked[0], after.ownPos![2] - walked[2]);
+  test.info().annotations.push({ type: 'rejoin', description: `${walked} -> ${after.ownPos} (${moved.toFixed(2)} m)` });
+  expect(moved).toBeLessThan(1.0);
+  await host.bringToFront();
+  await waitFor(host, 'host still sees two players', (s) => s.playersSeen === 2);
+  await player.context().close();
+  await host.context().close();
+});
+
+test('closing the host tab shows "Host left" on every client within 5 s', async ({ browser }) => {
+  const { host, room } = await createRoom(browser);
+  const players: Page[] = [];
+  for (let i = 0; i < 2; i++) {
+    const p = await openTab(browser, `${room.link}&gpu=webgl2&novoice&name=Stayer${i}`, `player${i}`);
+    await waitFor(p, `player ${i} joined`, (s) => !!s.playerId);
+    players.push(p);
+  }
+  const closedAt = Date.now();
+  await host.context().close();
+  for (const [i, p] of players.entries()) {
+    await expect
+      .poll(() => p.evaluate(() => (window as any).__lcHostLeft ?? null), { timeout: 5_000, intervals: [100] })
+      .toBe('host left');
+    test.info().annotations.push({ type: `host-left-ms-${i}`, description: String(Date.now() - closedAt) });
+    await expect(p.locator('#banner')).toContainText('Host left');
+  }
+  expect(Date.now() - closedAt).toBeLessThan(5_000);
+  for (const p of players) await p.context().close();
+});
+
+test('a hidden host tab keeps a 64 Hz tick for 60 s', async ({ browser, browserName }) => {
+  test.setTimeout(180_000);
+  const { host, room } = await createRoom(browser);
+  const player = await openTab(browser, `${room.link}&gpu=webgl2&novoice&name=Witness`, 'player');
+  const ps = await waitFor(player, 'player joined', (s) => !!s.playerId);
+
+  // Hide the host tab: open another tab in the host's window and show it.
+  const cover = await host.context().newPage();
+  await cover.goto('about:blank');
+  await cover.bringToFront();
+  const visibility = await host.evaluate(() => document.visibilityState);
+  test.info().annotations.push({ type: 'host-visibility', description: `${browserName}: ${visibility}` });
+
+  const startCount = await host.evaluate(() => (window as any).__hostTicks.length);
+  // The player keeps walking while the host is hidden; the host sim moves it.
+  await setInput(player, { mx: 0, my: 1, yaw: Math.PI, pitch: 0, buttons: 0 });
+  await host.waitForTimeout(60_000);
+  const reports: { tps: number; players: [string, number, number, number][] }[] = await host.evaluate(
+    (n) => (window as any).__hostTicks.slice(n),
+    startCount,
+  );
+  const rates = reports.map((r) => r.tps);
+  test.info().annotations.push({
+    type: 'hidden-tps',
+    description: `min ${Math.min(...rates).toFixed(1)} over ${rates.length} reports`,
+  });
+  expect(rates.length).toBeGreaterThanOrEqual(55);
+  // The first report after hiding can include the moment of the switch.
+  for (const tps of rates.slice(1)) expect(tps).toBeGreaterThan(62);
+  const last = reports[reports.length - 1].players.find((r) => r[0] === ps.playerId)!;
+  const first = reports[0].players.find((r) => r[0] === ps.playerId)!;
+  expect(last[3]).not.toBe(first[3]);
   await player.context().close();
   await host.context().close();
 });

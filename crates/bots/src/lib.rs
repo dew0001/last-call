@@ -106,21 +106,39 @@ pub struct LocalRoom {
     pub bots: Vec<App>,
     /// Traffic counters of each bot's end of its pipe.
     pub bot_stats: Vec<Arc<PipeStats>>,
+    /// Each bot's link entity on the host.
+    pub links: Vec<bevy::ecs::entity::Entity>,
+    scripts: Vec<Script>,
 }
 
 impl LocalRoom {
     pub fn new(bots: u8, script: impl Fn(u8) -> Script) -> Self {
         let mut host = HostSim::new();
         let mut bot_stats = Vec::new();
+        let mut links = Vec::new();
+        let scripts: Vec<Script> = (0..bots).map(&script).collect();
         let bots = (0..bots)
             .map(|i| {
                 let (client_io, server_io) = PipeIo::pair();
                 bot_stats.push(client_io.stats.clone());
-                host.connect_peer(server_io);
-                bot_app(client_io, i, script(i))
+                links.push(host.connect_peer(server_io));
+                bot_app(client_io, i, scripts[usize::from(i)])
             })
             .collect();
-        Self { host, bots, bot_stats }
+        Self { host, bots, bot_stats, links, scripts }
+    }
+
+    /// Drop a bot's connection, as when its tab closes or refreshes.
+    pub fn disconnect(&mut self, bot: usize) {
+        self.host.disconnect_peer(self.links[bot]);
+    }
+
+    /// Start a fresh client for a bot with the same identity (a refreshed tab).
+    pub fn reconnect(&mut self, bot: usize) {
+        let (client_io, server_io) = PipeIo::pair();
+        self.bot_stats[bot] = client_io.stats.clone();
+        self.links[bot] = self.host.connect_peer(server_io);
+        self.bots[bot] = bot_app(client_io, bot as u8, self.scripts[bot]);
     }
 
     /// Run one host tick and one frame on every bot.

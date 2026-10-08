@@ -51,6 +51,11 @@ impl HostSim {
     pub fn new() -> Self {
         let mut app = App::new();
         app.add_plugins((MinimalPlugins, TransformPlugin, StatesPlugin));
+        // Native debugging: LASTCALL_LOG="lightyear_inputs=debug,info" prints logs.
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Ok(filter) = std::env::var("LASTCALL_LOG") {
+            app.add_plugins(bevy::log::LogPlugin { filter, ..default() });
+        }
         app.insert_resource(TimeUpdateStrategy::ManualDuration(shared::TICK));
         app.add_plugins(ServerPlugins { tick_duration: shared::TICK });
         app.add_plugins((ProtocolPlugin, PipePlugin));
