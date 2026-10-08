@@ -1,0 +1,180 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  rust:
+    name: fmt, clippy, test, native build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup show
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            crates/signal -> target
+      - name: fmt
+        run: cargo fmt --all --check && (cd crates/signal && cargo fmt --check)
+      - name: clippy (native)
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: clippy (wasm)
+        run: cargo clippy --target wasm32-unknown-unknown -p last_call_client -p last_call_host --lib -- -D warnings
+      - name: clippy (signaling Worker)
+        run: cd crates/signal && cargo clippy --target wasm32-unknown-unknown -- -D warnings
+      - name: test
+        run: cargo test --workspace
+      - name: native build
+        run: cargo build --workspace
+      - name: native host tick rate
+        run: cargo run -p last_call_host --bin host-native -- --seconds 3
+
+  web:
+    name: wasm build (release)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup show
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: web-release
+          workspaces: |
+            . -> target
+      - name: build web bundle
+        run: ./scripts/build-web.sh release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist
+          retention-days: 7
+
+  signal:
+    name: signaling Worker build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup show
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: signal
+          workspaces: crates/signal -> target
+          cache-bin: true
+      - run: npm ci
+      - name: install worker-build
+        run: command -v worker-build || cargo install worker-build --version 0.8.7 --locked
+      - name: build Worker
+        run: cd crates/signal && worker-build --release
+      - name: check /health under wrangler dev
+        run: |
+          npx wrangler dev --port 8787 --ip 127.0.0.1 > wrangler.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:8787/health; then echo; exit 0; fi
+            sleep 2
+          done
+          cat wrangler.log
+          exit 1
+
+  e2e:
+    name: Playwright (${{ matrix.browser }})
+    needs: web
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps ${{ matrix.browser }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - name: run e2e
+        env:
+          PW_BROWSERS: ${{ matrix.browser }}
+        run: npx playwright test
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-${{ matrix.browser }}
+          path: |
+            playwright-report
+            test-results
+          retention-days: 7
+
+  deploy:
+    name: deploy to Cloudflare
+    needs: [rust, e2e, signal]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: check secrets
+        id: secrets
+        run: |
+          if [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Cloudflare secrets are not set yet. Skipping deploy. See docs/YOU_DO_THIS.md."
+          fi
+      - uses: actions/checkout@v4
+        if: steps.secrets.outputs.ready == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.secrets.outputs.ready == 'true'
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+        if: steps.secrets.outputs.ready == 'true'
+      - uses: actions/download-artifact@v4
+        if: steps.secrets.outputs.ready == 'true'
+        with:
+          name: dist
+          path: dist
+      # wrangler.toml runs worker-build before deploying, so the deploy job needs Rust.
+      - run: rustup show
+        if: steps.secrets.outputs.ready == 'true'
+      - uses: Swatinem/rust-cache@v2
+        if: steps.secrets.outputs.ready == 'true'
+        with:
+          key: signal
+          workspaces: crates/signal -> target
+          cache-bin: true
+      - name: install worker-build
+        if: steps.secrets.outputs.ready == 'true'
+        run: command -v worker-build || cargo install worker-build --version 0.8.7 --locked
+      - name: deploy signaling Worker
+        if: steps.secrets.outputs.ready == 'true'
+        run: npx wrangler deploy
+      - name: deploy client to Pages
+        if: steps.secrets.outputs.ready == 'true'
+        run: |
+          npx wrangler pages project create last-call --production-branch main || true
+          npx wrangler pages deploy dist --project-name last-call --branch main
