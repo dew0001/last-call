@@ -62,6 +62,27 @@ async function hasWebGPUAdapter(page: Page): Promise<boolean> {
   });
 }
 
+// Does a plain WebGPU device (no game code) survive drawing one frame to a
+// canvas? On SwiftShader, Chromium 156 destroys it about 20 ms after the first
+// draw ("Device was destroyed").
+async function plainWebGPUDeviceSurvives(page: Page): Promise<string> {
+  return page.evaluate(async () => {
+    const gpu = (navigator as any).gpu;
+    const device = await (await gpu.requestAdapter()).requestDevice();
+    const lost = device.lost.then((i: any) => `lost: ${i.message}`);
+    const canvas = document.createElement('canvas');
+    document.body.append(canvas);
+    const ctx = canvas.getContext('webgpu') as any;
+    ctx.configure({ device, format: gpu.getPreferredCanvasFormat() });
+    const enc = device.createCommandEncoder();
+    const view = ctx.getCurrentTexture().createView();
+    enc.beginRenderPass({ colorAttachments: [{ view, loadOp: 'clear', storeOp: 'store', clearValue: [1, 0, 1, 1] }] }).end();
+    device.queue.submit([enc.finish()]);
+    const ok = new Promise<string>((r) => setTimeout(() => r('ok'), 3000));
+    return Promise.race([lost, ok]);
+  });
+}
+
 test('WebGL2 fallback renders a cube', async ({ page }) => {
   await page.goto('/?gpu=webgl2');
   await waitForFrames(page);
@@ -80,6 +101,9 @@ test('WebGPU path boots and renders where the browser allows it', async ({ page 
   const adapter = await hasWebGPUAdapter(page);
   test.info().annotations.push({ type: 'webgpu-adapter', description: String(adapter) });
   test.skip(!adapter, 'this browser exposes no WebGPU adapter here; logged in docs/DECISIONS.md');
+  const plain = await plainWebGPUDeviceSurvives(page);
+  test.info().annotations.push({ type: 'plain-webgpu-device', description: plain });
+  test.skip(plain !== 'ok', 'the browser loses even a plain WebGPU device here; see docs/DECISIONS.md');
 
   await page.goto('/?gpu=webgpu');
   // The WebGPU bundle loads and wgpu gets a browser WebGPU device.
