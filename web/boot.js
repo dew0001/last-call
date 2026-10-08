@@ -111,8 +111,18 @@ function watchWebgpu() {
 // A browser can fail to create its first GL or GPU context right after it
 // starts (seen in WebKit). If the renderer fails before the first frame,
 // reload once. A second failure is shown to the player.
+//
+// `window.__lastCallError` is an accessor: the first error is kept (a Rust
+// panic message is more useful than the crash that follows it), and the
+// retry decision happens in the same moment the error is written, so a test
+// never sees an error without also seeing the retry flag.
 const RETRY_KEY = 'lastcall.startRetries';
-const RENDERER_START_ERRORS = ['Unable to find a GPU', 'Failed to create wgpu surface', 'getContext() returned null'];
+const RENDERER_START_ERRORS = [
+  'Unable to find a GPU',
+  'Failed to create wgpu surface',
+  'getContext() returned null',
+  'SuperDecompressionError',
+];
 
 function startRetries() {
   try {
@@ -122,30 +132,40 @@ function startRetries() {
   }
 }
 
+let firstError;
+function onClientError(err) {
+  const frames = window.__lastCall?.frames ?? 0;
+  const retries = startRetries();
+  if (frames === 0 && retries < 1 && RENDERER_START_ERRORS.some((m) => err.includes(m))) {
+    try {
+      sessionStorage.setItem(RETRY_KEY, String(retries + 1));
+    } catch {}
+    window.__lastCallRetrying = true;
+    setTimeout(() => location.reload(), 50);
+    return;
+  }
+  show(banner, frames === 0 ? 'Your browser could not start the 3D renderer. Try another browser.' : `Error: ${err}`);
+}
+Object.defineProperty(window, '__lastCallError', {
+  configurable: true,
+  get: () => firstError,
+  set(value) {
+    if (firstError !== undefined) return;
+    firstError = String(value);
+    onClientError(firstError);
+  },
+});
+
+// Clear the retry counter once the renderer has drawn.
 function watchStartFailure() {
   const timer = setInterval(() => {
-    const err = window.__lastCallError;
-    const frames = window.__lastCall?.frames ?? 0;
-    if (frames > 0) {
+    if ((window.__lastCall?.frames ?? 0) > 0) {
       clearInterval(timer);
       try {
         sessionStorage.removeItem(RETRY_KEY);
       } catch {}
-      return;
     }
-    if (!err) return;
-    clearInterval(timer);
-    const retries = startRetries();
-    if (retries < 1 && RENDERER_START_ERRORS.some((m) => err.includes(m))) {
-      try {
-        sessionStorage.setItem(RETRY_KEY, String(retries + 1));
-      } catch {}
-      window.__lastCallRetrying = true;
-      location.reload();
-      return;
-    }
-    show(banner, 'Your browser could not start the 3D renderer. Try another browser.');
-  }, 200);
+  }, 500);
 }
 
 /** Load the client module for the chosen renderer. Returns its exports. */
@@ -320,9 +340,7 @@ document.getElementById('bevy')?.addEventListener('click', (e) => e.target.reque
 const fail = (e) => {
   console.error(e);
   show(document.getElementById('boot') ?? banner, `Failed to start: ${e}`);
-  // Keep the first error: a Rust panic message is more useful than the crash
-  // that follows it, and the start-up retry looks for it.
-  window.__lastCallError ??= String(e);
+  window.__lastCallError = String(e); // the accessor keeps only the first error
 };
 
 if (params.has('hostonly')) {

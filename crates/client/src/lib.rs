@@ -6,6 +6,7 @@
 //! On the web, `web.rs` bridges packets to `web/net.js` and mirrors status
 //! into `window.__lastCall` for the page and the tests.
 
+use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::prelude::*;
 use bevy::render::renderer::RenderAdapterInfo;
 
@@ -70,7 +71,13 @@ fn setup_backdrop(
     ));
     commands
         .spawn((PointLight { intensity: 2_000_000.0, range: 30.0, ..default() }, Transform::from_xyz(3.0, 5.0, 4.0)));
-    commands.spawn((Camera3d::default(), Transform::from_xyz(0.0, 1.5, 4.5).looking_at(Vec3::ZERO, Vec3::Y)));
+    commands.spawn((
+        Camera3d::default(),
+        // No lookup-table tonemapper: the LUT ships as zstd KTX2 and failed to
+        // decompress in WebKit. Post-processing returns in Phase 6.
+        Tonemapping::Reinhard,
+        Transform::from_xyz(0.0, 1.5, 4.5).looking_at(Vec3::ZERO, Vec3::Y),
+    ));
 }
 
 fn spin(time: Res<Time>, mut q: Query<&mut Transform, With<Spinner>>) {

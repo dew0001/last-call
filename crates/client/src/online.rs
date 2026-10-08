@@ -1,5 +1,6 @@
 //! Online play: netcode, the gray-box bar, players, input and camera.
 
+use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::prelude::*;
 use lightyear::prelude::client::*;
@@ -142,7 +143,13 @@ fn setup_bar(
             Transform::from_xyz(x, 2.9, 0.0),
         ));
     }
-    commands.spawn((Camera3d::default(), Transform::from_xyz(0.0, 6.0, 12.0).looking_at(Vec3::ZERO, Vec3::Y)));
+    commands.spawn((
+        Camera3d::default(),
+        // No lookup-table tonemapper: the LUT ships as zstd KTX2 and failed to
+        // decompress in WebKit. Post-processing returns in Phase 6.
+        Tonemapping::Reinhard,
+        Transform::from_xyz(0.0, 6.0, 12.0).looking_at(Vec3::ZERO, Vec3::Y),
+    ));
 }
 
 fn read_input(
