@@ -70,10 +70,52 @@ window.startHostWorker = () => {
   return worker;
 };
 
+// A browser can fail to create its first GL or GPU context right after it
+// starts (seen in WebKit). If the renderer fails before the first frame,
+// reload once. A second failure is shown to the player.
+const RETRY_KEY = 'lastcall.startRetries';
+const RENDERER_START_ERRORS = ['Unable to find a GPU', 'Failed to create wgpu surface', 'getContext() returned null'];
+
+function startRetries() {
+  try {
+    return Number(sessionStorage.getItem(RETRY_KEY) ?? 0);
+  } catch {
+    return 99;
+  }
+}
+
+function watchStartFailure() {
+  const timer = setInterval(() => {
+    const err = window.__lastCallError;
+    const frames = window.__lastCall?.frames ?? 0;
+    if (frames > 0) {
+      clearInterval(timer);
+      try {
+        sessionStorage.removeItem(RETRY_KEY);
+      } catch {}
+      return;
+    }
+    if (!err) return;
+    clearInterval(timer);
+    const retries = startRetries();
+    if (retries < 1 && RENDERER_START_ERRORS.some((m) => err.includes(m))) {
+      try {
+        sessionStorage.setItem(RETRY_KEY, String(retries + 1));
+      } catch {}
+      window.__lastCallRetrying = true;
+      location.reload();
+      return;
+    }
+    const el = document.getElementById('boot');
+    if (el) el.textContent = 'Your browser could not start the 3D renderer. Try another browser.';
+  }, 200);
+}
+
 async function boot() {
   const variant = await pickVariant();
   window.__lastCallVariant = variant;
   if (variant === 'webgpu' && !params.has('gpu')) watchWebgpu();
+  watchStartFailure();
   const mod = await import(`./pkg/client_${variant}.js`);
   try {
     await mod.default();

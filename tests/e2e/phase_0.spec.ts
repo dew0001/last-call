@@ -8,7 +8,9 @@ const CLEAR = { r: 0.08, g: 0.05, b: 0.03 };
 // Print every browser message so CI logs show why a browser did not draw.
 test.beforeEach(({ page }, info) => {
   const tag = `[${info.project.name}]`;
-  page.on('console', (m) => console.log(`${tag} console.${m.type()}: ${m.text().slice(0, 500)}`));
+  page.on('console', (m) => {
+    if (m.type() === 'error' || m.type() === 'warning') console.log(`${tag} console.${m.type()}: ${m.text().slice(0, 500)}`);
+  });
   page.on('pageerror', (e) => console.log(`${tag} pageerror: ${e.message.slice(0, 500)}`));
 });
 
@@ -18,11 +20,15 @@ async function waitForFrames(page: Page, frames = 30, timeoutMs = 150_000) {
   const deadline = Date.now() + timeoutMs;
   let last = 0;
   while (Date.now() < deadline) {
-    const s = await page.evaluate(() => ({
-      error: (window as any).__lastCallError as string | undefined,
-      frames: ((window as any).__lastCall?.frames ?? 0) as number,
-    }));
-    if (s.error) throw new Error(`client failed to start: ${s.error.slice(0, 400)}`);
+    // The page may reload itself once (renderer start retry); evaluate can fail mid-navigation.
+    const s = await page
+      .evaluate(() => ({
+        error: (window as any).__lastCallError as string | undefined,
+        retrying: !!(window as any).__lastCallRetrying,
+        frames: ((window as any).__lastCall?.frames ?? 0) as number,
+      }))
+      .catch(() => ({ error: undefined, retrying: true, frames: 0 }));
+    if (s.error && !s.retrying) throw new Error(`client failed to start: ${s.error.slice(0, 400)}`);
     last = s.frames;
     if (last > frames) return;
     await page.waitForTimeout(500);
