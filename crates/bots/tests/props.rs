@@ -58,7 +58,14 @@ fn props_rest_and_a_bot_throws_a_bottle() {
         }
         std::thread::sleep(shared::TICK);
     }
-    assert!(held_seen, "bot never picked anything up");
+    if !held_seen {
+        let pos = id.and_then(|id| room.host_pos(id));
+        let nearest = pos.map(|p| {
+            let hand = bevy::math::Vec3::from(shared::movement::hand_point(p.into(), 0.0));
+            room.host_props().iter().map(|q| q.2.pos.distance(hand)).fold(f32::MAX, f32::min)
+        });
+        panic!("bot never picked anything up; bot at {pos:?}, nearest prop {nearest:?} m from its hand");
+    }
     let (_, pose, held) = room.host_prop(thrown.unwrap()).unwrap();
     let flew = pose.pos.distance(start.unwrap());
     println!("thrown bottle flew {flew:.2} m to {:?}", pose.pos);

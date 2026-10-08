@@ -41,6 +41,11 @@ fn drive(script: Res<Script>, mut clock: ResMut<BotClock>, mut input: ResMut<Loc
 }
 
 /// The [`Script::GrabAndThrow`] timeline, by frame (one frame per tick).
+///
+/// Pick-up happens on the press edge of E, and only with a prop in reach.
+/// The bot keeps walking into the counter while it taps E several times, so
+/// a slow machine that delays some walk inputs still gets a press in reach.
+/// A tap while already holding does nothing.
 fn grab_and_throw(frame: u64) -> PlayerInput {
     use shared::movement::buttons::{INTERACT, THROW};
     let half_turn = std::f32::consts::PI;
@@ -49,13 +54,12 @@ fn grab_and_throw(frame: u64) -> PlayerInput {
         0..200 => PlayerInput::default(),
         // Walk forward (-Z) into the counter.
         200..400 => PlayerInput::new(Vec2::Y, 0.0, 0.0, 0),
-        // Press E.
-        400..410 => PlayerInput::new(Vec2::ZERO, 0.0, 0.0, INTERACT),
-        410..420 => PlayerInput::new(Vec2::ZERO, 0.0, 0.0, 0),
+        // Keep walking and tap E: 4 frames down, 4 up.
+        400..464 => PlayerInput::new(Vec2::Y, 0.0, 0.0, if (frame / 4).is_multiple_of(2) { INTERACT } else { 0 }),
         // Turn around.
-        420..480 => PlayerInput::new(Vec2::ZERO, half_turn * (frame - 420) as f32 / 60.0, 0.0, 0),
+        464..524 => PlayerInput::new(Vec2::ZERO, half_turn * (frame - 464) as f32 / 60.0, 0.0, 0),
         // Charge the throw for half a second, then release.
-        480..512 => PlayerInput::new(Vec2::ZERO, half_turn, 0.0, THROW),
+        524..556 => PlayerInput::new(Vec2::ZERO, half_turn, 0.0, THROW),
         _ => PlayerInput::new(Vec2::ZERO, half_turn, 0.0, 0),
     }
 }
@@ -65,8 +69,8 @@ fn grab_and_drop(frame: u64) -> PlayerInput {
     use shared::movement::buttons::DROP;
     let half_turn = std::f32::consts::PI;
     match frame {
-        0..480 => grab_and_throw(frame),
-        480..490 => PlayerInput::new(Vec2::ZERO, half_turn, 0.0, DROP),
+        0..524 => grab_and_throw(frame),
+        524..534 => PlayerInput::new(Vec2::ZERO, half_turn, 0.0, DROP),
         _ => PlayerInput::new(Vec2::ZERO, half_turn, 0.0, 0),
     }
 }
