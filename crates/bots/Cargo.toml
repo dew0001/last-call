@@ -1,0 +1,15 @@
+[package]
+name = "last_call_bots"
+description = "LAST CALL native bot clients that drive the host sim through the shared protocol."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "bots"
+path = "src/main.rs"
+
+[dependencies]
+shared.workspace = true
+host.workspace = true

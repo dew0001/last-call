@@ -1,0 +1,49 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/shared",
+    "crates/client",
+    "crates/host",
+    "crates/bots",
+    "crates/tools",
+]
+# The signaling Worker builds with worker-build into its own wasm bundle.
+# It lives outside the workspace so its wasm-bindgen pin never fights Bevy's.
+exclude = ["crates/signal"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[workspace.dependencies]
+shared = { path = "crates/shared", package = "last_call_shared" }
+host = { path = "crates/host", package = "last_call_host" }
+
+bevy = { version = "=0.19.1", default-features = false }
+serde = { version = "1.0.228", features = ["derive"] }
+bincode = { version = "=2.0.1", default-features = false, features = ["std", "serde"] }
+rand_core = "0.10"
+rand_chacha = "0.10"
+getrandom = "0.4"
+wasm-bindgen = "0.2"
+js-sys = "0.3"
+web-sys = "0.3"
+console_error_panic_hook = "0.1.7"
+proptest = "1.8"
+
+[profile.dev]
+opt-level = 1
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+opt-level = 3
+debug = false
+
+[profile.release]
+opt-level = "z"
+lto = "thin"
+codegen-units = 1
+strip = "debuginfo"
+panic = "abort"

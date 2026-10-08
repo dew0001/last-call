@@ -1,0 +1,19 @@
+[package]
+name = "last_call_shared"
+description = "LAST CALL game rules, protocol, RNG wrappers and economy math. No render code."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "shared"
+
+[dependencies]
+serde.workspace = true
+bincode.workspace = true
+rand_core.workspace = true
+rand_chacha.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true

@@ -6,3 +6,6 @@ node_modules/
 .wrangler/
 .dev.vars
 *.log
+/.tools/
+/crates/signal/build/
+/crates/signal/target/
