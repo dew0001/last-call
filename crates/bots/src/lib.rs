@@ -131,19 +131,27 @@ pub struct LocalRoom {
 
 impl LocalRoom {
     pub fn new(bots: u8, script: impl Fn(u8) -> Script) -> Self {
-        let mut host = HostSim::new();
-        let mut bot_stats = Vec::new();
-        let mut links = Vec::new();
+        let host = HostSim::new();
+        let bot_stats = Vec::new();
+        let links = Vec::new();
         let scripts: Vec<Script> = (0..bots).map(&script).collect();
-        let bots = (0..bots)
-            .map(|i| {
-                let (client_io, server_io) = PipeIo::pair();
-                bot_stats.push(client_io.stats.clone());
-                links.push(host.connect_peer(server_io));
-                bot_app(client_io, i, scripts[usize::from(i)])
-            })
-            .collect();
-        Self { host, bots, bot_stats, links, scripts }
+        let mut room = Self { host, bots: Vec::new(), bot_stats, links, scripts };
+        // Connect bots one at a time and wait for each Welcome. The host gives
+        // the lowest free slot, so bot `i` then always gets slot `i` and its
+        // spawn point, however slow the machine is.
+        for i in 0..bots {
+            let (client_io, server_io) = PipeIo::pair();
+            room.bot_stats.push(client_io.stats.clone());
+            room.links.push(room.host.connect_peer(server_io));
+            room.bots.push(bot_app(client_io, i, room.scripts[usize::from(i)]));
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+            while room.session(usize::from(i)).player_id.is_none() {
+                assert!(std::time::Instant::now() < deadline, "bot {i} did not join within 30 s");
+                room.step();
+                std::thread::sleep(shared::TICK);
+            }
+        }
+        room
     }
 
     /// Drop a bot's connection, as when its tab closes or refreshes.

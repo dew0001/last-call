@@ -169,11 +169,15 @@ Result: Playwright 1.64.0 ships WebKit 27.2 (build 2370). The WebKit e2e job pas
 
 ### Bot pick-up in the props tests
 
-In CI, `props_rest_and_a_bot_throws_a_bottle` failed twice with "bot never picked anything up". It never failed locally, even under CPU load. The drop test, with the same walk and press, passed in the same runs.
+In CI, `props_rest_and_a_bot_throws_a_bottle` failed with "bot never picked anything up". It never failed locally, even under CPU load.
 
-- First change: both props tests watch from the first tick instead of after a 6-second settle phase. Bot scripts run on real time while `LocalRoom` advances the host one tick per step, so on a slow runner the bot could finish before the test watched. The test still failed in CI, so this was not the whole cause.
-- Second change: pick-up happens only on the press edge of E, with a prop in reach. The script pressed E once, for 10 frames. If late walk inputs left the bot short of the counter at that frame, the press missed (UNVERIFIED). The bot now keeps walking into the counter and taps E 8 times over one second. A tap while holding does nothing.
-- On failure the test now prints the bot's host position and the distance from its hand to the nearest prop.
+Cause (VERIFIED from the failure output): the scripted bot stood at x = -7, the spawn point of slot 0, past the end of the counter. The host gives each joining player the lowest free slot. `LocalRoom` connected all bots at once, so on a slow runner they could join in any order, and bot 2 did not always get slot 2.
+
+Fix: `LocalRoom::new` connects bots one at a time and waits for each Welcome, so bot `i` always gets slot `i`. Two earlier changes stay because they make the tests more tolerant of slow machines:
+- Both props tests watch from the first tick instead of after a 6-second settle phase.
+- The grab scripts keep walking into the counter while they tap E 8 times, instead of one press.
+
+On failure the throw test prints the bot's host position and the distance from its hand to the nearest prop.
 
 ### Host tick budget in the 8-tab test: Chromium only
 
