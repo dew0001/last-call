@@ -1,0 +1,16 @@
+{
+  "name": "last-call",
+  "private": true,
+  "version": "0.0.0",
+  "description": "LAST CALL: dev tooling (Playwright e2e tests and wrangler for the signaling Worker)",
+  "scripts": {
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1",
+    "@types/node": "^22.20.5",
+    "@types/pngjs": "^6.0.5",
+    "pngjs": "7.0.0",
+    "wrangler": "4.140.0"
+  }
+}
