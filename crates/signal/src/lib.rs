@@ -1,13 +1,25 @@
 //! LAST CALL signaling Worker.
 //!
 //! Brokers WebRTC session setup between a room host and its players. It holds no
-//! game state. Each room code maps to one `Room` Durable Object. Phase 0 serves
-//! `/health` only; the SDP and ICE relay arrives in Phase 1.
+//! game state. Each room code maps to one `Room` Durable Object, which relays the
+//! matchbox signaling protocol over hibernating WebSockets (see `relay`).
+//!
+//! Routes:
+//! - `GET /health`
+//! - `GET /room/CODE?role=host|player` (WebSocket upgrade)
 
-use serde::Serialize;
+mod relay;
+
+use std::time::Duration;
+
+use serde::{Deserialize, Serialize};
 use worker::*;
 
+use relay::{Out, Peer, Role};
+
 const SERVICE: &str = "last-call-signal";
+/// How long an ended room keeps refusing joins before its storage is wiped.
+const ENDED_ROOM_TTL: Duration = Duration::from_secs(120);
 
 #[derive(Serialize)]
 struct Health {
@@ -29,20 +41,73 @@ async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
     if req.method() == Method::Options {
         return cors(Response::empty()?);
     }
-    let res = Router::new()
+    Router::new()
         .get("/health", |_, _| {
-            Response::from_json(&Health { ok: true, service: SERVICE, version: env!("CARGO_PKG_VERSION") })
+            cors(Response::from_json(&Health { ok: true, service: SERVICE, version: env!("CARGO_PKG_VERSION") })?)
+        })
+        .get_async("/room/:code", |req, ctx| async move {
+            let Some(code) = ctx.param("code").and_then(|c| shared::room::parse_code(c)) else {
+                return Response::error("bad room code", 400);
+            };
+            let stub = ctx.env.durable_object("ROOMS")?.id_from_name(&code)?.get_stub()?;
+            stub.fetch_with_request(req).await
         })
         .run(req, env)
-        .await?;
-    cors(res)
+        .await
 }
 
-/// One Durable Object per room code. Phase 1 adds the WebSocket relay.
+/// Stored on each socket so it survives hibernation.
+#[derive(Serialize, Deserialize)]
+struct Attachment {
+    id: String,
+    role: String,
+}
+
+fn peer_of(ws: &WebSocket) -> Option<Peer> {
+    let a: Attachment = ws.deserialize_attachment().ok().flatten()?;
+    Some(Peer { id: a.id, role: Role::parse(&a.role)? })
+}
+
+/// One Durable Object per room code.
 #[durable_object]
 pub struct Room {
-    #[allow(dead_code)]
     state: State,
+}
+
+impl Room {
+    /// Peers connected now, except `skip`.
+    fn peers(&self, skip: Option<&str>) -> Vec<Peer> {
+        self.state.get_websockets().iter().filter_map(peer_of).filter(|p| Some(p.id.as_str()) != skip).collect()
+    }
+
+    fn dispatch(&self, outs: Vec<Out>) {
+        for out in outs {
+            match out {
+                Out::Send { to, text } => {
+                    for ws in self.state.get_websockets_with_tag(&to) {
+                        let _ = ws.send_with_str(&text);
+                    }
+                }
+                Out::Close { to, code, reason } => {
+                    for ws in self.state.get_websockets_with_tag(&to) {
+                        let _ = ws.close(Some(code), Some(reason));
+                    }
+                }
+            }
+        }
+    }
+
+    async fn leave(&self, ws: &WebSocket) -> Result<()> {
+        let Some(left) = peer_of(ws) else { return Ok(()) };
+        let peers = self.peers(Some(&left.id));
+        if left.role == Role::Host {
+            let storage = self.state.storage();
+            storage.put("ended", true).await?;
+            storage.set_alarm(ENDED_ROOM_TTL).await?;
+        }
+        self.dispatch(relay::on_leave(&peers, &left));
+        Ok(())
+    }
 }
 
 impl DurableObject for Room {
@@ -50,7 +115,48 @@ impl DurableObject for Room {
         Self { state }
     }
 
-    async fn fetch(&self, _req: Request) -> Result<Response> {
-        Response::error("room relay arrives in Phase 1", 501)
+    async fn fetch(&self, req: Request) -> Result<Response> {
+        if req.headers().get("Upgrade")?.as_deref() != Some("websocket") {
+            return Response::error("expected a WebSocket upgrade", 426);
+        }
+        let url = req.url()?;
+        let role = url.query_pairs().find(|(k, _)| k == "role").and_then(|(_, v)| Role::parse(&v));
+        let Some(role) = role else { return Response::error("role must be host or player", 400) };
+
+        let ended = self.state.storage().get::<bool>("ended").await?.unwrap_or(false);
+        let peers = self.peers(None);
+        let pair = WebSocketPair::new()?;
+
+        if let Err(refusal) = relay::admit(&peers, role, ended) {
+            pair.server.accept()?;
+            pair.server.close(Some(refusal.code), Some(refusal.reason))?;
+            return Response::from_websocket(pair.client);
+        }
+
+        let peer = Peer { id: uuid::Uuid::new_v4().to_string(), role };
+        self.state.accept_websocket_with_tags(&pair.server, &[peer.id.as_str(), role.as_str()]);
+        pair.server.serialize_attachment(Attachment { id: peer.id.clone(), role: role.as_str().into() })?;
+        self.dispatch(relay::on_join(&peers, &peer));
+        Response::from_websocket(pair.client)
+    }
+
+    async fn websocket_message(&self, ws: WebSocket, message: WebSocketIncomingMessage) -> Result<()> {
+        let (Some(from), WebSocketIncomingMessage::String(text)) = (peer_of(&ws), message) else { return Ok(()) };
+        let peers = self.peers(Some(&from.id));
+        self.dispatch(relay::on_message(&peers, &from, &text));
+        Ok(())
+    }
+
+    async fn websocket_close(&self, ws: WebSocket, _code: usize, _reason: String, _was_clean: bool) -> Result<()> {
+        self.leave(&ws).await
+    }
+
+    async fn websocket_error(&self, ws: WebSocket, _error: Error) -> Result<()> {
+        self.leave(&ws).await
+    }
+
+    async fn alarm(&self) -> Result<Response> {
+        self.state.storage().delete_all().await?;
+        Response::ok("room cleared")
     }
 }

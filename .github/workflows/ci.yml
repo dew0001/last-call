@@ -34,6 +34,8 @@ jobs:
         run: cargo clippy --target wasm32-unknown-unknown -p last_call_client -p last_call_host --lib -- -D warnings
       - name: clippy (signaling Worker)
         run: cd crates/signal && cargo clippy --target wasm32-unknown-unknown -- -D warnings
+      - name: test (signaling Worker relay logic)
+        run: cd crates/signal && cargo test
       - name: test
         run: cargo test --workspace
       - name: native build
@@ -87,11 +89,12 @@ jobs:
         run: |
           npx wrangler dev --port 8787 --ip 127.0.0.1 > wrangler.log 2>&1 &
           for i in $(seq 1 60); do
-            if curl -sf http://127.0.0.1:8787/health; then echo; exit 0; fi
+            if curl -sf http://127.0.0.1:8787/health; then echo; break; fi
+            if [ "$i" = 60 ]; then cat wrangler.log; exit 1; fi
             sleep 2
           done
-          cat wrangler.log
-          exit 1
+      - name: signaling relay tests
+        run: node --test tests/signal/relay.test.mjs
 
   e2e:
     name: Playwright (${{ matrix.browser }})

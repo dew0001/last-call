@@ -6,7 +6,7 @@
 SHELL := /bin/bash
 export PATH := $(CURDIR)/.tools/bin:$(HOME)/.cargo/bin:$(PATH)
 
-.PHONY: dev test build tools node-deps signal web-debug web-release lint unit e2e clean
+.PHONY: dev test build tools node-deps signal signal-test web-debug web-release lint unit e2e clean
 
 tools:
 	./scripts/install-tools.sh
@@ -39,6 +39,11 @@ lint:
 
 unit:
 	cargo test --workspace
+	cd crates/signal && cargo test
+
+# Needs `make dev` (or wrangler dev) running on :8787.
+signal-test:
+	node --test tests/signal/relay.test.mjs
 
 # PW_BROWSERS limits browsers (the cloud session can only run chromium).
 e2e: node-deps
