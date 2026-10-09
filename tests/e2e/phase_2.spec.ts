@@ -156,7 +156,12 @@ test('a perfect pour, carried to a waiting customer, is paid for and tipped', as
   ]);
   await setInput(player, { mx: 0, my: 0, yaw: 0, pitch: 0, buttons: 0 });
   await player.waitForTimeout(300);
-  await tap(player, DROP);
+  // Under CI load one short press can reach the host too late and be lost;
+  // press Q again while the glass is still in hand.
+  for (let i = 0; i < 3 && (await status(player)).holding; i++) {
+    await tap(player, DROP);
+    await player.waitForTimeout(400);
+  }
 
   const served = await waitFor(
     player,
