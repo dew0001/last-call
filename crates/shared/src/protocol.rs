@@ -12,7 +12,7 @@ use lightyear::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// Protocol version. Bump on any breaking change. Sent in [`Join`].
-pub const PROTOCOL_VERSION: u16 = 8;
+pub const PROTOCOL_VERSION: u16 = 9;
 
 // ---------- Components (host to clients) ----------
 
@@ -330,6 +330,17 @@ pub struct TableRequest {
     pub action: crate::casino::TableAction,
 }
 
+/// The tick a player pressed (`down`) or let go of E at the beer tap, by the
+/// client's own prediction. Inputs from a client that stalls reach the host
+/// after it has simulated those ticks, and the host then reuses the last
+/// known input; this stamp lets the host end (or start) the pour at the
+/// right tick anyway. The host still computes the pour itself.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TapEvent {
+    pub tick: u32,
+    pub down: bool,
+}
+
 /// Reliable, ordered control channel (join, replies, votes).
 pub struct Control;
 
@@ -352,6 +363,7 @@ impl Plugin for ProtocolPlugin {
         app.register_message::<Join>().add_direction(NetworkDirection::ClientToServer);
         app.register_message::<JoinReply>().add_direction(NetworkDirection::ServerToClient);
         app.register_message::<TableRequest>().add_direction(NetworkDirection::ClientToServer);
+        app.register_message::<TapEvent>().add_direction(NetworkDirection::ClientToServer);
 
         // Send inputs every 2 ticks (32 Hz); each packet repeats the last 4
         // sends, which covers about 125 ms of packet loss. Keeps upload under

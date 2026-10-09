@@ -359,3 +359,11 @@ The user asked for a way to stop and resume a run (a full run is 6 weeks of 3 fo
 - **Where:** the host's browser, IndexedDB `lastcall-saves` (`web/saves.js`); natively `host-native --save FILE`. Like the audit log, it never leaves the host's machine.
 - **Resume:** the title screen shows "Continue run: week W, shift S · house $X" when a save exists; it opens `?create&resume`, a new room (new code) at that shift's Setup. Players rejoin by the new link. A returning player is matched by player id (from the UUID in their browser's `localStorage`) and gets their pocket back; a new player gets the run's starting pocket. Pockets of players who have not rejoined carry into later saves; a new run (win or loss) drops them.
 - A save from another format version is refused, and the room starts a new run.
+
+### Late inputs: tick-stamped taps at the beer tap
+
+Cause, reproduced: under CPU load a browser tab stalls for a few hundred milliseconds. Its inputs for those ticks reach the host after the host has simulated them. lightyear drops inputs for past ticks (`InputBuffer::set_raw` ignores ticks below `start_tick`) and the host reuses the last known input meanwhile. With 6 busy loops on 4 cores, the pour test failed 1 time in 5 with the host at 100% fill (released 250 ms late) while the client had released at a predicted 90%.
+
+Fix: the client stamps the tick its predicted pour starts and ends (`TapEvent`, reliable). The host keeps the last second of pour states. A release stamp ends the pour at the fill it had at that tick, even if the host has since overflowed (an overflow waits half a second for an earlier stamp before it becomes a puddle). A press stamp from before the host's pour started adds the missed steps (at most half a second). After the inputs show E let go, the host waits 8 ticks (125 ms) for a stamp before settling on its own state. The host still computes the pour; the stamp only says when. Bots send no stamps and pour by inputs alone.
+
+Open: other one-shot presses (E pick-up, Q drop, R drink, table keys) can still be lost when a stall swallows a whole press. Table actions already travel as reliable messages. The pick-up and drop presses would need the same treatment; the browser tests press again when a press did not take.

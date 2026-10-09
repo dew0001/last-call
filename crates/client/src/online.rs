@@ -554,24 +554,36 @@ fn read_input(
 pub struct LocalPour(pub Option<shared::beer::Pour>);
 
 /// Mirror the host's pour rules (crates/host/src/beer.rs) with this player's
-/// own inputs, once per tick.
+/// own inputs, once per tick. When the predicted pour starts or ends, stamp
+/// the tick for the host ([`TapEvent`]), so a late input packet does not
+/// stretch or shorten the pour there.
+#[allow(clippy::too_many_arguments)]
 fn predict_pour(
     session: Res<Session>,
     input: Res<LocalInput>,
+    timeline: Option<Res<LocalTimeline>>,
     own: Query<&PlayerPos, (With<Predicted>, With<Player>)>,
     drunks: Query<(&Player, &Drunk)>,
     held: Query<&HeldBy>,
     mut pour: ResMut<LocalPour>,
+    mut taps: ResMut<shared::client::OutgoingTaps>,
 ) {
     let Some(id) = session.player_id else { return };
     let Ok(pos) = own.single() else { return };
+    let tick = timeline.map_or(0, |t| t.tick().0);
     let input = input.0;
     let at_tap = shared::movement::distance_to_tap(pos.0.to_array()) < bar::TAP_REACH;
     let holding = held.iter().any(|h| h.0 == Some(id));
     let out = drunks.iter().any(|(p, d)| p.id == id && d.passed_out);
     if input.buttons & buttons::INTERACT == 0 || !at_tap || holding || out {
-        pour.0 = None;
+        // A pour that had not overflowed ends here: the glass is filled to this tick.
+        if pour.0.take().is_some_and(|p| p.fill <= shared::beer::OVERFLOW) {
+            taps.0.push(TapEvent { tick, down: false });
+        }
         return;
+    }
+    if pour.0.is_none() {
+        taps.0.push(TapEvent { tick, down: true });
     }
     let p = pour.0.get_or_insert_default();
     if p.fill <= shared::beer::OVERFLOW {

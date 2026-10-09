@@ -19,6 +19,10 @@ use crate::protocol::*;
 #[derive(Resource, Default, Clone, Copy, Debug, PartialEq)]
 pub struct LocalInput(pub PlayerInput);
 
+/// Tap press and release stamps to send to the host (see [`TapEvent`]).
+#[derive(Resource, Default, Clone, Debug)]
+pub struct OutgoingTaps(pub Vec<TapEvent>);
+
 /// Table requests to send to the host (UI buttons, bot scripts).
 #[derive(Resource, Default, Clone, Debug)]
 pub struct OutgoingTable(pub Vec<TableRequest>);
@@ -50,6 +54,7 @@ impl Plugin for ClientNetPlugin {
         app.init_resource::<LocalInput>()
             .init_resource::<Session>()
             .init_resource::<OutgoingTable>()
+            .init_resource::<OutgoingTaps>()
             .init_resource::<ConnectAfterFrames>();
         // Margin for jitter: 2x covers about 95% of packets. lightyear's default
         // (4x) put browser clients more than a second ahead of the host.
@@ -123,14 +128,18 @@ fn send_join(
 fn send_table_requests(
     session: Res<Session>,
     mut out: ResMut<OutgoingTable>,
-    mut links: Query<&mut MessageSender<TableRequest>, (With<Client>, With<Connected>)>,
+    mut taps: ResMut<OutgoingTaps>,
+    mut links: Query<(&mut MessageSender<TableRequest>, &mut MessageSender<TapEvent>), (With<Client>, With<Connected>)>,
 ) {
-    if session.player_id.is_none() || out.0.is_empty() {
+    if session.player_id.is_none() {
         return;
     }
-    let Ok(mut sender) = links.single_mut() else { return };
+    let Ok((mut tables, mut tap_sender)) = links.single_mut() else { return };
     for request in out.0.drain(..) {
-        sender.send::<Control>(request);
+        tables.send::<Control>(request);
+    }
+    for tap in taps.0.drain(..) {
+        tap_sender.send::<Control>(tap);
     }
 }
 

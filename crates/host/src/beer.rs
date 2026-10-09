@@ -26,9 +26,52 @@ pub const LOOSE_GLASS_SECS: u32 = 45;
 /// A glass moving slower than this (m/s) counts as put down.
 const AT_REST: f32 = 0.3;
 
+/// Ticks of pour history the host keeps, to honor a late tap stamp (1 s).
+const HISTORY: usize = 64;
+/// Ticks the host waits for a tap stamp before settling a pour: after the
+/// input shows E let go, and after an overflow (a stamped release from
+/// before the overflow still wins).
+const SETTLE_TICKS: u32 = 8;
+const OVERFLOW_GRACE_TICKS: u32 = 32;
+/// The most ticks a late press stamp can add to a pour.
+const MAX_CATCH_UP: u32 = 32;
+
 /// A pour in progress (host side, exact).
 #[derive(Component, Default)]
-struct Pouring(Pour);
+struct Pouring {
+    pour: Pour,
+    /// The pour after each tick's step: (tick, state).
+    history: std::collections::VecDeque<(u32, Pour)>,
+    /// The tick of the first step.
+    started: u32,
+    /// E let go (or the player left the tap): ticks left to wait for a stamp.
+    settling: Option<u32>,
+    /// Overflowed at this tick: ticks left to wait for an earlier stamp.
+    overflowed: Option<(u32, u32)>,
+    /// The inputs have shown E held during this pour. A pour started by a
+    /// late press stamp keeps pouring until they do (or a release stamp comes).
+    seen_down: bool,
+}
+
+impl Pouring {
+    fn step(&mut self, tick: u32, pitch: f32) -> bool {
+        let over = self.pour.step(pitch, shared::TICK.as_secs_f32());
+        self.history.push_back((tick, self.pour));
+        while self.history.len() > HISTORY {
+            self.history.pop_front();
+        }
+        over
+    }
+
+    /// The pour as it stood when E went up at `tick`: after the step of the
+    /// tick before. `None` when that is outside the history.
+    fn at_release(&self, tick: u32) -> Option<Pour> {
+        if tick <= self.started {
+            return Some(Pour::default());
+        }
+        self.history.iter().rev().find(|(t, _)| *t == tick - 1).map(|(_, p)| *p)
+    }
+}
 
 /// Set after an overflow: no new pour until E is let go.
 #[derive(Component)]
@@ -42,19 +85,42 @@ pub struct GlassFill(pub f32);
 #[derive(Component, Default)]
 struct Age(u32);
 
+/// Tap stamps waiting for the host to reach their tick: (player entity,
+/// stamp). Local players add theirs with [`crate::HostSim::tap`].
+#[derive(Resource, Default)]
+pub struct TapQueue(pub Vec<(Entity, TapEvent)>);
+
 pub struct BeerPlugin;
 
 impl Plugin for BeerPlugin {
     fn build(&self, app: &mut App) {
+        app.init_resource::<TapQueue>();
         app.add_systems(
             FixedUpdate,
-            (pour.before(HandsSet), (carry, serve, tidy).chain().after(HandsSet)).after(crate::game::MovePlayers),
+            ((collect_taps, pour).chain().before(HandsSet), (carry, serve, tidy).chain().after(HandsSet))
+                .after(crate::game::MovePlayers),
         );
     }
 }
 
 fn percent(v: f32) -> u8 {
     (v * 100.0).round().clamp(0.0, 255.0) as u8
+}
+
+/// Tap stamps from networked players. The link that sent one must control the player.
+fn collect_taps(
+    mut queue: ResMut<TapQueue>,
+    mut links: Query<(Entity, &mut MessageReceiver<TapEvent>)>,
+    players: Query<(Entity, &ControlledBy), With<Player>>,
+) {
+    for (link, mut receiver) in &mut links {
+        let player = players.iter().find(|(_, c)| c.owner == link).map(|(e, _)| e);
+        for tap in receiver.receive() {
+            if let Some(p) = player {
+                queue.0.push((p, tap));
+            }
+        }
+    }
 }
 
 type PourPlayers<'w, 's> = Query<
@@ -73,51 +139,106 @@ type PourPlayers<'w, 's> = Query<
     ),
 >;
 
-fn pour(mut commands: Commands, mut players: PourPlayers) {
-    let dt = shared::TICK.as_secs_f32();
+/// Pour, by each player's inputs. A client also stamps the ticks its pour
+/// started and ended ([`TapEvent`]): when its inputs arrive late (a stalled
+/// tab), the host has already reused the last known input for those ticks,
+/// and the stamps put the pour right. A release stamp ends the pour at the
+/// fill it had at that tick; a press stamp from before the pour started
+/// here adds the missed steps. Bots send no stamps and pour by inputs alone.
+fn pour(mut commands: Commands, timeline: Res<LocalTimeline>, mut queue: ResMut<TapQueue>, mut players: PourPlayers) {
+    let now = timeline.tick().0;
+    // A client runs a few ticks ahead of the host, so a stamp often arrives
+    // before its tick: keep it until the host gets there. Drop stale ones.
+    queue.0.retain(|(_, t)| now.saturating_sub(t.tick) < HISTORY as u32);
+    let (due, later): (Vec<_>, Vec<_>) = std::mem::take(&mut queue.0).into_iter().partition(|(_, t)| t.tick <= now);
+    queue.0 = later;
     for (entity, player, pos, yaw, action, mut hands, pouring, locked, drunk) in &mut players {
         let input = action.0;
         if drunk.is_some_and(|d| d.passed_out) {
             continue;
         }
+        let stamps = due.iter().filter(|(e, _)| *e == entity).map(|(_, t)| *t);
+        let release =
+            stamps.clone().filter(|t| !t.down && now.saturating_sub(t.tick) < HISTORY as u32).map(|t| t.tick).min();
+        let press = stamps.filter(|t| t.down && now - t.tick <= MAX_CATCH_UP).map(|t| t.tick).min();
         let at_tap = distance_to_tap(pos.0.to_array()) < shared::bar::TAP_REACH;
         let holding_e = input.buttons & buttons::INTERACT != 0;
         if locked && !holding_e {
             commands.entity(entity).remove::<PourLock>();
         }
         let can_pour = holding_e && at_tap && hands.held.is_none() && !locked;
-        match (pouring, can_pour) {
-            (None, true) => {
-                commands.entity(entity).insert((Pouring::default(), PourGauge::default()));
-            }
-            (Some(mut p), true) => {
-                if p.0.step(input.pitch(), dt) {
-                    // Overflow: the beer is wasted on the floor.
-                    commands.entity(entity).remove::<(Pouring, PourGauge)>().insert(PourLock);
-                    let f = Vec3::from_array(shared::movement::forward(yaw.0));
-                    let at = Vec3::new(pos.0.x + f.x * 0.4, 0.01, pos.0.z + f.z * 0.4);
-                    commands.spawn((
-                        Name::new("Puddle"),
-                        Puddle { pos: at },
-                        Age::default(),
-                        Replicate::to_clients(NetworkTarget::All),
-                    ));
-                } else {
-                    commands.entity(entity).insert(PourGauge { fill: percent(p.0.fill), foam: percent(p.0.foam) });
+        let Some(mut p) = pouring else {
+            if can_pour || press.is_some_and(|_| at_tap && hands.held.is_none() && !locked) {
+                let mut new = Pouring { started: press.unwrap_or(now), seen_down: can_pour, ..default() };
+                // A late press: the steps this host missed, then this tick's.
+                for t in new.started..=now {
+                    new.step(t, input.pitch());
                 }
+                commands
+                    .entity(entity)
+                    .insert((PourGauge { fill: percent(new.pour.fill), foam: percent(new.pour.foam) }, new));
             }
-            (Some(p), false) => {
-                // Released (or walked away): the glass goes into the hand.
-                commands.entity(entity).remove::<(Pouring, PourGauge)>();
-                let perfect = p.0.result() == PourResult::Perfect;
-                let at = hand_point(pos.0, yaw.0);
-                let glass = commands.spawn(glass(at, p.0.fill, perfect, player.id, Some(player.id))).id();
-                hands.held = Some(glass);
-                hands.charge = 0;
+            continue;
+        };
+
+        // A stamped release ends the pour at that tick's fill, even after an overflow
+        // here, as long as the release came first.
+        let stamped = release.and_then(|t| {
+            let before_overflow = p.overflowed.is_none_or(|(at, _)| t <= at);
+            before_overflow.then(|| p.at_release(t)).flatten()
+        });
+        if let Some(state) = stamped {
+            finish(&mut commands, entity, player.id, pos.0, yaw.0, &mut hands, state);
+            continue;
+        }
+        if let Some((at, wait)) = p.overflowed {
+            if wait == 0 {
+                // Overflow: the beer is wasted on the floor.
+                commands.entity(entity).remove::<(Pouring, PourGauge)>().insert(PourLock);
+                let f = Vec3::from_array(shared::movement::forward(yaw.0));
+                let spot = Vec3::new(pos.0.x + f.x * 0.4, 0.01, pos.0.z + f.z * 0.4);
+                commands.spawn((
+                    Name::new("Puddle"),
+                    Puddle { pos: spot },
+                    Age::default(),
+                    Replicate::to_clients(NetworkTarget::All),
+                ));
+            } else {
+                p.overflowed = Some((at, wait - 1));
             }
-            (None, false) => {}
+            continue;
+        }
+        if let Some(wait) = p.settling {
+            if wait == 0 {
+                let state = p.pour;
+                finish(&mut commands, entity, player.id, pos.0, yaw.0, &mut hands, state);
+            } else {
+                p.settling = Some(wait - 1);
+            }
+            continue;
+        }
+        let stale = !p.seen_down && now - p.started <= MAX_CATCH_UP && at_tap && hands.held.is_none();
+        if can_pour || stale {
+            p.seen_down |= can_pour;
+            if p.step(now, input.pitch()) {
+                p.overflowed = Some((now, OVERFLOW_GRACE_TICKS));
+            }
+            let gauge = PourGauge { fill: percent(p.pour.fill), foam: percent(p.pour.foam) };
+            commands.entity(entity).insert(gauge);
+        } else {
+            // Released (or walked away): settle, giving a late stamp a moment to arrive.
+            p.settling = Some(SETTLE_TICKS);
         }
     }
+}
+
+/// End a pour: the glass goes into the hand.
+fn finish(commands: &mut Commands, entity: Entity, id: u64, pos: Vec3, yaw: f32, hands: &mut Hands, state: Pour) {
+    commands.entity(entity).remove::<(Pouring, PourGauge)>();
+    let perfect = state.result() == PourResult::Perfect;
+    let glass = commands.spawn(glass(hand_point(pos, yaw), state.fill, perfect, id, Some(id))).id();
+    hands.held = Some(glass);
+    hands.charge = 0;
 }
 
 /// A beer glass prop: in a hand (kinematic) when `held` is set, else loose.

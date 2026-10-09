@@ -210,6 +210,16 @@ impl HostSim {
         self.app.world_mut().resource_mut::<casino::TableQueue>().0.push((player, request));
     }
 
+    /// A tap stamp from a local player (tests), as if it had come over the network.
+    pub fn tap(&mut self, player: Entity, tap: shared::protocol::TapEvent) {
+        self.app.world_mut().resource_mut::<beer::TapQueue>().0.push((player, tap));
+    }
+
+    /// The host's lightyear tick (the tick inputs and tap stamps are numbered by).
+    pub fn net_tick(&self) -> u32 {
+        self.app.world().resource::<lightyear::prelude::LocalTimeline>().tick().0
+    }
+
     /// Take the newest run save, if one was written since the last call
     /// (one is written at the start of every Setup).
     pub fn take_save(&mut self) -> Option<shared::save::RunSave> {

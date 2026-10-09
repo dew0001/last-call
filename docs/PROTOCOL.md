@@ -136,6 +136,10 @@ Host reply to [`Join`].
 
 A player asks a table to do something. The host checks everything: where the player stands, the rules, the player's money and drunk tier.
 
+### `TapEvent` (struct)
+
+The tick a player pressed (`down`) or let go of E at the beer tap, by the client's own prediction. Inputs from a client that stalls reach the host after it has simulated those ticks, and the host then reuses the last known input; this stamp lets the host end (or start) the pour at the right tick anyway. The host still computes the pour itself.
+
 ### `Control` (struct)
 
 Reliable, ordered control channel (join, replies, votes).

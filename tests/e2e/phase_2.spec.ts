@@ -139,11 +139,33 @@ test('a perfect pour, carried to a waiting customer, is paid for and tipped', as
   // Hold E at a good tilt; let go in the green zone.
   // The client predicts the gauge on its own timeline, so releasing when it
   // shows 90% lands in the green on the host. Poll quickly: it rises 2% every 50 ms.
+  // Release from inside the page, as soon as the gauge shows 90: a Playwright
+  // round trip between reading the gauge and letting go can take longer than
+  // the green zone on a loaded machine. A player reacts to the drawn gauge.
   await setInput(player, { mx: 0, my: 0, yaw: 0, pitch: -0.4, buttons: INTERACT });
-  await player.waitForFunction(() => ((window as any).__lastCall?.game?.pour?.[0] ?? 0) >= 90, null, { polling: 20, timeout: 10_000 });
-  await setInput(player, { mx: 0, my: 0, yaw: 0, pitch: -0.4, buttons: 0 });
+  const releasedAt = await player.evaluate(
+    () =>
+      new Promise<number>((resolve, reject) => {
+        const w = window as any;
+        const deadline = Date.now() + 10_000;
+        const id = setInterval(() => {
+          const fill = w.__lastCall?.game?.pour?.[0] ?? 0;
+          if (fill >= 90) {
+            w.__lcInput = { mx: 0, my: 0, yaw: 0, pitch: -0.4, buttons: 0 };
+            clearInterval(id);
+            resolve(fill);
+          } else if (Date.now() > deadline) {
+            clearInterval(id);
+            reject(new Error(`the gauge never reached 90 (at ${fill})`));
+          }
+        }, 2);
+      }),
+  );
+  test.info().annotations.push({ type: 'released-at', description: `${releasedAt}%` });
   const poured = await waitFor(player, 'a beer in hand', (s) => !!s.game?.beer);
-  expect(poured.game.beer[1]).toBe(true);
+  // On a miss, say which way: under 85 means the host saw the press late,
+  // over 100 the release late.
+  expect(poured.game.beer[1], `host fill ${poured.game.beer[0]}%`).toBe(true);
 
   // Walk (not run) to the gap between that customer's stool and the next,
   // face the counter, and put the glass down in front of them.
