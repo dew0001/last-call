@@ -196,3 +196,24 @@ The 8-tab test checks that the host's worst 1-second average tick stays under 6 
 ### A lightyear debug assertion after long client stalls
 
 A client that misses more than 256 replication updates in a row hits a `debug_assert!` in lightyear 0.30.1 ("missing authoritative checkpoint mapping for completed mutate tick"): its checkpoint map keeps the last 256 entries. Release builds, which the web uses, log an error and continue (VERIFIED in `lightyear_replication/src/client.rs`). Native tests hit it only when the host ticked for 45 seconds without updating the bot, so tests now update bots every tick.
+
+### Economy rules the plan leaves open
+
+The plan fixes the payment schedule, tiers and the two-misses loss rule. These details are my choices (OPINION), in `crates/shared/src/economy.rs`:
+- A missed payment takes nothing and carries into next week's payment.
+- From week 6 on, the whole remaining balance is due. A run that missed week 6 but not twice in a row continues into week 7 and later.
+- After a win or a loss, the screen shows for 30 seconds, then a new run starts at the next new game plus level. Each level adds 25% to the debt, every payment and every tier threshold. No money carries over (plan section 4.3).
+- Each press of E at the office safe moves $100 (or what is left) from the pocket to the house pool.
+- Money is whole dollars in `i64`.
+
+### Office and shared blocks
+
+The office is the back-right corner (x 6 to 10, z -7 to -2) with a doorway in its front wall and the safe in the back corner. `shared::bar::BLOCKS` lists every solid box (counter, office walls, safe). Player collision, the host's physics colliders and the client's meshes all read it, so they cannot disagree.
+
+### Test presets
+
+`?preset=lastweek` starts at week 6 with 80,000 paid, 45,000 in the house and 300 in each pocket. `?preset=broke` starts with one payment missed and nothing in the house. With `?fast=60`, browser tests reach the win and loss screens in under a minute.
+
+### Third-person camera stays inside the room
+
+The camera sat 3.5 m behind the player. At the spawn line that put it outside the back wall, so the screen showed only the wall's outside. It is now clamped inside the room. Found from a screenshot during Phase 2.

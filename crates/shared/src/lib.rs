@@ -6,6 +6,7 @@
 //! simulation shared by host and predicting clients.
 
 pub mod bar;
+pub mod economy;
 pub mod movement;
 pub mod rng;
 pub mod room;

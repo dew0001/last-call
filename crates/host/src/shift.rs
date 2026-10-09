@@ -3,7 +3,8 @@
 //! shift. Clients read the replicated [`ShiftClock`].
 //!
 //! The clock runs only while at least one player is in the room, so an empty
-//! room (everyone refreshing, or the host alone in the lobby) does not lose time.
+//! room (everyone refreshing, or the host alone in the lobby) does not lose
+//! time. It also stops while the win or loss screen shows.
 
 use bevy::prelude::*;
 use lightyear::prelude::*;
@@ -24,6 +25,8 @@ pub struct ShiftTimer {
     pub calendar: Calendar,
     pub phase: ShiftPhase,
     pub ticks_left: u32,
+    /// Stopped while the win or loss screen shows.
+    pub frozen: bool,
 }
 
 /// Sent on the tick a phase starts (including the first Setup).
@@ -52,11 +55,17 @@ fn ticks(seconds: u32) -> u32 {
     seconds * shared::TICK_HZ
 }
 
-fn start_clock(mut commands: Commands, config: Res<ShiftConfig>, mut started: MessageWriter<PhaseStarted>) {
-    let calendar = Calendar::default();
+/// Create the room-state entity and start the first Setup.
+pub fn start_clock(
+    mut commands: Commands,
+    config: Res<ShiftConfig>,
+    start: Option<Res<crate::economy::RunStart>>,
+    mut started: MessageWriter<PhaseStarted>,
+) {
+    let calendar = start.map(|s| s.calendar).unwrap_or_default();
     let phase = ShiftPhase::Setup;
     let seconds = config.timings.seconds(phase);
-    commands.insert_resource(ShiftTimer { calendar, phase, ticks_left: ticks(seconds) });
+    commands.insert_resource(ShiftTimer { calendar, phase, ticks_left: ticks(seconds), frozen: false });
     commands.spawn((
         Name::new("Room"),
         RoomState,
@@ -74,7 +83,7 @@ fn run_clock(
     mut started: MessageWriter<PhaseStarted>,
 ) {
     let (Some(mut timer), Ok(mut clock)) = (timer, clock.single_mut()) else { return };
-    let running = !players.is_empty();
+    let running = !players.is_empty() && !timer.frozen;
     if running {
         timer.ticks_left = timer.ticks_left.saturating_sub(1);
         if timer.ticks_left == 0 {

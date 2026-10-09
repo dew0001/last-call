@@ -45,6 +45,14 @@ Marks the one room-state entity. Room-wide components live on it.
 
 The shift clock. The host updates it when the phase changes and once per second; `running` is false while no player is in the room.
 
+### `RunLedger` (struct)
+
+The run's money and standing. `due` is the payment due at the end of the current week; `last` is the most recent collection.
+
+### `Pocket` (struct)
+
+A player's personal money.
+
 ## Inputs (client to host, per tick)
 
 ### `PlayerInput` (struct)

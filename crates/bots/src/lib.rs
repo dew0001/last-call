@@ -25,19 +25,56 @@ pub enum Script {
     GrabAndThrow,
     /// Walk to the counter, pick up a prop, turn around, and drop it.
     GrabAndDrop,
+    /// Walk through `route` (x, z waypoints) from its own predicted position,
+    /// then tap E: 4 frames down, 4 up, until the script changes.
+    Route { route: &'static [(f32, f32)] },
 }
+
+/// From the main room, through the office door, to the safe.
+pub const ROUTE_TO_SAFE: &[(f32, f32)] = &[(8.2, -1.0), (8.2, -3.0), (9.4, -5.3)];
 
 #[derive(Resource, Default)]
 struct BotClock(u64);
 
-fn drive(script: Res<Script>, mut clock: ResMut<BotClock>, mut input: ResMut<LocalInput>) {
+/// Next waypoint of a [`Script::Route`].
+#[derive(Resource, Default)]
+struct RouteStep(usize);
+
+fn drive(
+    script: Res<Script>,
+    session: Res<Session>,
+    own: Query<(&Player, &PlayerPos), With<Predicted>>,
+    mut clock: ResMut<BotClock>,
+    mut step: ResMut<RouteStep>,
+    mut input: ResMut<LocalInput>,
+) {
     clock.0 += 1;
     input.0 = match *script {
         Script::Idle => PlayerInput::default(),
         Script::GrabAndThrow => grab_and_throw(clock.0),
         Script::GrabAndDrop => grab_and_drop(clock.0),
         Script::Circle { phase } => PlayerInput::new(Vec2::new(0.0, 1.0), phase + clock.0 as f32 * 0.02, 0.0, 0),
+        Script::Route { route } => {
+            let pos = own.iter().find(|(p, _)| Some(p.id) == session.player_id).map(|(_, pos)| pos.0);
+            follow_route(route, pos, &mut step.0, clock.0)
+        }
     };
+}
+
+/// Steer toward the current waypoint; at the end, tap E.
+fn follow_route(route: &[(f32, f32)], pos: Option<Vec3>, step: &mut usize, frame: u64) -> PlayerInput {
+    use shared::movement::buttons::INTERACT;
+    let Some(pos) = pos else { return PlayerInput::default() };
+    while let Some(&(x, z)) = route.get(*step) {
+        let (dx, dz) = (x - pos.x, z - pos.z);
+        if dx.hypot(dz) > 0.15 {
+            // Forward is (-sin yaw, -cos yaw).
+            return PlayerInput::new(Vec2::Y, (-dx).atan2(-dz), 0.0, 0);
+        }
+        *step += 1;
+    }
+    let tap = if (frame / 4).is_multiple_of(2) { INTERACT } else { 0 };
+    PlayerInput::new(Vec2::ZERO, 0.0, 0.0, tap)
 }
 
 /// The [`Script::GrabAndThrow`] timeline, by frame (one frame per tick).
@@ -84,7 +121,7 @@ pub fn bot_app(io: PipeIo, index: u8, script: Script) -> App {
     app.add_plugins(ClientNetPlugin);
     app.insert_resource(PredictionManager::default());
     app.insert_resource(script);
-    app.init_resource::<BotClock>();
+    app.init_resource::<BotClock>().init_resource::<RouteStep>();
     app.add_systems(FixedPreUpdate, drive.before(lightyear::prelude::client::input::InputSystems::WriteClientInputs));
     let mut uuid = [0u8; 16];
     uuid[0] = 0xb0;

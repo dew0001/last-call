@@ -69,8 +69,9 @@ fn spawn_room(mut commands: Commands) {
     wall(Vec3::new(hx * 2.0, h, 0.2), Vec3::new(0.0, h / 2.0, hz + 0.1));
     wall(Vec3::new(0.2, h, hz * 2.0), Vec3::new(-hx - 0.1, h / 2.0, 0.0));
     wall(Vec3::new(0.2, h, hz * 2.0), Vec3::new(hx + 0.1, h / 2.0, 0.0));
-    let (cx, cz, chx, chz) = bar::COUNTER;
-    wall(Vec3::new(chx * 2.0, bar::COUNTER_HEIGHT, chz * 2.0), Vec3::new(cx, bar::COUNTER_HEIGHT / 2.0, cz));
+    for b in &bar::BLOCKS {
+        wall(Vec3::new(b.hx * 2.0, b.height, b.hz * 2.0), Vec3::new(b.cx, b.height / 2.0, b.cz));
+    }
 }
 
 /// Collider and mass for each prop kind.

@@ -61,3 +61,47 @@ export async function createRoom(browser: Browser, size?: { width: number; heigh
   await waitFor(host, 'host joins its own room', (s) => !!s.playerId && (s.playersSeen ?? 0) >= 1);
   return { host, room: room as { code: string; link: string } };
 }
+
+export type Input = { mx: number; my: number; yaw: number; pitch: number; buttons: number };
+export const setInput = (page: Page, input: Input) => page.evaluate((i) => ((window as any).__lcInput = i), input);
+export const INTERACT = 1 << 3;
+
+/**
+ * Walk the player through (x, z) waypoints with scripted input, steering from
+ * its predicted position. Slows down near each point so it does not overshoot.
+ */
+export async function walkTo(page: Page, points: [number, number][], timeoutMs = 60_000) {
+  const deadline = Date.now() + timeoutMs;
+  for (const [x, z] of points) {
+    for (;;) {
+      if (Date.now() > deadline) throw new Error(`walkTo: did not reach ${x},${z}; at ${(await status(page)).ownPos}`);
+      const p = (await status(page)).ownPos;
+      if (!p) {
+        await page.waitForTimeout(100);
+        continue;
+      }
+      const [dx, dz] = [x - p[0], z - p[2]];
+      const d = Math.hypot(dx, dz);
+      if (d < 0.25) break;
+      // Forward is (-sin yaw, -cos yaw).
+      await setInput(page, { mx: 0, my: Math.min(1, Math.max(0.25, d / 1.5)), yaw: Math.atan2(-dx, -dz), pitch: 0, buttons: 0 });
+      await page.waitForTimeout(50);
+    }
+  }
+  await setInput(page, { mx: 0, my: 0, yaw: 0, pitch: 0, buttons: 0 });
+}
+
+/** From the main room, through the office door, to the office safe. */
+export const ROUTE_TO_SAFE: [number, number][] = [
+  [8.2, -1.0],
+  [8.2, -3.0],
+  [9.4, -5.3],
+];
+
+/** Tap a button: down for `ms`, then up for `ms`. */
+export async function tap(page: Page, buttons: number, ms = 150) {
+  await setInput(page, { mx: 0, my: 0, yaw: 0, pitch: 0, buttons });
+  await page.waitForTimeout(ms);
+  await setInput(page, { mx: 0, my: 0, yaw: 0, pitch: 0, buttons: 0 });
+  await page.waitForTimeout(ms);
+}

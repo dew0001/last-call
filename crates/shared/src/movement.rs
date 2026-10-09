@@ -3,7 +3,7 @@
 //!
 //! Pure functions on plain arrays; the Bevy wrappers live in `net`.
 
-use crate::bar::{COUNTER, HALF_X, HALF_Z, PLAYER_RADIUS};
+use crate::bar::{BLOCKS, HALF_X, HALF_Z, PLAYER_RADIUS};
 
 /// Walk speed in meters per second.
 pub const WALK_SPEED: f32 = 4.0;
@@ -52,22 +52,32 @@ pub fn hand_point(pos: [f32; 3], yaw: f32) -> [f32; 3] {
     [pos[0] + f[0] * 0.7, pos[1] + 1.15, pos[2] + f[2] * 0.7]
 }
 
-/// Keep a player inside the walls and out of the counter.
+/// Keep a player inside the walls and out of every block (counter, office
+/// walls, safe). Two passes settle a player pushed from one block into another.
 pub fn collide(mut p: [f32; 3]) -> [f32; 3] {
     let r = PLAYER_RADIUS;
-    p[0] = p[0].clamp(-HALF_X + r, HALF_X - r);
-    p[2] = p[2].clamp(-HALF_Z + r, HALF_Z - r);
-    let (cx, cz, hx, hz) = COUNTER;
-    let (ox, oz) = (hx + r - (p[0] - cx).abs(), hz + r - (p[2] - cz).abs());
-    if ox > 0.0 && oz > 0.0 {
-        // Push out along the axis of least overlap.
-        if ox < oz {
-            p[0] += ox * (p[0] - cx).signum();
-        } else {
-            p[2] += oz * (p[2] - cz).signum();
+    for _ in 0..2 {
+        for b in &BLOCKS {
+            let (ox, oz) = (b.hx + r - (p[0] - b.cx).abs(), b.hz + r - (p[2] - b.cz).abs());
+            if ox > 0.0 && oz > 0.0 {
+                // Push out along the axis of least overlap.
+                if ox < oz {
+                    p[0] += ox * (p[0] - b.cx).signum();
+                } else {
+                    p[2] += oz * (p[2] - b.cz).signum();
+                }
+            }
         }
+        p[0] = p[0].clamp(-HALF_X + r, HALF_X - r);
+        p[2] = p[2].clamp(-HALF_Z + r, HALF_Z - r);
     }
     p
+}
+
+/// Horizontal distance from a player to the office safe.
+pub fn distance_to_safe(pos: [f32; 3]) -> f32 {
+    let (sx, sz) = crate::bar::SAFE;
+    ((pos[0] - sx).powi(2) + (pos[2] - sz).powi(2)).sqrt()
 }
 
 #[cfg(test)]
@@ -99,10 +109,38 @@ mod tests {
 
     #[test]
     fn walls_and_counter_block() {
+        use crate::bar::COUNTER;
         assert_eq!(collide([50.0, 0.0, 0.0])[0], HALF_X - PLAYER_RADIUS);
         let (cx, cz, _, _) = COUNTER;
         let p = collide([cx, 0.0, cz]);
         assert!((p[2] - cz).abs() >= COUNTER.3 + PLAYER_RADIUS - 1e-5);
+    }
+
+    /// Walk a straight line in small steps, as the game does.
+    fn walk(mut p: [f32; 3], to: [f32; 2], ticks: u32) -> [f32; 3] {
+        for _ in 0..ticks {
+            let (dx, dz) = (to[0] - p[0], to[1] - p[2]);
+            if dx.hypot(dz) < 0.05 {
+                break;
+            }
+            let yaw = (-dx).atan2(-dz);
+            p = step(p, [0.0, 1.0], yaw, 0, DT);
+        }
+        p
+    }
+
+    #[test]
+    fn the_office_is_reached_through_its_door() {
+        use crate::bar::{OFFICE_DOOR, SAFE, SAFE_REACH};
+        let door_x = (OFFICE_DOOR.0 + OFFICE_DOOR.1) / 2.0;
+        // From the main room, through the doorway, to the safe.
+        let mut p = walk([door_x, 0.0, 0.0], [door_x, -1.0], 400);
+        p = walk(p, [door_x, -3.0], 400);
+        p = walk(p, [SAFE.0, SAFE.1 + 1.0], 400);
+        assert!(distance_to_safe(p) < SAFE_REACH, "ended at {p:?}");
+        // The side wall blocks a straight walk from the counter's end.
+        let q = walk([5.6, 0.0, -4.5], [8.0, -4.5], 400);
+        assert!(q[0] < 6.0, "walked through the office wall to {q:?}");
     }
 
     proptest! {

@@ -55,11 +55,13 @@ pub struct Timings {
     pub open: u32,
     pub last_call: u32,
     pub payment: u32,
+    /// How long the win or loss screen shows before the next run starts.
+    pub outcome: u32,
 }
 
 impl Timings {
     /// The plan's timings: 2 + 9 + 2 + 1 minutes = a 14-minute shift.
-    pub const PLAN: Self = Self { setup: 120, open: 540, last_call: 120, payment: 60 };
+    pub const PLAN: Self = Self { setup: 120, open: 540, last_call: 120, payment: 60, outcome: 30 };
 
     /// Length of one phase.
     pub fn seconds(&self, phase: ShiftPhase) -> u32 {
@@ -81,7 +83,13 @@ impl Timings {
     pub fn scaled_down(self, divisor: u32) -> Self {
         let d = divisor.max(1);
         let s = |v: u32| (v / d).max(1);
-        Self { setup: s(self.setup), open: s(self.open), last_call: s(self.last_call), payment: s(self.payment) }
+        Self {
+            setup: s(self.setup),
+            open: s(self.open),
+            last_call: s(self.last_call),
+            payment: s(self.payment),
+            outcome: s(self.outcome),
+        }
     }
 }
 
@@ -148,9 +156,9 @@ mod tests {
     #[test]
     fn scaled_timings_keep_every_phase() {
         let t = Timings::PLAN.scaled_down(60);
-        assert_eq!(t, Timings { setup: 2, open: 9, last_call: 2, payment: 1 });
+        assert_eq!(t, Timings { setup: 2, open: 9, last_call: 2, payment: 1, outcome: 1 });
         let tiny = Timings::PLAN.scaled_down(10_000);
-        assert!([tiny.setup, tiny.open, tiny.last_call, tiny.payment].iter().all(|&s| s == 1));
+        assert!([tiny.setup, tiny.open, tiny.last_call, tiny.payment, tiny.outcome].iter().all(|&s| s == 1));
         assert_eq!(Timings::PLAN.scaled_down(0), Timings::PLAN);
     }
 

@@ -121,16 +121,21 @@ pub fn host_leave(peer: u32) {
 /// Start the host simulation loop inside the current dedicated Worker.
 ///
 /// `fast` divides every shift phase length (1 for the plan's timings; tests
-/// use `?fast=60` for a 14-second shift). `seed` is 32 random bytes.
+/// use `?fast=60` for a 14-second shift). `seed` is 32 random bytes. `preset`
+/// picks a test start (`lastweek`, `broke`) or is empty.
 #[wasm_bindgen]
-pub fn host_worker_start(fast: u32, seed: &[u8]) {
+pub fn host_worker_start(fast: u32, seed: &[u8], preset: &str) {
     console_error_panic_hook::set_once();
     let scope = scope();
     let mut room_seed = [0u8; 32];
     for (dst, src) in room_seed.iter_mut().zip(seed) {
         *dst = *src;
     }
-    let config = HostConfig { timings: shared::shift::Timings::PLAN.scaled_down(fast), seed: room_seed };
+    let config = HostConfig {
+        timings: shared::shift::Timings::PLAN.scaled_down(fast),
+        seed: room_seed,
+        preset: crate::economy::Preset::parse(preset),
+    };
     STATE.with(|s| {
         *s.borrow_mut() = Some(State {
             sim: HostSim::with_config(config),

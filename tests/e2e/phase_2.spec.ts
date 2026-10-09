@@ -2,7 +2,7 @@
 // Rooms run with `&fast=60`: every shift phase is 60 times shorter, so a
 // 14-minute shift takes 14 seconds (Setup 2, Open 9, Last call 2, Payment 1).
 import { expect, test } from '@playwright/test';
-import { createRoom, openTab, status, waitFor } from './helpers';
+import { INTERACT, ROUTE_TO_SAFE, createRoom, openTab, status, tap, waitFor, walkTo } from './helpers';
 
 test.beforeEach(({ page }, info) => {
   const tag = `[${info.project.name}]`;
@@ -37,5 +37,43 @@ test('the shift clock runs Setup, Open, Last call, Payment and rolls into the ne
   const h = (await status(host)).game?.shift;
   expect([h?.week, h?.shift]).toEqual([1, 2]);
   await player.context().close();
+  await host.context().close();
+});
+
+test('money goes into the safe, the last payment wins, and a new run starts', async ({ browser }) => {
+  // Week 6, 80,000 paid, 45,000 in the house, 300 in each pocket.
+  const { host, room } = await createRoom(browser, undefined, '&fast=60&preset=lastweek');
+  const player = await openTab(browser, `${room.link}&gpu=webgl2&novoice&name=Rook`, 'player');
+  const s0 = await waitFor(player, 'player joined', (s) => !!s.playerId && s.game?.pocket === 300 && !!s.game?.money);
+  expect(s0.game.money.due).toBe(40_000);
+
+  // Walk into the office and press E at the safe three times.
+  await walkTo(player, ROUTE_TO_SAFE);
+  for (let i = 0; i < 3; i++) await tap(player, INTERACT);
+  const s1 = await waitFor(player, 'pocket emptied into the house', (s) => s.game?.pocket === 0);
+  expect(s1.game.money.house).toBe(45_300);
+
+  // At the end of week 6 the loan shark takes the 40,000 left: the run is won.
+  const won = await waitFor(player, 'run won', (s) => s.game?.money?.outcome === 'won', 90_000);
+  expect(won.game.money.paid).toBe(120_000);
+  expect(won.game.money.last).toEqual(['paid', 40_000]);
+  expect((await status(host)).game.money.outcome).toBe('won');
+
+  // Then a new run at new game plus 1, with no money carried over.
+  const next = await waitFor(player, 'new run', (s) => s.game?.money?.outcome === 'playing' && s.game.money.ng === 1);
+  expect(next.game.money.debt).toBe(150_000);
+  expect(next.game.money.house).toBe(0);
+  expect(next.game.pocket).toBe(0);
+  expect(next.game.shift.week).toBe(1);
+  await player.context().close();
+  await host.context().close();
+});
+
+test('a second missed payment burns the bar down', async ({ browser }) => {
+  // One payment already missed, nothing in the house.
+  const { host, room } = await createRoom(browser, undefined, '&fast=60&preset=broke');
+  const lost = await waitFor(host, 'run lost', (s) => s.game?.money?.outcome === 'lost', 90_000);
+  expect(lost.game.money.missedInARow).toBe(2);
+  expect(lost.game.money.last).toEqual(['missed', 16_000]);
   await host.context().close();
 });

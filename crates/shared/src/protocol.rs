@@ -12,7 +12,7 @@ use lightyear::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// Protocol version. Bump on any breaking change. Sent in [`Join`].
-pub const PROTOCOL_VERSION: u16 = 3;
+pub const PROTOCOL_VERSION: u16 = 4;
 
 // ---------- Components (host to clients) ----------
 
@@ -66,6 +66,20 @@ pub struct ShiftClock {
     pub seconds_left: u16,
     pub running: bool,
 }
+
+/// The run's money and standing. `due` is the payment due at the end of the
+/// current week; `last` is the most recent collection.
+#[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub struct RunLedger {
+    pub ledger: crate::economy::Ledger,
+    pub due: i64,
+    pub last: Option<crate::economy::Collection>,
+    pub outcome: crate::economy::Outcome,
+}
+
+/// A player's personal money.
+#[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub struct Pocket(pub i64);
 
 impl Ease for PlayerPos {
     fn interpolating_curve_unbounded(start: Self, end: Self) -> impl Curve<Self> {
@@ -201,6 +215,8 @@ impl Plugin for ProtocolPlugin {
         app.component::<HeldBy>().replicate();
         app.component::<RoomState>().replicate();
         app.component::<ShiftClock>().replicate();
+        app.component::<RunLedger>().replicate();
+        app.component::<Pocket>().replicate();
     }
 }
 

@@ -20,6 +20,7 @@ use lightyear::prelude::*;
 use shared::pipe::{PipeIo, PipePlugin};
 use shared::protocol::ProtocolPlugin;
 
+pub mod economy;
 pub mod game;
 pub mod physics;
 pub mod runner;
@@ -43,6 +44,8 @@ pub struct HostConfig {
     /// Seed for every RNG stream in the room. The browser host draws it from
     /// `crypto.getRandomValues`; tests fix it so runs replay exactly.
     pub seed: [u8; 32],
+    /// A test or demo start (`?preset=`).
+    pub preset: economy::Preset,
 }
 
 /// The room's RNG seed.
@@ -84,7 +87,8 @@ impl HostSim {
         app.add_systems(FixedUpdate, advance_tick);
         app.insert_resource(shift::ShiftConfig { timings: config.timings });
         app.insert_resource(RoomSeed(config.seed));
-        app.add_plugins((game::GamePlugin, physics::HostPhysicsPlugin, shift::ShiftPlugin));
+        app.insert_resource(config.preset.start());
+        app.add_plugins((game::GamePlugin, physics::HostPhysicsPlugin, shift::ShiftPlugin, economy::EconomyPlugin));
 
         let server = app.world_mut().spawn((Name::new("Server"), RawServer)).id();
         app.finish();

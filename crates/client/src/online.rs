@@ -69,6 +69,50 @@ pub struct NetStatus {
 #[serde(rename_all = "camelCase")]
 pub struct GameStatus {
     pub shift: Option<ShiftStatus>,
+    pub money: Option<MoneyStatus>,
+    /// This player's pocket.
+    pub pocket: Option<i64>,
+}
+
+#[derive(Default, Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MoneyStatus {
+    pub house: i64,
+    pub paid: i64,
+    pub debt: i64,
+    /// Payment due at the end of this week.
+    pub due: i64,
+    pub tier: u8,
+    pub missed_in_a_row: u8,
+    pub ng: u8,
+    /// The last collection: "paid" or "missed", and the amount.
+    pub last: Option<(&'static str, i64)>,
+    /// "playing", "won" or "lost".
+    pub outcome: &'static str,
+}
+
+impl From<RunLedger> for MoneyStatus {
+    fn from(r: RunLedger) -> Self {
+        use shared::economy::{Collection, Outcome};
+        Self {
+            house: r.ledger.house,
+            paid: r.ledger.paid,
+            debt: r.ledger.debt(),
+            due: r.due,
+            tier: r.ledger.tier(),
+            missed_in_a_row: r.ledger.missed_in_a_row,
+            ng: r.ledger.ng,
+            last: r.last.map(|c| match c {
+                Collection::Paid { amount } => ("paid", amount),
+                Collection::Missed { owed } => ("missed", owed),
+            }),
+            outcome: match r.outcome {
+                Outcome::Playing => "playing",
+                Outcome::Won => "won",
+                Outcome::Lost => "lost",
+            },
+        }
+    }
 }
 
 #[derive(Default, Debug, Clone, serde::Serialize)]
@@ -132,24 +176,116 @@ pub fn add(app: &mut App, cfg: OnlineConfig) {
 #[derive(Component)]
 struct ClockText;
 
+/// House pool, debt and pocket. The office LED sign replaces it in the art pass.
+#[derive(Component)]
+struct MoneyText;
+
+/// The win or loss screen.
+#[derive(Component)]
+struct OutcomeScreen;
+
+#[derive(Component)]
+struct OutcomeText;
+
 fn setup_hud(mut commands: Commands, nodraw: Option<Res<NoDraw>>) {
     if nodraw.is_some() {
         return;
     }
+    let font = |size: f32| TextFont { font_size: bevy::text::FontSize::Px(size), ..default() };
     commands.spawn((
         ClockText,
         Text::new(""),
-        TextFont { font_size: bevy::text::FontSize::Px(18.0), ..default() },
+        font(18.0),
         TextColor(Color::srgb(1.0, 0.85, 0.55)),
-        Node { position_type: PositionType::Absolute, top: px(8), left: px(10), ..default() },
+        Node { position_type: PositionType::Absolute, bottom: px(30), left: px(10), ..default() },
     ));
+    commands.spawn((
+        MoneyText,
+        Text::new(""),
+        font(16.0),
+        TextColor(Color::srgb(0.55, 1.0, 0.75)),
+        Node { position_type: PositionType::Absolute, bottom: px(8), left: px(10), ..default() },
+    ));
+    commands
+        .spawn((
+            OutcomeScreen,
+            Visibility::Hidden,
+            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.75)),
+            Node {
+                position_type: PositionType::Absolute,
+                width: percent(100),
+                height: percent(100),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+        ))
+        .with_child((
+            OutcomeText,
+            Text::new(""),
+            font(40.0),
+            TextColor(Color::WHITE),
+            TextLayout::justify(Justify::Center),
+        ));
 }
 
-fn update_hud(status: Res<NetStatus>, mut text: Query<&mut Text, With<ClockText>>) {
-    let Ok(mut text) = text.single_mut() else { return };
+/// Dollars with thousands separators: 120000 -> "$120,000".
+fn dollars(v: i64) -> String {
+    let digits = v.unsigned_abs().to_string();
+    let mut out = String::new();
+    for (i, c) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    format!("{}${out}", if v < 0 { "-" } else { "" })
+}
+
+fn update_hud(
+    status: Res<NetStatus>,
+    mut clock: Query<&mut Text, (With<ClockText>, Without<MoneyText>, Without<OutcomeText>)>,
+    mut money: Query<&mut Text, (With<MoneyText>, Without<ClockText>, Without<OutcomeText>)>,
+    mut outcome: Query<&mut Text, (With<OutcomeText>, Without<ClockText>, Without<MoneyText>)>,
+    mut screen: Query<&mut Visibility, With<OutcomeScreen>>,
+) {
+    if let (Ok(mut text), Some(m)) = (money.single_mut(), &status.game.money) {
+        let mut line = format!(
+            "House {}  |  Paid {} of {}  |  Due this week {}  |  Tier {}",
+            dollars(m.house),
+            dollars(m.paid),
+            dollars(m.debt),
+            dollars(m.due),
+            m.tier
+        );
+        if let Some(p) = status.game.pocket {
+            line += &format!("  |  Pocket {}", dollars(p));
+        }
+        if m.missed_in_a_row > 0 {
+            line += &format!("  |  MISSED {}", m.missed_in_a_row);
+        }
+        if text.0 != line {
+            text.0 = line;
+        }
+    }
+    let (Ok(mut text), Ok(mut vis)) = (outcome.single_mut(), screen.single_mut()) else { return };
+    let (shown, line) = match status.game.money.as_ref().map(|m| (m.outcome, m.ng)) {
+        Some(("won", _)) => {
+            (true, "THE BAR IS YOURS\nThe debt is paid.\nNext run: bigger debt, more chaos.".to_string())
+        }
+        Some(("lost", _)) => {
+            (true, "THE BAR BURNED DOWN\nTwo payments missed.\nNext run: bigger debt, more chaos.".to_string())
+        }
+        _ => (false, String::new()),
+    };
+    vis.set_if_neq(if shown { Visibility::Inherited } else { Visibility::Hidden });
+    if text.0 != line {
+        text.0 = line;
+    }
+    let Ok(mut text) = clock.single_mut() else { return };
     let line = match &status.game.shift {
         Some(s) => format!(
-            "Week {}  ·  Shift {}/{}  ·  {} {}{}",
+            "Week {}  |  Shift {}/{}  |  {} {}{}",
             s.week,
             s.shift,
             shared::shift::SHIFTS_PER_WEEK,
@@ -188,14 +324,15 @@ fn setup_bar(
     solid(&mut commands, Vec3::new(hx * 2.0, h, 0.2), Vec3::new(0.0, h / 2.0, hz + 0.1), gray(0.5));
     solid(&mut commands, Vec3::new(0.2, h, hz * 2.0), Vec3::new(-hx - 0.1, h / 2.0, 0.0), gray(0.45));
     solid(&mut commands, Vec3::new(0.2, h, hz * 2.0), Vec3::new(hx + 0.1, h / 2.0, 0.0), gray(0.45));
-    // Counter.
-    let (cx, cz, chx, chz) = bar::COUNTER;
-    solid(
-        &mut commands,
-        Vec3::new(chx * 2.0, bar::COUNTER_HEIGHT, chz * 2.0),
-        Vec3::new(cx, bar::COUNTER_HEIGHT / 2.0, cz),
-        Color::srgb(0.45, 0.28, 0.15),
-    );
+    // Counter, office walls, safe.
+    for b in &bar::BLOCKS {
+        let color = match b.kind {
+            bar::BlockKind::Counter => Color::srgb(0.45, 0.28, 0.15),
+            bar::BlockKind::Wall => gray(0.42),
+            bar::BlockKind::Safe => Color::srgb(0.2, 0.22, 0.25),
+        };
+        solid(&mut commands, Vec3::new(b.hx * 2.0, b.height, b.hz * 2.0), Vec3::new(b.cx, b.height / 2.0, b.cz), color);
+    }
     // Neon sign over the counter (pink accent).
     commands.spawn((
         Mesh3d(meshes.add(Cuboid::new(3.0, 0.6, 0.1))),
@@ -351,7 +488,11 @@ fn follow_camera(
     let (Ok(pos), Ok(mut t)) = (own.single(), cam.single_mut()) else { return };
     // Third person, behind and above the player for the gray-box phase.
     let back = Quat::from_rotation_y(look.yaw) * Vec3::new(0.0, 0.0, 3.5);
-    let eye = pos.0 + Vec3::Y * 2.2 + back;
+    let mut eye = pos.0 + Vec3::Y * 2.2 + back;
+    // Stay inside the room: behind a player near a wall, the camera would
+    // otherwise see the wall's outside.
+    eye.x = eye.x.clamp(-bar::HALF_X + 0.3, bar::HALF_X - 0.3);
+    eye.z = eye.z.clamp(-bar::HALF_Z + 0.3, bar::HALF_Z - 0.3);
     *t = Transform::from_translation(eye).looking_at(pos.0 + Vec3::Y * 1.2, Vec3::Y);
 }
 
@@ -364,7 +505,8 @@ fn update_status(
     props: Query<(&PropKind, &PropPose, &HeldBy), With<Interpolated>>,
     link: Query<&Link, With<Client>>,
     timeline: Option<Res<LocalTimeline>>,
-    room: Query<&ShiftClock, With<RoomState>>,
+    room: Query<(&ShiftClock, Option<&RunLedger>), With<RoomState>>,
+    pockets: Query<(&Player, &Pocket)>,
     mut status: ResMut<NetStatus>,
 ) {
     let (rtt_ms, jitter_ms) = link
@@ -390,6 +532,24 @@ fn update_status(
         rtt_ms,
         jitter_ms,
         tick: timeline.map(|t| t.tick().0).unwrap_or(0),
-        game: GameStatus { shift: room.iter().next().map(|c| (*c).into()) },
+        game: GameStatus {
+            shift: room.iter().next().map(|(c, _)| (*c).into()),
+            money: room.iter().next().and_then(|(_, l)| l.copied()).map(Into::into),
+            pocket: pockets.iter().find(|(p, _)| Some(p.id) == session.player_id).map(|(_, m)| m.0),
+        },
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::dollars;
+
+    #[test]
+    fn dollars_have_separators() {
+        assert_eq!(dollars(0), "$0");
+        assert_eq!(dollars(999), "$999");
+        assert_eq!(dollars(1_000), "$1,000");
+        assert_eq!(dollars(120_000), "$120,000");
+        assert_eq!(dollars(-1_234_567), "-$1,234,567");
+    }
 }
