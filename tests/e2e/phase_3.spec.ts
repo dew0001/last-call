@@ -2,7 +2,7 @@
 // slots against the host Worker; the RNG audit log exported from IndexedDB
 // re-derives every outcome in the browser.
 import { expect, test, type Page } from '@playwright/test';
-import { INTERACT, createRoom, openTab, setInput, status, tap, waitFor, walkTo } from './helpers';
+import { INTERACT, createRoom, openTab, setInput, status, tap, waitFor, walkTo, walkToOnHost } from './helpers';
 
 type Table = 'Blackjack' | 'Roulette' | { Slot: number };
 
@@ -62,7 +62,7 @@ test('blackjack: a dealer deals, the money adds up, and a win waits on the felt'
   const { host, room } = await createRoom(browser, undefined, '&preset=casino');
   const player = await openTab(browser, `${room.link}&gpu=webgl2&name=Punter`, 'player');
   await waitFor(player, 'player joined', (s) => !!s.playerId && (s.playersSeen ?? 0) >= 2);
-  await Promise.all([walkTo(host, TO_DEALER), walkTo(player, toSeat(...BJ_SEAT))]);
+  await Promise.all([walkToOnHost(host, TO_DEALER), walkTo(player, toSeat(...BJ_SEAT))]);
   expect((await casino(host)).near).toBe('blackjack');
 
   await ask(host, 'Blackjack', 'TakeRole');
@@ -110,7 +110,7 @@ test('roulette: the result is known when the spin starts, winners are paid, the 
   const { host, room } = await createRoom(browser, undefined, '&preset=casino');
   const player = await openTab(browser, `${room.link}&gpu=webgl2&name=Punter`, 'player');
   await waitFor(player, 'player joined', (s) => !!s.playerId && (s.playersSeen ?? 0) >= 2);
-  await Promise.all([walkTo(host, TO_CROUPIER), walkTo(player, toSeat(...RL_SPOT))]);
+  await Promise.all([walkToOnHost(host, TO_CROUPIER), walkTo(player, toSeat(...RL_SPOT))]);
   await ask(host, 'Roulette', 'TakeRole');
   const croupier = await me(host);
   await waitFor(host, 'the host runs the wheel', (s) => s.game?.casino?.roulette?.croupier === croupier);
@@ -164,7 +164,7 @@ test('roulette: the result is known when the spin starts, winners are paid, the 
 test('slots: the reels land on the host\'s stops and pay by the paytable', async ({ browser }) => {
   test.setTimeout(180_000);
   const { host } = await createRoom(browser, undefined, '&preset=casino');
-  await walkTo(host, toSeat(...SLOT0));
+  await walkToOnHost(host, toSeat(...SLOT0));
   expect((await casino(host)).near).toBe('slot0');
   const pays = (l: string[]) => {
     const [a, b, c] = l;
@@ -199,7 +199,7 @@ test('a Wasted player cannot deal; Courage bets 1.5 times the table maximum', as
   await wasted.host.context().close();
 
   const tipsy = await createRoom(browser, undefined, '&preset=tipsy');
-  await walkTo(tipsy.host, toSeat(...BJ_SEAT));
+  await walkToOnHost(tipsy.host, toSeat(...BJ_SEAT));
   await ask(tipsy.host, 'Blackjack', { Bet: 150 });
   const s = await waitFor(tipsy.host, 'a $150 bet', (s) => {
     const b = s.game?.casino?.blackjack;
@@ -213,7 +213,7 @@ test('customers gamble at every game, and the audit log replays in the browser',
   test.setTimeout(300_000);
   // fast=20: Setup 6 s, waves every 4.5 s.
   const { host } = await createRoom(browser, undefined, '&fast=20&preset=casino');
-  await walkTo(host, TO_DEALER);
+  await walkToOnHost(host, TO_DEALER);
   await ask(host, 'Blackjack', 'TakeRole');
   const where = new Set<string>();
   const deadline = Date.now() + 120_000;
@@ -261,7 +261,7 @@ test('table keys: T takes the deal, digits bet', async ({ browser }) => {
   const { host, room } = await createRoom(browser, undefined, '&preset=casino');
   const player = await openTab(browser, `${room.link}&gpu=webgl2&name=Punter`, 'player');
   await waitFor(player, 'player joined', (s) => !!s.playerId && (s.playersSeen ?? 0) >= 2);
-  await Promise.all([walkTo(host, TO_DEALER), walkTo(player, toSeat(...BJ_SEAT))]);
+  await Promise.all([walkToOnHost(host, TO_DEALER), walkTo(player, toSeat(...BJ_SEAT))]);
   // Scripted input stays on (standing still); keys still reach the table.
   await host.locator('#bevy').focus();
   await host.keyboard.press('KeyT');

@@ -46,6 +46,7 @@ The average tick is well inside the 6 ms budget. The worst single tick (15 ms, o
 
 ## Known gaps
 
+- WebKit, once in CI: a host tab's walk was predicted on screen but never reached the host Worker. Cause unknown (see `docs/DECISIONS.md`); the tests now confirm arrival with the Worker's position report.
 - The worst single host tick (15 ms) is over the Phase 7 soak target (see Budgets).
 - Customers do not drink at the tables (only bar customers order beer).
 - One blackjack table and one wheel so far. The second blackjack table and the high-stakes back room come with their rooms in later phases, open from the start (no tier unlocks, per the user).

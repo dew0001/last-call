@@ -345,3 +345,7 @@ The plan makes the lever pull a physics interaction. In the gray box the pull is
 ### No debt-tier unlocks (2026-10-09)
 
 The user asked that every activity be available from the beginning of the game. Plan sections 4.1 and 4.5 gated rooms behind debt tiers (kitchen at tier 1, pier at 2, roof at 3, parking lot at 4, basement and back room at 5). Now every room and game is open from the start of every run. The debt tier stays as a progress number on the HUD (`economy::tier`); nothing checks it. The Phase 4 box "Tier unlock gates and room doors" becomes "Room doors", with no gates. The plan text is updated to match.
+
+### WebKit: a walk the host never saw (open)
+
+In one CI run, a WebKit host tab walked to the blackjack seat on its own screen (client prediction), but the host Worker never moved the player: the client then snapped back to the spawn point. The same test passed in WebKit on the run before. The cause is not known yet; the host tab's own client talks to the Worker over a `MessageChannel`, not WebRTC. The phase 3 browser tests now confirm arrival with the Worker's own position report (`walkToOnHost`) and walk again if needed. If this recurs, the next step is to log the Worker's received input ticks in WebKit.

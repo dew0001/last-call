@@ -113,3 +113,24 @@ export async function tap(page: Page, buttons: number, ms = 150) {
   await setInput(page, { mx: 0, my: 0, yaw: 0, pitch: 0, buttons: 0 });
   await page.waitForTimeout(ms);
 }
+
+/**
+ * [`walkTo`], then check the host Worker's own report of the player's
+ * position (`window.__hostTicks`, host tab only) and walk again if the host
+ * disagrees. In WebKit the host sometimes never received a walk's inputs:
+ * the client predicted the walk, then snapped back to the host's position.
+ */
+export async function walkToOnHost(page: Page, points: [number, number][], tries = 3) {
+  const [x, z] = points[points.length - 1];
+  for (let i = 0; i < tries; i++) {
+    await walkTo(page, points);
+    await page.waitForTimeout(1500);
+    const s = await status(page);
+    const at = await page.evaluate(
+      (id) => (window as any).__hostTicks?.at(-1)?.players?.find((p: any) => p[0] === id),
+      s.playerId,
+    );
+    if (at && Math.hypot(at[1] - x, at[3] - z) < 0.5) return;
+  }
+  throw new Error(`walkToOnHost: the host never saw the player reach ${x},${z}`);
+}
