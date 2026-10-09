@@ -1,7 +1,7 @@
 // Phase 2: shift loop and economy.
 // Rooms run with `&fast=60`: every shift phase is 60 times shorter, so a
 // 14-minute shift takes 14 seconds (Setup 2, Open 9, Last call 2, Payment 1).
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { DROP, INTERACT, ROUTE_TO_SAFE, ROUTE_TO_TAP, createRoom, openTab, setInput, status, tap, waitFor, walkTo } from './helpers';
 
 test.beforeEach(({ page }, info) => {
@@ -131,9 +131,10 @@ test('a perfect pour, carried to a waiting customer, is paid for and tipped', as
   const house0 = s0.game.money.house;
 
   // Hold E at a good tilt; let go in the green zone.
-  // Poll the gauge quickly: it rises 2% every 50 ms.
+  // The client predicts the gauge on its own timeline, so releasing when it
+  // shows 90% lands in the green on the host. Poll quickly: it rises 2% every 50 ms.
   await setInput(player, { mx: 0, my: 0, yaw: 0, pitch: -0.4, buttons: INTERACT });
-  await player.waitForFunction(() => ((window as any).__lastCall?.game?.pour?.[0] ?? 0) >= 86, null, { polling: 20, timeout: 10_000 });
+  await player.waitForFunction(() => ((window as any).__lastCall?.game?.pour?.[0] ?? 0) >= 90, null, { polling: 20, timeout: 10_000 });
   await setInput(player, { mx: 0, my: 0, yaw: 0, pitch: -0.4, buttons: 0 });
   const poured = await waitFor(player, 'a beer in hand', (s) => !!s.game?.beer);
   expect(poured.game.beer[1]).toBe(true);
@@ -158,6 +159,118 @@ test('a perfect pour, carried to a waiting customer, is paid for and tipped', as
     10_000,
   );
   expect(served.game.customers.some((c: C) => c[1] === 'drinking')).toBe(true);
+  await player.context().close();
+  await host.context().close();
+});
+
+const USE = 1 << 8;
+
+/** Pour a beer at the tap (the player stands there) and wait until it is in hand. */
+async function pourBeer(page: Page) {
+  await setInput(page, { mx: 0, my: 0, yaw: 0, pitch: -0.4, buttons: INTERACT });
+  await page.waitForFunction(() => ((window as any).__lastCall?.game?.pour?.[0] ?? 0) >= 90, null, { polling: 20, timeout: 10_000 });
+  await setInput(page, { mx: 0, my: 0, yaw: 0, pitch: -0.4, buttons: 0 });
+  return waitFor(page, 'a beer in hand', (s) => !!s.game?.beer);
+}
+
+test('drinking a beer costs $5 and fills the drunk meter', async ({ browser }) => {
+  // 300 in each pocket.
+  const { host, room } = await createRoom(browser, undefined, '&preset=lastweek');
+  const player = await openTab(browser, `${room.link}&gpu=webgl2&novoice&name=Rook`, 'player');
+  await waitFor(player, 'player joined', (s) => !!s.playerId && s.game?.pocket === 300 && !!s.game?.drunk);
+  await walkTo(player, ROUTE_TO_TAP);
+  await pourBeer(player);
+  await tap(player, USE);
+  const drunk = await waitFor(player, 'the beer is drunk', (s) => !s.game?.beer && (s.game?.drunk?.level ?? 0) >= 19);
+  expect(drunk.game.pocket).toBe(295);
+  expect(drunk.game.drunk.tier).toBe('courage');
+  await player.context().close();
+  await host.context().close();
+});
+
+test('one beer too many: the player passes out, is dragged, and wakes up', async ({ browser }) => {
+  test.setTimeout(240_000);
+  // Everyone joins Wasted (90): the next beer passes them out.
+  const { host, room } = await createRoom(browser, undefined, '&preset=wasted');
+  const player = await openTab(browser, `${room.link}&gpu=webgl2&novoice&name=Rook`, 'player');
+  await waitFor(player, 'player joined', (s) => !!s.playerId && s.game?.drunk?.tier === 'wasted');
+  await walkTo(player, ROUTE_TO_TAP);
+  // Wasted players stumble every 8 s; a stumble can carry the player off the
+  // tap mid-pour, so pour again until the glass is full enough to drink.
+  for (let i = 0; i < 4; i++) {
+    const s = await pourBeer(player);
+    if (s.game.beer[0] >= 60) break;
+    await tap(player, DROP);
+    await walkTo(player, ROUTE_TO_TAP);
+  }
+  await tap(player, USE);
+  const out = await waitFor(player, 'passed out', (s) => !!s.game?.drunk?.passedOut, 10_000);
+  const lying = out.ownPos!;
+
+  // The host walks over, grabs the body with E and backs away with it.
+  await walkTo(host, [
+    [lying[0], -1.0],
+    [lying[0], lying[2] + 1.2],
+  ]);
+  await setInput(host, { mx: 0, my: 0, yaw: 0, pitch: 0, buttons: INTERACT });
+  await host.waitForTimeout(300);
+  await setInput(host, { mx: 0, my: -1, yaw: 0, pitch: 0, buttons: 0 });
+  await host.waitForTimeout(1500);
+  await setInput(host, { mx: 0, my: 0, yaw: 0, pitch: 0, buttons: DROP });
+  const dragged = await waitFor(player, 'body dragged', (s) => !!s.ownPos && s.ownPos[2] > lying[2] + 1.0, 10_000);
+  test.info().annotations.push({ type: 'dragged', description: `${lying} -> ${dragged.ownPos}` });
+
+  // 45 seconds after passing out, the player gets up.
+  const awake = await waitFor(player, 'awake', (s) => s.game?.drunk && !s.game.drunk.passedOut, 70_000);
+  expect(awake.game.drunk.level).toBeLessThan(100);
+  await player.context().close();
+  await host.context().close();
+});
+
+test('a Sloppy speaker sounds lower to everyone else', async ({ browser, browserName }) => {
+  test.skip(browserName === 'webkit', 'Playwright WebKit has no fake microphone; see docs/DECISIONS.md');
+  // Everyone joins at 45 (Sloppy); the meter drops below 40 after about 12 s.
+  const { host, room } = await createRoom(browser, undefined, '&preset=tipsy');
+  const player = await openTab(browser, `${room.link}&gpu=webgl2&name=Talker`, 'player');
+  const ps = await waitFor(player, 'player joined', (s) => !!s.playerId && !!s.ownPos);
+  await player.mouse.click(80, 45);
+  await host.bringToFront();
+  await host.mouse.click(80, 45);
+  await expect
+    .poll(() => host.evaluate((id) => (window as any).__lcVoice?.peers().includes(id) ?? false, ps.playerId), {
+      timeout: 30_000,
+    })
+    .toBe(true);
+
+  // Median strongest frequency of the player's voice at the host, sampled
+  // only while the fake microphone's beep is sounding.
+  const pitchHz = (ms: number) =>
+    host.evaluate(
+      async ([id, ms]) => {
+        const v = (window as any).__lcVoice;
+        const seen: number[] = [];
+        const end = performance.now() + (ms as number);
+        while (performance.now() < end) {
+          if (v.level(id) > 0.01) seen.push(v.peakHz(id));
+          await new Promise((r) => setTimeout(r, 20));
+        }
+        seen.sort((a, b) => a - b);
+        return seen.length ? seen[Math.floor(seen.length / 2)] : 0;
+      },
+      [ps.playerId, ms] as const,
+    );
+  const drunkPitch = await host.evaluate((id) => new Map((window as any).__lastCall.game.voicePitch).get(id), ps.playerId);
+  expect(drunkPitch).toBeLessThan(1);
+  const low = await pitchHz(3000);
+
+  await waitFor(player, 'sobered up below 40', (s) => (s.game?.drunk?.level ?? 99) < 40, 30_000);
+  await host.bringToFront();
+  await host.waitForTimeout(500);
+  const normal = await pitchHz(3000);
+  test.info().annotations.push({ type: 'voice-pitch', description: `drunk ${low.toFixed(0)} Hz, sober ${normal.toFixed(0)} Hz` });
+  expect(low).toBeGreaterThan(0);
+  expect(low / normal).toBeGreaterThan(0.7);
+  expect(low / normal).toBeLessThan(0.9);
   await player.context().close();
   await host.context().close();
 });

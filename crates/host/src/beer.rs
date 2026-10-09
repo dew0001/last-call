@@ -69,13 +69,17 @@ type PourPlayers<'w, 's> = Query<
         &'static mut Hands,
         Option<&'static mut Pouring>,
         Has<PourLock>,
+        Option<&'static Drunk>,
     ),
 >;
 
 fn pour(mut commands: Commands, mut players: PourPlayers) {
     let dt = shared::TICK.as_secs_f32();
-    for (entity, player, pos, yaw, action, mut hands, pouring, locked) in &mut players {
+    for (entity, player, pos, yaw, action, mut hands, pouring, locked, drunk) in &mut players {
         let input = action.0;
+        if drunk.is_some_and(|d| d.passed_out) {
+            continue;
+        }
         let at_tap = distance_to_tap(pos.0.to_array()) < shared::bar::TAP_REACH;
         let holding_e = input.buttons & buttons::INTERACT != 0;
         if locked && !holding_e {
@@ -130,7 +134,7 @@ pub fn glass(at: Vec3, fill: f32, perfect: bool, poured_by: u64, held: Option<u6
 
 /// Sprinting with a glass spills it.
 fn carry(
-    players: Query<(&Player, &ActionState<PlayerInput>)>,
+    players: Query<(&Player, &ActionState<PlayerInput>, Option<&Drunk>)>,
     mut glasses: Query<(&HeldBy, &mut GlassFill, &mut Beer)>,
 ) {
     let dt = shared::TICK.as_secs_f32();
@@ -140,10 +144,11 @@ fn carry(
             fill.0 = 0.0;
         }
         let Some(id) = held.0 else { continue };
-        let Some((_, action)) = players.iter().find(|(p, _)| p.id == id) else { continue };
+        let Some((_, action, drunk)) = players.iter().find(|(p, ..)| p.id == id) else { continue };
         let input = action.0;
         let sprinting = input.buttons & buttons::SPRINT != 0 && input.mv() != Vec2::ZERO;
-        fill.0 = beer::carry(fill.0, sprinting, 1.0, dt);
+        let mult = shared::drunk::spill_multiplier(shared::drunk::Tier::of(drunk.map_or(0, |d| d.level)));
+        fill.0 = beer::carry(fill.0, sprinting, mult, dt);
         let p = percent(fill.0);
         if beer.fill != p {
             beer.fill = p;

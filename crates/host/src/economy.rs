@@ -8,7 +8,7 @@ use bevy::prelude::*;
 use lightyear::prelude::input::native::ActionState;
 use shared::economy::{self, Ledger, Outcome};
 use shared::movement::{buttons, distance_to_safe};
-use shared::protocol::{Player, PlayerInput, PlayerPos, Pocket, RoomState, RunLedger};
+use shared::protocol::{Drunk, Player, PlayerInput, PlayerPos, Pocket, RoomState, RunLedger};
 use shared::shift::{Calendar, ShiftPhase};
 
 use crate::shift::{PhaseStarted, RunClock, ShiftConfig, ShiftTimer};
@@ -24,6 +24,11 @@ pub enum Preset {
     /// One payment already missed and an empty house: the run is lost at the
     /// end of the first week.
     Broke,
+    /// Players join Sloppy (45 on the drunk meter) with 300 in their pockets.
+    Tipsy,
+    /// Players join Wasted (90 on the drunk meter) with 300 in their pockets:
+    /// one beer passes them out.
+    Wasted,
 }
 
 impl Preset {
@@ -31,6 +36,8 @@ impl Preset {
         match s {
             "lastweek" => Self::LastWeek,
             "broke" => Self::Broke,
+            "tipsy" => Self::Tipsy,
+            "wasted" => Self::Wasted,
             _ => Self::None,
         }
     }
@@ -43,12 +50,15 @@ impl Preset {
                 ledger: Ledger { house: 45_000, paid: 80_000, ..Ledger::default() },
                 calendar: Calendar { week: 6, shift: 0 },
                 pocket: 300,
+                ..RunStart::default()
             },
             Self::Broke => RunStart {
                 ledger: Ledger { missed_in_a_row: 1, carried: 8_000, ..Ledger::default() },
                 calendar: Calendar::default(),
-                pocket: 0,
+                ..RunStart::default()
             },
+            Self::Tipsy => RunStart { pocket: 300, drunk: 45, ..RunStart::default() },
+            Self::Wasted => RunStart { pocket: 300, drunk: 90, ..RunStart::default() },
         }
     }
 }
@@ -60,6 +70,8 @@ pub struct RunStart {
     pub calendar: Calendar,
     /// What a joining player finds in their pocket.
     pub pocket: i64,
+    /// A joining player's drunk meter.
+    pub drunk: u8,
 }
 
 /// Present while the win or loss screen shows.
@@ -101,14 +113,17 @@ fn give_pockets(mut commands: Commands, start: Res<RunStart>, players: Query<Ent
 
 /// E at the office safe moves money from the pocket to the house pool.
 fn safe_deposits(
-    mut players: Query<(&PlayerPos, &ActionState<PlayerInput>, &mut Pocket, &mut SafeButtons)>,
+    mut players: Query<(&PlayerPos, &ActionState<PlayerInput>, &mut Pocket, &mut SafeButtons, Option<&Drunk>)>,
     mut room: Query<&mut RunLedger, With<RoomState>>,
 ) {
     let Ok(mut run) = room.single_mut() else { return };
-    for (pos, action, mut pocket, mut prev) in &mut players {
+    for (pos, action, mut pocket, mut prev, drunk) in &mut players {
         let b = action.0.buttons;
         let pressed = b & buttons::INTERACT != 0 && prev.0 & buttons::INTERACT == 0;
         prev.0 = b;
+        if drunk.is_some_and(|d| d.passed_out) {
+            continue;
+        }
         if pressed && distance_to_safe(pos.0.to_array()) < shared::bar::SAFE_REACH && pocket.0 > 0 {
             let mut ledger = run.ledger;
             let mut money = pocket.0;

@@ -36,6 +36,10 @@ The beer in a glass. `fill` is in percent; `perfect` records a perfect pour; `po
 
 A pour in progress at the tap, on the pouring player. Percent.
 
+### `Drunk` (struct)
+
+A player's drunk meter, 0 to 100 (see [`crate::drunk`]). `passed_out` stays set for the whole pass-out, while the meter keeps decaying.
+
 ### `Puddle` (struct)
 
 Spilled beer on the floor (a slip hazard).

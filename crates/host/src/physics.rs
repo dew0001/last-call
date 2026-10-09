@@ -150,7 +150,9 @@ fn add_player_body(trigger: On<Add, Player>, players: Query<&PlayerPos>, mut com
 }
 
 /// Move each player's body to its new position over the coming step.
-fn drive_player_bodies(mut q: Query<(&PlayerPos, &Position, &mut LinearVelocity), With<Player>>) {
+fn drive_player_bodies(
+    mut q: Query<(&PlayerPos, &Position, &mut LinearVelocity), (With<Player>, Without<crate::drunk::PassedOut>)>,
+) {
     let dt = shared::TICK.as_secs_f32();
     for (pos, body, mut vel) in &mut q {
         let target = pos.0 + Vec3::Y * bar::PLAYER_HEIGHT / 2.0;
@@ -172,13 +174,32 @@ type PropQuery<'w, 's> = Query<
     Without<Player>,
 >;
 
+type HandPlayers<'w, 's> = Query<
+    'w,
+    's,
+    (
+        &'static Player,
+        &'static PlayerPos,
+        &'static PlayerYaw,
+        &'static mut Hands,
+        Option<&'static ActionState<PlayerInput>>,
+        Option<&'static Drunk>,
+        Has<crate::drunk::Dragging>,
+    ),
+>;
+
 fn hands(
-    mut players: Query<(&Player, &PlayerPos, &PlayerYaw, &mut Hands, Option<&ActionState<PlayerInput>>)>,
+    mut players: HandPlayers,
     mut props: PropQuery,
     mut commands: Commands,
+    tick: Res<crate::TickCount>,
+    mut rng: ResMut<crate::drunk::PlayerRng>,
 ) {
     let dt = shared::TICK.as_secs_f32();
-    for (player, pos, yaw, mut hands, action) in &mut players {
+    for (player, pos, yaw, mut hands, action, drunk, dragging) in &mut players {
+        if drunk.is_some_and(|d| d.passed_out) {
+            continue;
+        }
         let b = action.map(|a| a.0.buttons).unwrap_or(0);
         let prev = hands.prev_buttons;
         let pressed = |bit: u16| b & bit != 0 && prev & bit == 0;
@@ -188,7 +209,7 @@ fn hands(
 
         // Pick up the nearest free prop in reach. At the tap, E pours instead.
         let at_tap = shared::movement::distance_to_tap(pos.0.to_array()) < bar::TAP_REACH;
-        if hands.held.is_none() && pressed(buttons::INTERACT) && !at_tap {
+        if hands.held.is_none() && pressed(buttons::INTERACT) && !at_tap && !dragging {
             let nearest = props
                 .iter()
                 .filter(|(_, _, held, ..)| held.0.is_none())
@@ -216,6 +237,9 @@ fn hands(
             if released(buttons::THROW) {
                 let t = f32::from(hands.charge) / f32::from(FULL_CHARGE_TICKS);
                 let speed = THROW_MIN + (THROW_MAX - THROW_MIN) * t;
+                // Sloppy and worse throws go wide.
+                let spread = shared::drunk::throw_spread(shared::drunk::Tier::of(drunk.map_or(0, |d| d.level)));
+                let fwd = if spread > 0.0 { Quat::from_rotation_y(spread * rng.signed(tick.0)) * fwd } else { fwd };
                 held.0 = None;
                 lin.0 = fwd * speed + Vec3::Y * 2.0;
                 ang.0 = Vec3::new(4.0, 0.0, 2.0);

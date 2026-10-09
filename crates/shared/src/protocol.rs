@@ -12,7 +12,7 @@ use lightyear::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// Protocol version. Bump on any breaking change. Sent in [`Join`].
-pub const PROTOCOL_VERSION: u16 = 6;
+pub const PROTOCOL_VERSION: u16 = 7;
 
 // ---------- Components (host to clients) ----------
 
@@ -56,6 +56,14 @@ pub struct Beer {
 pub struct PourGauge {
     pub fill: u8,
     pub foam: u8,
+}
+
+/// A player's drunk meter, 0 to 100 (see [`crate::drunk`]). `passed_out`
+/// stays set for the whole pass-out, while the meter keeps decaying.
+#[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub struct Drunk {
+    pub level: u8,
+    pub passed_out: bool,
 }
 
 /// Spilled beer on the floor (a slip hazard).
@@ -271,6 +279,7 @@ impl Plugin for ProtocolPlugin {
         app.component::<Beer>().replicate();
         app.component::<PourGauge>().replicate();
         app.component::<Puddle>().replicate();
+        app.component::<Drunk>().replicate();
     }
 }
 

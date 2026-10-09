@@ -20,19 +20,26 @@ pub mod buttons {
     pub const DROP: u16 = 1 << 5;
     pub const PRIMARY: u16 = 1 << 6;
     pub const SECONDARY: u16 = 1 << 7;
+    /// R: use a consumable (drink the beer in hand).
+    pub const USE: u16 = 1 << 8;
 }
 
 /// Move a player for one tick. `mv` is the stick or WASD vector in the
 /// player's own frame (x right, y forward), each axis in [-1, 1]. `yaw` is in
 /// radians; yaw 0 faces -Z.
 pub fn step(pos: [f32; 3], mv: [f32; 2], yaw: f32, buttons: u16, dt: f32) -> [f32; 3] {
+    step_scaled(pos, mv, yaw, buttons, dt, 1.0)
+}
+
+/// [`step`] with a speed multiplier (the drunk meter's walk bonus).
+pub fn step_scaled(pos: [f32; 3], mv: [f32; 2], yaw: f32, buttons: u16, dt: f32, speed_mult: f32) -> [f32; 3] {
     let len = (mv[0] * mv[0] + mv[1] * mv[1]).sqrt();
     if !len.is_finite() || len < 1e-4 {
         return pos;
     }
     let scale = len.min(1.0) / len;
     let (right, fwd) = (mv[0] * scale, mv[1] * scale);
-    let speed = if buttons & buttons::SPRINT != 0 { SPRINT_SPEED } else { WALK_SPEED };
+    let speed = if buttons & buttons::SPRINT != 0 { SPRINT_SPEED } else { WALK_SPEED } * speed_mult;
     let (s, c) = yaw.sin_cos();
     // Forward is -Z rotated by yaw; right is +X rotated by yaw.
     let dx = (right * c - fwd * s) * speed * dt;
@@ -109,6 +116,12 @@ mod tests {
         let a = step([0.0, 0.0, 3.0], [1.0, 1.0], 0.0, 0, DT);
         let moved = ((a[0]).powi(2) + (a[2] - 3.0).powi(2)).sqrt();
         assert!((moved - WALK_SPEED * DT).abs() < 1e-5);
+    }
+
+    #[test]
+    fn the_speed_multiplier_scales_both_gaits() {
+        let a = step_scaled([0.0, 0.0, 3.0], [0.0, 1.0], 0.0, 0, DT, 1.1);
+        assert!((3.0 - a[2] - WALK_SPEED * 1.1 * DT).abs() < 1e-5);
     }
 
     #[test]

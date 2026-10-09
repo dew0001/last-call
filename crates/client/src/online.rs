@@ -80,6 +80,21 @@ pub struct GameStatus {
     pub beer: Option<(u8, bool)>,
     /// Puddles on the floor.
     pub puddles: usize,
+    /// This player's drunk meter.
+    pub drunk: Option<DrunkStatus>,
+    /// Voice pitch per other player (hex id, factor): drunk speakers sound lower.
+    pub voice_pitch: Vec<(String, f32)>,
+}
+
+#[derive(Default, Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DrunkStatus {
+    pub level: u8,
+    pub tier: &'static str,
+    pub passed_out: bool,
+    /// Screen blur 0 to 1. The page applies it as a CSS blur on the canvas:
+    /// Bevy turns off depth of field on WebGL2.
+    pub blur: f32,
 }
 
 fn mood_name(m: shared::customers::Mood) -> &'static str {
@@ -181,6 +196,8 @@ pub fn add(app: &mut App, cfg: OnlineConfig) {
         ReplicationReceiver,
         ReplicationSender,
     ));
+    app.init_resource::<LocalPour>();
+    app.add_systems(FixedUpdate, predict_pour);
     app.add_systems(Startup, (setup_bar, setup_hud));
     app.add_systems(
         Update,
@@ -197,6 +214,7 @@ pub fn add(app: &mut App, cfg: OnlineConfig) {
             update_status,
             update_hud,
             update_pour_gauge,
+            update_drunk_text,
         )
             .chain(),
     );
@@ -210,6 +228,10 @@ struct ClockText;
 /// House pool, debt and pocket. The office LED sign replaces it in the art pass.
 #[derive(Component)]
 struct MoneyText;
+
+/// The drunk meter line. Two beer-glass icons replace it in the art pass.
+#[derive(Component)]
+struct DrunkText;
 
 /// The pour gauge: a fill bar with the green zone marked, and the foam.
 #[derive(Component)]
@@ -242,6 +264,13 @@ fn setup_hud(mut commands: Commands, nodraw: Option<Res<NoDraw>>) {
         font(18.0),
         TextColor(Color::srgb(1.0, 0.85, 0.55)),
         Node { position_type: PositionType::Absolute, bottom: px(30), left: px(10), ..default() },
+    ));
+    commands.spawn((
+        DrunkText,
+        Text::new(""),
+        font(16.0),
+        TextColor(Color::srgb(1.0, 0.7, 0.35)),
+        Node { position_type: PositionType::Absolute, bottom: px(52), left: px(10), ..default() },
     ));
     commands.spawn((
         MoneyText,
@@ -327,6 +356,18 @@ fn dollars(v: i64) -> String {
     format!("{}${out}", if v < 0 { "-" } else { "" })
 }
 
+fn update_drunk_text(status: Res<NetStatus>, mut text: Query<&mut Text, With<DrunkText>>) {
+    let Ok(mut text) = text.single_mut() else { return };
+    let line = match &status.game.drunk {
+        Some(d) if d.passed_out => "PASSED OUT".to_string(),
+        Some(d) => format!("Drunk {}  ({})", d.level, d.tier),
+        None => String::new(),
+    };
+    if text.0 != line {
+        text.0 = line;
+    }
+}
+
 fn update_pour_gauge(
     status: Res<NetStatus>,
     mut panel: Query<&mut Visibility, With<PourPanel>>,
@@ -369,6 +410,7 @@ fn update_hud(
         if m.missed_in_a_row > 0 {
             line += &format!("  |  MISSED {}", m.missed_in_a_row);
         }
+
         if text.0 != line {
             text.0 = line;
         }
@@ -490,12 +532,45 @@ fn read_input(
         (KeyCode::KeyE, buttons::INTERACT),
         (KeyCode::KeyF, buttons::THROW),
         (KeyCode::KeyQ, buttons::DROP),
+        (KeyCode::KeyR, buttons::USE),
     ] {
         if keys.pressed(key) {
             b |= bit;
         }
     }
     input.0 = PlayerInput::new(mv, look.yaw, look.pitch, b);
+}
+
+/// This player's pour, predicted on the client's own timeline. The host's
+/// gauge arrives about a round trip late; inputs are stamped with the
+/// client's tick, so a release lands on the host at the tick this predicts.
+#[derive(Resource, Default)]
+pub struct LocalPour(pub Option<shared::beer::Pour>);
+
+/// Mirror the host's pour rules (crates/host/src/beer.rs) with this player's
+/// own inputs, once per tick.
+fn predict_pour(
+    session: Res<Session>,
+    input: Res<LocalInput>,
+    own: Query<&PlayerPos, (With<Predicted>, With<Player>)>,
+    drunks: Query<(&Player, &Drunk)>,
+    held: Query<&HeldBy>,
+    mut pour: ResMut<LocalPour>,
+) {
+    let Some(id) = session.player_id else { return };
+    let Ok(pos) = own.single() else { return };
+    let input = input.0;
+    let at_tap = shared::movement::distance_to_tap(pos.0.to_array()) < bar::TAP_REACH;
+    let holding = held.iter().any(|h| h.0 == Some(id));
+    let out = drunks.iter().any(|(p, d)| p.id == id && d.passed_out);
+    if input.buttons & buttons::INTERACT == 0 || !at_tap || holding || out {
+        pour.0 = None;
+        return;
+    }
+    let p = pour.0.get_or_insert_default();
+    if p.fill <= shared::beer::OVERFLOW {
+        p.step(input.pitch(), shared::TICK.as_secs_f32());
+    }
 }
 
 #[derive(Component)]
@@ -520,10 +595,16 @@ fn dress_players(
     }
 }
 
-fn place_players(mut q: Query<(&PlayerPos, &PlayerYaw, &mut Transform), With<Dressed>>) {
-    for (pos, yaw, mut t) in &mut q {
-        t.translation = pos.0 + Vec3::Y * (bar::PLAYER_HEIGHT / 2.0);
-        t.rotation = Quat::from_rotation_y(yaw.0);
+fn place_players(mut q: Query<(&PlayerPos, &PlayerYaw, Option<&Drunk>, &mut Transform), With<Dressed>>) {
+    for (pos, yaw, drunk, mut t) in &mut q {
+        if drunk.is_some_and(|d| d.passed_out) {
+            // Lying on the floor.
+            t.translation = pos.0 + Vec3::Y * bar::PLAYER_RADIUS;
+            t.rotation = Quat::from_rotation_y(yaw.0) * Quat::from_rotation_x(std::f32::consts::FRAC_PI_2);
+        } else {
+            t.translation = pos.0 + Vec3::Y * (bar::PLAYER_HEIGHT / 2.0);
+            t.rotation = Quat::from_rotation_y(yaw.0);
+        }
     }
 }
 
@@ -698,10 +779,19 @@ fn place_customers(
 
 fn follow_camera(
     look: Res<Look>,
+    time: Res<Time>,
+    status: Res<NetStatus>,
     own: Query<&PlayerPos, (With<Predicted>, With<Player>)>,
     mut cam: Query<&mut Transform, (With<Camera3d>, Without<Player>)>,
 ) {
     let (Ok(pos), Ok(mut t)) = (own.single(), cam.single_mut()) else { return };
+    let drunk = status.game.drunk.as_ref();
+    if drunk.is_some_and(|d| d.passed_out) {
+        // On the floor: a low view, looking up and across the room.
+        let eye = pos.0 + Vec3::Y * 0.3;
+        *t = Transform::from_translation(eye).looking_at(eye + Vec3::new(0.3, 1.2, -2.0), Vec3::Y);
+        return;
+    }
     // Third person, behind and above the player for the gray-box phase.
     let back = Quat::from_rotation_y(look.yaw) * Vec3::new(0.0, 0.0, 3.5);
     let mut eye = pos.0 + Vec3::Y * 2.2 + back;
@@ -710,6 +800,27 @@ fn follow_camera(
     eye.x = eye.x.clamp(-bar::HALF_X + 0.3, bar::HALF_X - 0.3);
     eye.z = eye.z.clamp(-bar::HALF_Z + 0.3, bar::HALF_Z - 0.3);
     *t = Transform::from_translation(eye).looking_at(pos.0 + Vec3::Y * 1.2, Vec3::Y);
+    // Courage and up: the view sways.
+    let sway = shared::drunk::camera_sway(drunk.map_or(0, |d| d.level));
+    if sway > 0.0 {
+        let s = time.elapsed_secs();
+        t.rotate_local_z((s * 0.9).sin() * sway);
+        t.rotate_local_y((s * 0.6).cos() * sway * 0.5);
+    }
+}
+
+/// Everything [`update_status`] reads about the game (one system parameter,
+/// so the system stays under Bevy's parameter limit).
+#[derive(bevy::ecs::system::SystemParam)]
+struct GameQueries<'w, 's> {
+    room: Query<'w, 's, (&'static ShiftClock, Option<&'static RunLedger>), With<RoomState>>,
+    pockets: Query<'w, 's, (&'static Player, &'static Pocket)>,
+    customers: Query<'w, 's, (&'static Customer, &'static NpcPose), With<Interpolated>>,
+    gauges: Query<'w, 's, (&'static Player, &'static PourGauge)>,
+    beers: Query<'w, 's, (&'static Beer, &'static HeldBy)>,
+    puddles: Query<'w, 's, (), With<Puddle>>,
+    drunks: Query<'w, 's, (&'static Player, &'static Drunk)>,
+    local_pour: Res<'w, LocalPour>,
 }
 
 fn update_status(
@@ -721,14 +832,10 @@ fn update_status(
     props: Query<(&PropKind, &PropPose, &HeldBy), With<Interpolated>>,
     link: Query<&Link, With<Client>>,
     timeline: Option<Res<LocalTimeline>>,
-    room: Query<(&ShiftClock, Option<&RunLedger>), With<RoomState>>,
-    pockets: Query<(&Player, &Pocket)>,
-    customers: Query<(&Customer, &NpcPose), With<Interpolated>>,
-    gauges: Query<(&Player, &PourGauge)>,
-    beers: Query<(&Beer, &HeldBy)>,
-    puddles: Query<(), With<Puddle>>,
+    game: GameQueries,
     mut status: ResMut<NetStatus>,
 ) {
+    let GameQueries { room, pockets, customers, gauges, beers, puddles, drunks, local_pour } = game;
     let (rtt_ms, jitter_ms) = link
         .single()
         .map(|l| (l.stats.rtt.as_secs_f32() * 1000.0, l.stats.jitter.as_secs_f32() * 1000.0))
@@ -762,12 +869,35 @@ fn update_status(
                 v.sort_by_key(|c| c.0);
                 v
             },
-            pour: gauges.iter().find(|(p, _)| Some(p.id) == session.player_id).map(|(_, g)| (g.fill, g.foam)),
+            // The predicted pour while E is held; the host's gauge otherwise.
+            pour: local_pour
+                .0
+                .filter(|p| p.fill <= shared::beer::OVERFLOW)
+                .map(|p| ((p.fill * 100.0).round() as u8, (p.foam * 100.0).round() as u8))
+                .or_else(|| {
+                    gauges.iter().find(|(p, _)| Some(p.id) == session.player_id).map(|(_, g)| (g.fill, g.foam))
+                }),
             beer: beers
                 .iter()
                 .find(|(_, h)| h.0.is_some() && h.0 == session.player_id)
                 .map(|(b, _)| (b.fill, b.perfect)),
             puddles: puddles.iter().count(),
+            drunk: drunks.iter().find(|(p, _)| Some(p.id) == session.player_id).map(|(_, d)| DrunkStatus {
+                level: d.level,
+                tier: shared::drunk::Tier::of(d.level).label(),
+                passed_out: d.passed_out,
+                blur: shared::drunk::blur(d.level),
+            }),
+            voice_pitch: {
+                let mut v: Vec<(String, f32)> = drunks
+                    .iter()
+                    .filter(|(p, _)| Some(p.id) != session.player_id)
+                    .map(|(p, d)| (format!("{:016x}", p.id), shared::drunk::voice_pitch(d.level)))
+                    .collect();
+                v.sort_by(|a, b| a.0.cmp(&b.0));
+                v.dedup_by(|a, b| a.0 == b.0);
+                v
+            },
         },
     };
 }

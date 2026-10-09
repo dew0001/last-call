@@ -191,14 +191,16 @@ function runClient(mod, config) {
 
 // ---------- voice ----------
 
-/** Positions for proximity voice, read from the client's status object. */
+/** Positions and drunk pitch for proximity voice, read from the client's status object. */
 function voicePositions() {
   const s = window.__lastCall ?? {};
   const others = new Map();
   for (const [id, x, y, z] of s.players ?? []) {
     if (id !== s.playerId) others.set(id, [x, y, z]);
   }
-  return { me: s.ownPos ?? null, others };
+  // Drunk speakers sound lower (the game computes the factor per player).
+  const pitch = new Map(s.game?.voicePitch ?? []);
+  return { me: s.ownPos ?? null, others, pitch };
 }
 
 /** Start voice once the client knows its player id. `?novoice` turns it off. */
@@ -215,6 +217,24 @@ function startVoiceWhenJoined(code) {
     }
   }, 250);
 }
+
+// ---------- drunk screen blur ----------
+
+// The game reports a blur strength (0 to 1) from the drunk meter. Bevy turns
+// off depth of field on WebGL2, so the page blurs the whole canvas with CSS.
+function watchDrunkBlur() {
+  const canvas = document.getElementById('bevy');
+  let shown = 0;
+  setInterval(() => {
+    const blur = window.__lastCall?.game?.drunk?.blur ?? 0;
+    const px = Math.round(blur * 50) / 10; // up to 5 px, in 0.1 px steps
+    if (px !== shown && canvas) {
+      canvas.style.filter = px > 0 ? `blur(${px}px)` : '';
+      shown = px;
+    }
+  }, 200);
+}
+watchDrunkBlur();
 
 // ---------- host worker ----------
 

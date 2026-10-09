@@ -29,9 +29,15 @@ pub enum Script {
     /// then tap E: 4 frames down, 4 up, until the script changes.
     Route { route: &'static [(f32, f32)] },
     /// Walk to the front of the tap, then hold E for `hold` frames with look
-    /// pitch `pitch`, then let go and stand still.
-    Pour { hold: u32, pitch: f32 },
+    /// pitch `pitch`, then let go. With `drink`, then press R to drink it.
+    Pour { hold: u32, pitch: f32, drink: bool },
+    /// Wait `wait` frames, walk to just behind the front of the tap, tap E to
+    /// grab what lies there, then walk backward (+Z) dragging it.
+    Drag { wait: u32 },
 }
+
+/// Where a dragger stands, facing the front of the tap.
+pub const DRAG_SPOT: (f32, f32) = (4.0, -1.9);
 
 /// From the main room to the front of the beer tap, between two stools.
 pub const ROUTE_TO_TAP: &[(f32, f32)] = &[(4.0, -1.5), (4.0, -3.0)];
@@ -64,19 +70,48 @@ fn drive(
             let pos = own.iter().find(|(p, _)| Some(p.id) == session.player_id).map(|(_, pos)| pos.0);
             follow_route(route, pos, &mut step.0, clock.0)
         }
-        Script::Pour { hold, pitch } => {
+        Script::Pour { hold, pitch, drink } => {
+            use shared::movement::buttons::{INTERACT, USE};
             let pos = own.iter().find(|(p, _)| Some(p.id) == session.player_id).map(|(_, pos)| pos.0);
             if step.0 < ROUTE_TO_TAP.len() {
                 step.1 = clock.0;
                 let i = follow_route(ROUTE_TO_TAP, pos, &mut step.0, clock.0);
                 // No E at the end of the route; the pour starts a few frames later.
                 PlayerInput::new(i.mv(), i.yaw(), 0.0, 0)
-            } else if clock.0 < step.1 + 8 {
-                PlayerInput::new(Vec2::ZERO, 0.0, pitch, 0)
-            } else if clock.0 < step.1 + 8 + u64::from(hold) {
-                PlayerInput::new(Vec2::ZERO, 0.0, pitch, shared::movement::buttons::INTERACT)
             } else {
-                PlayerInput::new(Vec2::ZERO, 0.0, pitch, 0)
+                let t = clock.0 - step.1;
+                let hold = u64::from(hold);
+                let b = if (8..8 + hold).contains(&t) {
+                    INTERACT
+                } else if drink && (8 + hold + 32..8 + hold + 40).contains(&t) {
+                    USE
+                } else {
+                    0
+                };
+                PlayerInput::new(Vec2::ZERO, 0.0, pitch, b)
+            }
+        }
+        Script::Drag { wait } => {
+            use shared::movement::buttons::INTERACT;
+            let pos = own.iter().find(|(p, _)| Some(p.id) == session.player_id).map(|(_, pos)| pos.0);
+            let spot = [(DRAG_SPOT.0, -0.5), DRAG_SPOT];
+            if clock.0 < u64::from(wait) {
+                PlayerInput::default()
+            } else if step.0 < spot.len() {
+                step.1 = clock.0;
+                let i = follow_route(&spot, pos, &mut step.0, clock.0);
+                PlayerInput::new(i.mv(), i.yaw(), 0.0, 0)
+            } else {
+                let t = clock.0 - step.1;
+                if t < 16 {
+                    // Face the counter and grab.
+                    PlayerInput::new(Vec2::ZERO, 0.0, 0.0, if t >= 8 { INTERACT } else { 0 })
+                } else if t < 16 + 96 {
+                    // Back away for 1.5 s, still facing the counter.
+                    PlayerInput::new(Vec2::new(0.0, -1.0), 0.0, 0.0, 0)
+                } else {
+                    PlayerInput::default()
+                }
             }
         }
     };

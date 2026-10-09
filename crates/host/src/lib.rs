@@ -22,6 +22,7 @@ use shared::protocol::ProtocolPlugin;
 
 pub mod beer;
 pub mod customers;
+pub mod drunk;
 pub mod economy;
 pub mod game;
 pub mod physics;
@@ -97,6 +98,7 @@ impl HostSim {
             economy::EconomyPlugin,
             customers::CustomersPlugin,
             beer::BeerPlugin,
+            drunk::DrunkPlugin,
         ));
 
         let server = app.world_mut().spawn((Name::new("Server"), RawServer)).id();

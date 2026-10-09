@@ -8,6 +8,7 @@
 pub mod bar;
 pub mod beer;
 pub mod customers;
+pub mod drunk;
 pub mod economy;
 pub mod movement;
 pub mod rng;

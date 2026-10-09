@@ -237,3 +237,30 @@ Plan section 5.4 sets the shape; these numbers are mine (OPINION), in `crates/sh
 - Serving: a glass at rest anywhere on the counter top within 0.55 m (along the counter) of a waiting customer's stool. The zone spans the whole counter depth, so a server can reach it from either side.
 - The hand point rose from 1.15 m to 1.3 m above the feet, so a held glass clears the counter top. Bottles moved to mid-counter and chips to the back edge, clear of the front edge where glasses land.
 - serde-wasm-bindgen turns `None` into `undefined` in `window.__lastCall`, not `null`. Tests treat both as absent.
+
+### Client-predicted pour gauge
+
+The host's pour gauge reaches the client about a round trip late, so players (and CI's slow Chromium) released too late and overfilled. The client now runs the same `Pour::step` on its own inputs every tick, on its predicted timeline. Lightyear stamps inputs with the client's tick, so a release lands on the host at the tick the gauge showed. The HUD and `window.__lastCall.game.pour` show the predicted fill while E is held.
+
+When a client stalls, lightyear keeps the last known input for the missing ticks (VERIFIED: `decay_tick` is a no-op for native inputs). A stall just as E goes down therefore starts the pour late on the host. Native bot tests check what does not depend on timing; the browser test checks a perfect pour end to end.
+
+### Drunk meter
+
+Rules in `crates/shared/src/drunk.rs`; numbers beyond the plan's are mine (OPINION):
+- R with a beer in hand drinks it: +20, $5 from the pocket (not possible with less than $5). The meter decays 1 point per 2 s, also while passed out.
+- Effects build up: a Wasted player also has the Sloppy and Courage effects.
+- Courage (20+): camera sway on the client. The x1.5 max bet waits for the tables (Phase 3); `max_bet_multiplier` is ready.
+- Sloppy (40+): walk and sprint +10% (in shared movement, so prediction matches the host); throws go up to 36 degrees off aim; carried beer spills 1.5 times faster; screen blur; other players hear the voice at 0.8 pitch.
+- Wasted (70+): a stumble every 8 s that carries the player 0.9 m in a random direction; spills 2.5 times faster. "Cannot deal" and shuffled bet buttons wait for the tables; `can_deal` is ready.
+- 100: passed out for 45 s. Whenever the meter reaches 100, the player passes out.
+- Puddles: sprinting over one, or walking over one while Sloppy or worse, makes the player slide 0.9 m on.
+
+Pass-out ragdoll: the player's capsule becomes a dynamic body lying on its side, with rotation locked so it does not roll. Props stack on it. Another player grabs it with E (with empty hands, within 1.2 m of the hand) and pulls it along; Q lets go. The plan's 11-body ragdoll (section 7) belongs to the art pass. Stumbles, slips and drags are host-only; the owner's prediction is corrected by rollback.
+
+Screen blur: Bevy 0.19 turns depth of field off on WebGL2 (VERIFIED in `bevy_post_process/src/dof/mod.rs`: "depth textures aren't supported correctly"). The page blurs the canvas with a CSS filter instead, up to 5 px, from the strength the game reports. It also blurs the HUD; the art pass can move the HUD outside the canvas if needed.
+
+Drunk voice: each listener runs remote voices through an AudioWorklet pitch shifter (`web/pitch-worklet.js`, two cross-faded delay taps). The game reports a pitch factor per player (`game.voicePitch`). In Firefox the test measured 818 Hz drunk against 991 Hz sober (ratio 0.83 for a target of 0.8, with 47 Hz analyser bins).
+
+### Presets for drunk tests
+
+`?preset=tipsy` starts players at 45 (Sloppy) and `?preset=wasted` at 90, both with $300 in their pockets.

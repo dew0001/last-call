@@ -124,9 +124,11 @@ pub fn clean_name(raw: &str) -> String {
     if name.is_empty() { "Patron".into() } else { name.into() }
 }
 
-fn move_players(mut players: Query<(&mut PlayerPos, &mut PlayerYaw, &ActionState<PlayerInput>), With<Player>>) {
-    for (mut pos, mut yaw, action) in &mut players {
-        shared::net::apply_action(&mut pos, &mut yaw, action);
+fn move_players(
+    mut players: Query<(&mut PlayerPos, &mut PlayerYaw, &ActionState<PlayerInput>, Option<&Drunk>), With<Player>>,
+) {
+    for (mut pos, mut yaw, action, drunk) in &mut players {
+        shared::net::apply_action(&mut pos, &mut yaw, action, drunk);
     }
 }
 

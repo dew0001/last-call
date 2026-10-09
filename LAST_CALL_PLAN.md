@@ -431,8 +431,8 @@ Each phase ends with a demo build at a URL and a checklist. Do not start the nex
 - [x] Shift phases with timers and server-driven transitions.
 - [x] House pool, pockets, safe transfer, loan shark payment, win and loss screens.
 - [x] Customer NPC: spawn, walk to a stool, buy a drink, leave. Navmesh with `vleue_navigator` or `oxidized_navigation` (verify Bevy support).
-- [ ] Beer tap minigame complete. Pour, carry, serve, tips.
-- [ ] Drunk meter and all four drunk tiers including pass-out ragdoll and drag.
+- [x] Beer tap minigame complete. Pour, carry, serve, tips.
+- [x] Drunk meter and all four drunk tiers including pass-out ragdoll and drag.
 
 ### Phase 3: Casino core (weeks 5 to 7)
 - [ ] Blackjack full rules, server shoe, dealer role, customer bots with mistake rate, chip physics.

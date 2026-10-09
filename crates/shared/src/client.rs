@@ -150,9 +150,12 @@ fn write_input(local: Res<LocalInput>, mut q: Query<&mut ActionState<PlayerInput
 }
 
 fn predict_movement(
-    mut q: Query<(&mut PlayerPos, &mut PlayerYaw, &ActionState<PlayerInput>), (With<Predicted>, With<Player>)>,
+    mut q: Query<
+        (&mut PlayerPos, &mut PlayerYaw, &ActionState<PlayerInput>, Option<&crate::protocol::Drunk>),
+        (With<Predicted>, With<Player>),
+    >,
 ) {
-    for (mut pos, mut yaw, action) in &mut q {
-        crate::net::apply_action(&mut pos, &mut yaw, action);
+    for (mut pos, mut yaw, action, drunk) in &mut q {
+        crate::net::apply_action(&mut pos, &mut yaw, action, drunk);
     }
 }

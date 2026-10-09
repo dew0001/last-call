@@ -3,9 +3,11 @@
 // Signaling uses the Worker's voice mode (/room/CODE?role=voice&peer=ID),
 // where ID is the player's game id, so voices can be matched to positions.
 // Peers already in the room offer to a newcomer. Each remote voice plays
-// through Web Audio: source -> gain (distance) -> analyser -> speakers.
-// Volume: full at 2 m, silent at 14 m, linear between (plan section 8).
-// Occlusion by walls and the drunk pitch shift come in later phases.
+// through Web Audio: source -> pitch shift (drunk) -> gain (distance) ->
+// analyser -> speakers. Volume: full at 2 m, silent at 14 m, linear between
+// (plan section 8). A Sloppy or worse speaker sounds lower to everyone else
+// (the listener applies it; the game says how much). Wall occlusion comes
+// with the room layouts.
 import { signalUrl } from './net.js';
 
 const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
@@ -21,11 +23,18 @@ export function distanceGain(d) {
 }
 
 /**
- * Start voice. `positions()` returns { me: [x, y, z] | null, others: Map<id, [x, y, z]> }.
- * Returns a handle: { peers(), level(id), gain(id), stop() }.
+ * Start voice. `positions()` returns { me: [x, y, z] | null, others: Map<id, [x, y, z]>,
+ * pitch?: Map<id, number> }. Returns a handle: { peers(), level(id), peakHz(id), gain(id), stop() }.
  */
 export async function startVoice({ code, playerId, positions }) {
   const ctx = new AudioContext();
+  // The pitch shifter runs in an AudioWorklet; without one, voices play unshifted.
+  const worklet = ctx.audioWorklet
+    ? ctx.audioWorklet.addModule(new URL('./pitch-worklet.js', import.meta.url)).then(
+        () => true,
+        (e) => (console.warn('voice: no pitch shifter', e), false),
+      )
+    : Promise.resolve(false);
   const resume = () => ctx.state !== 'running' && ctx.resume().catch(() => {});
   resume();
   addEventListener('pointerdown', resume);
@@ -53,6 +62,7 @@ export async function startVoice({ code, playerId, positions }) {
       p.pc.close();
     } catch {}
     p.gain?.disconnect();
+    p.shift?.disconnect();
     p.el?.remove();
   };
 
@@ -75,8 +85,9 @@ export async function startVoice({ code, playerId, positions }) {
     pc.onicecandidate = (e) => {
       if (e.candidate) send({ Signal: { receiver: id, data: { IceCandidate: JSON.stringify(e.candidate) } } });
     };
-    pc.ontrack = (e) => {
+    pc.ontrack = async (e) => {
       const stream = e.streams[0] ?? new MediaStream([e.track]);
+      const shift = (await worklet) ? new AudioWorkletNode(ctx, 'pitch-shift') : null;
       // Chrome only feeds remote WebRTC audio into Web Audio while a media
       // element plays it; keep a muted one.
       const el = new Audio();
@@ -88,8 +99,8 @@ export async function startVoice({ code, playerId, positions }) {
       gain.gain.value = 0;
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 1024;
-      source.connect(gain).connect(analyser).connect(ctx.destination);
-      Object.assign(p, { gain, analyser, el, buf: new Float32Array(analyser.fftSize) });
+      (shift ? source.connect(shift).connect(gain) : source.connect(gain)).connect(analyser).connect(ctx.destination);
+      Object.assign(p, { gain, shift, analyser, el, buf: new Float32Array(analyser.fftSize) });
     };
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === 'failed' || pc.connectionState === 'closed') drop(id);
@@ -127,18 +138,29 @@ export async function startVoice({ code, playerId, positions }) {
 
   // Proximity: set each remote voice's volume from 3D distance.
   const timer = setInterval(() => {
-    const { me, others } = positions();
+    const { me, others, pitch } = positions();
     for (const [id, p] of peers) {
       if (!p.gain) continue;
       const them = others.get(id);
       const d = me && them ? Math.hypot(me[0] - them[0], me[1] - them[1], me[2] - them[2]) : Infinity;
       p.gain.gain.setTargetAtTime(distanceGain(d), ctx.currentTime, 0.05);
+      p.shift?.parameters.get('pitch').setValueAtTime(pitch?.get(id) ?? 1, ctx.currentTime);
     }
   }, UPDATE_MS);
 
   return {
     context: ctx,
     peers: () => [...peers.keys()],
+    /** Strongest frequency (Hz) in a remote voice after its pitch shift. */
+    peakHz(id) {
+      const p = peers.get(id);
+      if (!p?.analyser) return 0;
+      const bins = new Float32Array(p.analyser.frequencyBinCount);
+      p.analyser.getFloatFrequencyData(bins);
+      let best = 1;
+      for (let i = 2; i < bins.length; i++) if (bins[i] > bins[best]) best = i;
+      return (best * ctx.sampleRate) / p.analyser.fftSize;
+    },
     /** RMS level (0..1) of a remote voice after its distance gain. */
     level(id) {
       const p = peers.get(id);
