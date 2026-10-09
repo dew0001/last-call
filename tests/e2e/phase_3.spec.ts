@@ -283,3 +283,50 @@ test('table keys: T takes the deal, digits bet', async ({ browser }) => {
   await player.context().close();
   await host.context().close();
 });
+
+test('a saved run resumes in a new room with the same money and shift', async ({ browser }) => {
+  test.setTimeout(240_000);
+  // fast=60: a 14-second shift. The host plays the slots so its pocket and
+  // the house pool move, then the next Setup saves the run.
+  const { host } = await createRoom(browser, undefined, '&fast=60&preset=casino');
+  const id = (await status(host)).playerId as string;
+  await walkToOnHost(host, toSeat(...SLOT0));
+  for (let i = 1; i <= 3; i++) {
+    await ask(host, { Slot: 0 }, { Pull: 5 });
+    await waitFor(host, `pull ${i}`, (s) => s.game?.casino?.slots?.[0]?.pulls === i && !s.game.casino.slots[0].spinning, 15_000);
+  }
+  const latest = () =>
+    host.evaluate(async () => {
+      const saves = await import(/* @vite-ignore */ '/saves.js');
+      const s = await saves.latest();
+      return s ? JSON.parse(s.json) : null;
+    });
+  let save: any = null;
+  for (let i = 0; i < 120 && !(save?.calendar?.shift >= 1); i++) {
+    await host.waitForTimeout(500);
+    save = await latest();
+  }
+  expect(save?.calendar?.shift, 'saved at the next Setup').toBeGreaterThanOrEqual(1);
+  expect(save.pockets[id]).toBeDefined();
+  test.info().annotations.push({ type: 'save', description: JSON.stringify(save) });
+
+  // Close the tab; the same browser profile (same player id) resumes the run.
+  const context = host.context();
+  await host.close();
+  const title = await context.newPage();
+  await title.goto('/?gpu=webgl2');
+  await expect(title.locator('#resume')).toBeVisible({ timeout: 60_000 });
+  await expect(title.locator('#resume')).toContainText(`week ${save.calendar.week}, shift ${save.calendar.shift + 1}`);
+  await title.close();
+
+  const resumed = await context.newPage();
+  await resumed.goto('/?create&resume&gpu=webgl2&nodraw&novoice&name=Host');
+  const s = await waitFor(resumed, 'resumed', (s) => !!s.playerId && !!s.game?.money && s.game.pocket != null, 60_000);
+  expect(s.playerId).toBe(id);
+  expect(s.game.shift.week).toBe(save.calendar.week);
+  expect(s.game.shift.shift).toBe(save.calendar.shift + 1);
+  expect(s.game.shift.phase).toBe('SETUP');
+  expect(s.game.money.house).toBe(save.ledger.house);
+  expect(s.game.pocket).toBe(save.pockets[id]);
+  await context.close();
+});

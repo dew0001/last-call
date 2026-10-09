@@ -24,6 +24,10 @@ extern "C" {
     #[wasm_bindgen(js_namespace = globalThis, js_name = __hostOut)]
     fn host_out(peer: u32, bytes: &Uint8Array);
 
+    /// Store the newest run save (IndexedDB, `web/saves.js`).
+    #[wasm_bindgen(js_namespace = globalThis, js_name = __hostSave)]
+    fn host_save(json: &str);
+
     /// Store a JSONL chunk of the RNG audit log (IndexedDB, `web/audit.js`).
     #[wasm_bindgen(js_namespace = globalThis, js_name = __hostAudit)]
     fn host_audit(text: &str);
@@ -128,8 +132,10 @@ pub fn host_leave(peer: u32) {
 /// use `?fast=60` for a 14-second shift). `seed` is 32 random bytes. `preset`
 /// picks a test start (`lastweek`, `broke`) or is empty. `customers` is
 /// `bar` to send every customer to the bar (tests of the beer tap), or empty.
+/// `resume` is a saved run as JSON ([`shared::save::RunSave`]), or empty for
+/// a new run; a save this build cannot read starts a new run.
 #[wasm_bindgen]
-pub fn host_worker_start(fast: u32, seed: &[u8], preset: &str, customers: &str) {
+pub fn host_worker_start(fast: u32, seed: &[u8], preset: &str, customers: &str, resume: &str) {
     console_error_panic_hook::set_once();
     let scope = scope();
     let mut room_seed = [0u8; 32];
@@ -141,6 +147,13 @@ pub fn host_worker_start(fast: u32, seed: &[u8], preset: &str, customers: &str) 
         seed: room_seed,
         preset: crate::economy::Preset::parse(preset),
         tastes: (customers == "bar").then_some(crate::customers::BAR_ONLY),
+        resume: if resume.is_empty() {
+            None
+        } else {
+            shared::save::RunSave::from_json(resume)
+                .inspect_err(|e| web_sys::console::error_1(&format!("cannot resume: {e}; starting a new run").into()))
+                .ok()
+        },
     };
     STATE.with(|s| {
         *s.borrow_mut() = Some(State {
@@ -168,6 +181,9 @@ pub fn host_worker_start(fast: u32, seed: &[u8], preset: &str, customers: &str) 
                 let (sum, max, n) = std::mem::take(&mut s.cost);
                 let avg = if n > 0 { sum / f64::from(n) } else { 0.0 };
                 post_report(&scope, &mut s.sim, tps, avg, max);
+                if let Some(save) = s.sim.take_save() {
+                    host_save(&save.to_json());
+                }
                 let text: String = s.sim.drain_audit().iter().map(|e| e.to_line() + "\n").collect();
                 if !text.is_empty() {
                     host_audit(&text);

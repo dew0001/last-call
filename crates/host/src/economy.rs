@@ -91,13 +91,20 @@ struct SafeButtons(u16);
 
 pub struct EconomyPlugin;
 
+/// The economy systems (saves run after them).
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct EconomySet;
+
 impl Plugin for EconomyPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<RunStart>();
         app.add_systems(Startup, open_books.after(crate::shift::start_clock));
         app.add_systems(
             FixedUpdate,
-            (give_pockets, safe_deposits, collect_payments, end_run, update_due).chain().after(RunClock),
+            (give_pockets, safe_deposits, collect_payments, end_run, update_due)
+                .chain()
+                .in_set(EconomySet)
+                .after(RunClock),
         );
     }
 }
@@ -109,9 +116,17 @@ fn open_books(mut commands: Commands, start: Res<RunStart>, room: Query<Entity, 
     }
 }
 
-fn give_pockets(mut commands: Commands, start: Res<RunStart>, players: Query<Entity, (With<Player>, Without<Pocket>)>) {
-    for player in &players {
-        commands.entity(player).insert((Pocket(start.pocket), SafeButtons::default()));
+/// A joining player gets the run's starting pocket, or their own pocket from
+/// a resumed save.
+fn give_pockets(
+    mut commands: Commands,
+    start: Res<RunStart>,
+    mut saved: ResMut<crate::save::SavedPockets>,
+    players: Query<(Entity, &Player), Without<Pocket>>,
+) {
+    for (entity, player) in &players {
+        let pocket = saved.0.remove(&player.id).unwrap_or(start.pocket);
+        commands.entity(entity).insert((Pocket(pocket), SafeButtons::default()));
     }
 }
 
@@ -172,6 +187,7 @@ fn end_run(
     mut timer: ResMut<ShiftTimer>,
     mut room: Query<&mut RunLedger, With<RoomState>>,
     mut pockets: Query<&mut Pocket>,
+    mut saved: ResMut<crate::save::SavedPockets>,
     mut started: MessageWriter<PhaseStarted>,
 ) {
     let Some(mut over) = over else { return };
@@ -186,6 +202,7 @@ fn end_run(
     for mut pocket in &mut pockets {
         pocket.0 = 0;
     }
+    saved.0.clear();
     let calendar = Calendar::default();
     *timer = ShiftTimer {
         calendar,

@@ -349,3 +349,13 @@ The user asked that every activity be available from the beginning of the game. 
 ### WebKit: a walk the host never saw (open)
 
 In one CI run, a WebKit host tab walked to the blackjack seat on its own screen (client prediction), but the host Worker never moved the player: the client then snapped back to the spawn point. The same test passed in WebKit on the run before. The cause is not known yet; the host tab's own client talks to the Worker over a `MessageChannel`, not WebRTC. The phase 3 browser tests now confirm arrival with the Worker's own position report (`walkToOnHost`) and walk again if needed. If this recurs, the next step is to log the Worker's received input ticks in WebKit.
+
+### Saved runs (2026-10-09)
+
+The user asked for a way to stop and resume a run (a full run is 6 weeks of 3 fourteen-minute shifts, about 4.2 hours). The plan had none: the room ended when the host left.
+
+- **What is saved** (`shared::save::RunSave`, JSON): the ledger (house pool, debt paid, carried payment, missed payments, new game plus level), the calendar, and each player's pocket by player id (hex). Props, customers, drunk meters and table rounds are not saved: they reset at every shift anyway. A resumed room draws a fresh RNG seed and starts a new audit log.
+- **When:** at the start of every Setup except the room's first, so opening a room by mistake does not replace the saved run before a shift is played. One save slot: the newest save wins.
+- **Where:** the host's browser, IndexedDB `lastcall-saves` (`web/saves.js`); natively `host-native --save FILE`. Like the audit log, it never leaves the host's machine.
+- **Resume:** the title screen shows "Continue run: week W, shift S · house $X" when a save exists; it opens `?create&resume`, a new room (new code) at that shift's Setup. Players rejoin by the new link. A returning player is matched by player id (from the UUID in their browser's `localStorage`) and gets their pocket back; a new player gets the run's starting pocket. Pockets of players who have not rejoined carry into later saves; a new run (win or loss) drops them.
+- A save from another format version is refused, and the room starts a new run.

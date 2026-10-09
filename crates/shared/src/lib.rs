@@ -20,6 +20,7 @@ pub mod movement;
 pub mod rng;
 pub mod room;
 pub mod roulette;
+pub mod save;
 pub mod shift;
 pub mod slots;
 

@@ -13,7 +13,7 @@ use shared::roulette::Bet as RBet;
 use shared::shift::Timings;
 
 fn sim(timings: Timings) -> HostSim {
-    HostSim::with_config(HostConfig { preset: Preset::Casino, timings, seed: [7; 32], tastes: None })
+    HostSim::with_config(HostConfig { preset: Preset::Casino, timings, seed: [7; 32], ..Default::default() })
 }
 
 /// Shifts that stay in Setup (no customers) for a long time.

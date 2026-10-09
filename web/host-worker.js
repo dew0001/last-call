@@ -12,6 +12,13 @@
 //   { t: 'audit', run }            the RNG audit log's run id (IndexedDB)
 import init, { host_worker_start, host_connect, host_packet, host_leave } from './pkg/host.js';
 import { append, newRun, prune } from './audit.js';
+import { latest, store } from './saves.js';
+
+// The newest run save, written at every Setup (web/saves.js).
+let saves = Promise.resolve();
+globalThis.__hostSave = (json) => {
+  saves = saves.then(() => store(json)).catch((e) => postMessage({ t: 'error', message: `save: ${e}` }));
+};
 
 // The RNG audit log: the wasm host hands over JSONL once a second; chunks
 // go to IndexedDB in order.
@@ -80,8 +87,8 @@ onmessage = (e) => (ready ? handle(e.data) : pending.push(e.data));
 
 await init();
 // `?fast=N` on the worker URL shortens every shift phase N times,
-// `?preset=` picks a test start (tests and demos), and `?customers=bar`
-// sends every customer to the bar.
+// `?preset=` picks a test start (tests and demos), `?customers=bar`
+// sends every customer to the bar, and `?resume` continues the saved run.
 const search = new URL(self.location.href).searchParams;
 const fast = Number(search.get('fast') ?? 1) || 1;
 host_worker_start(
@@ -89,6 +96,7 @@ host_worker_start(
   crypto.getRandomValues(new Uint8Array(32)),
   search.get('preset') ?? '',
   search.get('customers') ?? '',
+  search.has('resume') ? ((await latest().catch(() => undefined))?.json ?? '') : '',
 );
 ready = true;
 for (const m of pending.splice(0)) handle(m);

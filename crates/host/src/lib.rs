@@ -30,6 +30,7 @@ pub mod game;
 pub mod physics;
 pub mod replay;
 pub mod runner;
+pub mod save;
 pub mod shift;
 #[cfg(target_arch = "wasm32")]
 mod web;
@@ -55,6 +56,9 @@ pub struct HostConfig {
     /// How customers pick what to do (bar, blackjack, roulette, slots).
     /// `None` uses [`customers::ACTIVITY_WEIGHTS`].
     pub tastes: Option<[u32; 4]>,
+    /// Resume a saved run: its ledger, calendar and pockets replace the
+    /// preset's.
+    pub resume: Option<shared::save::RunSave>,
 }
 
 /// Run every schedule on one thread, in its fixed topological order. The
@@ -113,7 +117,13 @@ impl HostSim {
         app.insert_resource(RoomSeed(config.seed));
         app.insert_resource(customers::Tastes(config.tastes.unwrap_or(customers::ACTIVITY_WEIGHTS)));
         app.insert_resource(casino::Audit(shared::audit::AuditLog::new(&config.seed)));
-        app.insert_resource(config.preset.start());
+        let mut start = config.preset.start();
+        if let Some(save) = &config.resume {
+            start.ledger = save.ledger;
+            start.calendar = save.calendar;
+            app.insert_resource(save::SavedPockets(save.pockets_by_id()));
+        }
+        app.insert_resource(start);
         app.add_plugins((
             game::GamePlugin,
             physics::HostPhysicsPlugin,
@@ -123,6 +133,7 @@ impl HostSim {
             beer::BeerPlugin,
             drunk::DrunkPlugin,
             casino::CasinoPlugin,
+            save::SavePlugin,
         ));
 
         deterministic_schedules(&mut app);
@@ -197,6 +208,12 @@ impl HostSim {
     /// it had come over the network.
     pub fn table_request(&mut self, player: Entity, request: shared::protocol::TableRequest) {
         self.app.world_mut().resource_mut::<casino::TableQueue>().0.push((player, request));
+    }
+
+    /// Take the newest run save, if one was written since the last call
+    /// (one is written at the start of every Setup).
+    pub fn take_save(&mut self) -> Option<shared::save::RunSave> {
+        self.app.world_mut().resource_mut::<save::PendingSave>().0.take()
     }
 
     /// Take the audit log lines written since the last call.

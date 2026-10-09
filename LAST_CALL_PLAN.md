@@ -133,6 +133,7 @@ Use `cargo workspace` with shared `[workspace.dependencies]`. `shared` must not 
   - The signaling Durable Object for a room is deleted 2 minutes after the host disconnects.
 - Host leaves: the room ends. Every client shows a "Host left" screen within 5 seconds. Host migration is out of scope for v1.
 - Background throttling: browsers throttle timers in background tabs. The sim runs in a dedicated Worker, and the host tab keeps an active audio context (voice) to stay unthrottled. The Phase 1 e2e test hides the host tab for 60 seconds and asserts the tick rate holds.
+- Saved runs (user decision, 2026-10-09): the host saves the run at every shift's Setup in its own IndexedDB and can resume it later in a new room; see `docs/DECISIONS.md`.
 - Persistence: no server-side storage. Each client stores its UUID, cosmetics, unlocks, and run summaries in `localStorage`. No accounts in v1.
 - All randomness: `ChaCha20Rng` seeded from `getrandom` at room start. One RNG stream per table so a slot machine does not drain the roulette stream. Log every RNG draw with table id and tick behind an `RngLog` trait: IndexedDB in the browser (exportable from the debug menu), a JSONL file in native tests. The replay tool reads either.
 

@@ -245,6 +245,8 @@ function startHostWorker() {
   // `?fast=N` runs shifts N times faster; `?preset=` picks a test start;
   // `?customers=bar` keeps every customer at the bar.
   for (const key of ['fast', 'preset', 'customers']) if (params.get(key)) url.searchParams.set(key, params.get(key));
+  // `?resume`: continue the saved run (web/saves.js).
+  if (params.has('resume')) url.searchParams.set('resume', '');
   const worker = new Worker(url, { type: 'module' });
   worker.addEventListener('message', (e) => {
     if (e.data?.t === 'tick') window.__hostTicks.push(e.data);
@@ -363,12 +365,33 @@ async function runPlayer(code) {
   globalThis.__clientOut = (bytes) => net.send(bytes);
 }
 
+/// Show "Continue run" on the title screen when a run is saved.
+async function offerSavedRun() {
+  const button = document.getElementById('resume');
+  if (!button) return;
+  try {
+    const { latest } = await import('./saves.js');
+    const save = await latest();
+    if (!save) return;
+    const run = JSON.parse(save.json);
+    const house = run.ledger.house.toLocaleString('en-US');
+    button.textContent = `Continue run: week ${run.calendar.week}, shift ${run.calendar.shift + 1} · house $${house}`;
+    button.hidden = false;
+    button.addEventListener('click', () => {
+      location.search = '?create&resume';
+    });
+  } catch (e) {
+    console.warn('no saved run', e);
+  }
+}
+
 async function runTitle() {
   const mod = await loadClient();
   show(lobby);
   document.getElementById('create')?.addEventListener('click', () => {
     location.search = '?create';
   });
+  offerSavedRun();
   document.getElementById('join-form')?.addEventListener('submit', (e) => {
     e.preventDefault();
     const code = parseRoomCode(document.getElementById('join-code').value);
