@@ -5,16 +5,22 @@
 //! The `net` feature (default) adds the lightyear protocol and the Bevy-side
 //! simulation shared by host and predicting clients.
 
+pub mod audit;
 pub mod bar;
 pub mod beer;
+pub mod blackjack;
+pub mod cards;
 pub mod customers;
 pub mod drunk;
 pub mod economy;
 pub mod math;
+pub mod minigame;
 pub mod movement;
 pub mod rng;
 pub mod room;
+pub mod roulette;
 pub mod shift;
+pub mod slots;
 
 #[cfg(feature = "net")]
 pub mod client;
