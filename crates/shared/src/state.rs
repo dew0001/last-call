@@ -1,7 +1,7 @@
 //! A hash of the replicated game state, for checking that clients agree with
 //! the host (plan section 11). It covers the discrete state every client
 //! receives as is: players' money and drunk meters, the shift clock and
-//! ledger, customers, glasses and puddles. Positions are left out: clients
+//! ledger, customers, glasses, puddles, chip stacks and the casino tables. Positions are left out: clients
 //! predict or interpolate them, so they differ from the host's on purpose.
 
 use bevy::prelude::*;
@@ -68,5 +68,19 @@ pub fn replicated_hash(world: &mut World) -> u64 {
     }
     let puddles = world.query::<&Puddle>().iter(world).count();
     h.i64(puddles as i64);
+    let chips: i64 = world.query::<&ChipValue>().iter(world).map(|c| c.0).sum();
+    h.i64(chips);
+    for v in world.query::<&BlackjackView>().iter(world) {
+        h.bytes(&serde_json::to_vec(v).unwrap_or_default());
+    }
+    for v in world.query::<&RouletteView>().iter(world) {
+        h.bytes(&serde_json::to_vec(v).unwrap_or_default());
+    }
+    let mut slots: Vec<&SlotView> = world.query::<&SlotView>().iter(world).collect();
+    slots.sort_by_key(|s| s.machine);
+    slots.dedup();
+    for v in slots {
+        h.bytes(&serde_json::to_vec(v).unwrap_or_default());
+    }
     h.0
 }

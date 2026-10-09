@@ -170,6 +170,7 @@ type PropQuery<'w, 's> = Query<
         &'static mut LinearVelocity,
         &'static mut AngularVelocity,
         Option<&'static mut Beer>,
+        Option<&'static ChipValue>,
     ),
     Without<Player>,
 >;
@@ -185,6 +186,7 @@ type HandPlayers<'w, 's> = Query<
         Option<&'static ActionState<PlayerInput>>,
         Option<&'static Drunk>,
         Has<crate::drunk::Dragging>,
+        Option<&'static mut Pocket>,
     ),
 >;
 
@@ -194,9 +196,10 @@ fn hands(
     mut commands: Commands,
     tick: Res<crate::TickCount>,
     mut rng: ResMut<crate::drunk::PlayerRng>,
+    mut audit: ResMut<crate::casino::Audit>,
 ) {
     let dt = shared::TICK.as_secs_f32();
-    for (player, pos, yaw, mut hands, action, drunk, dragging) in &mut players {
+    for (player, pos, yaw, mut hands, action, drunk, dragging, mut pocket) in &mut players {
         if drunk.is_some_and(|d| d.passed_out) {
             continue;
         }
@@ -217,8 +220,18 @@ fn hands(
                 .filter(|(_, d)| *d <= REACH)
                 .min_by(|a, b| a.1.total_cmp(&b.1));
             if let Some((e, _)) = nearest
-                && let Ok((_, _, mut held, ..)) = props.get_mut(e)
+                && let Ok((_, _, mut held, _, _, _, chips)) = props.get_mut(e)
             {
+                // A chip stack with money on it goes straight into the pocket.
+                if let Some(value) = chips
+                    && let Some(pocket) = pocket.as_mut()
+                {
+                    pocket.0 += value.0;
+                    held.0 = Some(player.id);
+                    commands.entity(e).despawn();
+                    hands.prev_buttons = b;
+                    continue;
+                }
                 held.0 = Some(player.id);
                 commands.entity(e).insert(RigidBody::Kinematic).remove::<Sleeping>();
                 hands.held = Some(e);
@@ -227,7 +240,7 @@ fn hands(
         }
 
         if let Some(e) = hands.held {
-            let Ok((_, p, mut held, mut lin, mut ang, beer)) = props.get_mut(e) else {
+            let Ok((_, p, mut held, mut lin, mut ang, beer, _)) = props.get_mut(e) else {
                 hands.held = None;
                 continue;
             };
@@ -239,7 +252,11 @@ fn hands(
                 let speed = THROW_MIN + (THROW_MAX - THROW_MIN) * t;
                 // Sloppy and worse throws go wide.
                 let spread = shared::drunk::throw_spread(shared::drunk::Tier::of(drunk.map_or(0, |d| d.level)));
-                let fwd = if spread > 0.0 { Quat::from_rotation_y(spread * rng.signed(tick.0)) * fwd } else { fwd };
+                let fwd = if spread > 0.0 {
+                    Quat::from_rotation_y(spread * rng.signed(tick.0, &mut audit)) * fwd
+                } else {
+                    fwd
+                };
                 held.0 = None;
                 lin.0 = fwd * speed + Vec3::Y * 2.0;
                 ang.0 = Vec3::new(4.0, 0.0, 2.0);

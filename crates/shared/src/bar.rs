@@ -35,6 +35,9 @@ pub enum BlockKind {
     Counter,
     Wall,
     Safe,
+    /// A casino table: its top is the felt.
+    Table,
+    SlotMachine,
 }
 
 const fn block(cx: f32, cz: f32, hx: f32, hz: f32, height: f32, kind: BlockKind) -> Block {
@@ -56,8 +59,10 @@ pub const TAP: (f32, f32) = (4.0, COUNTER.1);
 /// How close (horizontal distance to the tap) a player must stand to pour.
 pub const TAP_REACH: f32 = 1.4;
 
+use crate::casino::{BLACKJACK, BLACKJACK_HALF, FELT_HEIGHT, ROULETTE, ROULETTE_HALF, SLOT_HALF, SLOT_HEIGHT, SLOTS};
+
 /// Everything players collide with besides the outer walls.
-pub const BLOCKS: [Block; 5] = [
+pub const BLOCKS: [Block; 9] = [
     block(COUNTER.0, COUNTER.1, COUNTER.2, COUNTER.3, COUNTER_HEIGHT, BlockKind::Counter),
     // Office side wall along x = 6.
     block(6.0, -4.5, WALL_T, 2.5, WALL_HEIGHT, BlockKind::Wall),
@@ -65,6 +70,10 @@ pub const BLOCKS: [Block; 5] = [
     block((6.0 + OFFICE_DOOR.0) / 2.0, -2.0, (OFFICE_DOOR.0 - 6.0) / 2.0, WALL_T, WALL_HEIGHT, BlockKind::Wall),
     block((OFFICE_DOOR.1 + HALF_X) / 2.0, -2.0, (HALF_X - OFFICE_DOOR.1) / 2.0, WALL_T, WALL_HEIGHT, BlockKind::Wall),
     block(SAFE.0, SAFE.1, 0.4, 0.4, 1.0, BlockKind::Safe),
+    block(BLACKJACK.0, BLACKJACK.1, BLACKJACK_HALF.0, BLACKJACK_HALF.1, FELT_HEIGHT, BlockKind::Table),
+    block(ROULETTE.0, ROULETTE.1, ROULETTE_HALF.0, ROULETTE_HALF.1, FELT_HEIGHT, BlockKind::Table),
+    block(SLOTS[0].0, SLOTS[0].1, SLOT_HALF.0, SLOT_HALF.1, SLOT_HEIGHT, BlockKind::SlotMachine),
+    block(SLOTS[1].0, SLOTS[1].1, SLOT_HALF.0, SLOT_HALF.1, SLOT_HEIGHT, BlockKind::SlotMachine),
 ];
 
 /// Spawn points for up to 8 players, spread along the front of the room.

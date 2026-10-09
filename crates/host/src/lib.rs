@@ -22,6 +22,7 @@ use shared::pipe::{PipeIo, PipePlugin};
 use shared::protocol::ProtocolPlugin;
 
 pub mod beer;
+pub mod casino;
 pub mod customers;
 pub mod drunk;
 pub mod economy;
@@ -51,6 +52,9 @@ pub struct HostConfig {
     pub seed: [u8; 32],
     /// A test or demo start (`?preset=`).
     pub preset: economy::Preset,
+    /// How customers pick what to do (bar, blackjack, roulette, slots).
+    /// `None` uses [`customers::ACTIVITY_WEIGHTS`].
+    pub tastes: Option<[u32; 4]>,
 }
 
 /// Run every schedule on one thread, in its fixed topological order. The
@@ -107,6 +111,8 @@ impl HostSim {
         app.add_systems(FixedUpdate, advance_tick);
         app.insert_resource(shift::ShiftConfig { timings: config.timings });
         app.insert_resource(RoomSeed(config.seed));
+        app.insert_resource(customers::Tastes(config.tastes.unwrap_or(customers::ACTIVITY_WEIGHTS)));
+        app.insert_resource(casino::Audit(shared::audit::AuditLog::new(&config.seed)));
         app.insert_resource(config.preset.start());
         app.add_plugins((
             game::GamePlugin,
@@ -116,6 +122,7 @@ impl HostSim {
             customers::CustomersPlugin,
             beer::BeerPlugin,
             drunk::DrunkPlugin,
+            casino::CasinoPlugin,
         ));
 
         deterministic_schedules(&mut app);
@@ -184,6 +191,17 @@ impl HostSim {
         {
             action.0 = input;
         }
+    }
+
+    /// Queue a table request from a local player (tests and replays), as if
+    /// it had come over the network.
+    pub fn table_request(&mut self, player: Entity, request: shared::protocol::TableRequest) {
+        self.app.world_mut().resource_mut::<casino::TableQueue>().0.push((player, request));
+    }
+
+    /// Take the audit log lines written since the last call.
+    pub fn drain_audit(&mut self) -> Vec<shared::audit::Entry> {
+        self.app.world_mut().resource_mut::<casino::Audit>().0.drain()
     }
 
     /// Run exactly one simulation tick.

@@ -1,5 +1,7 @@
 //! Customers: a wave walks in, sits on the stools, orders, gives up when
 //! nobody serves them, leaves at Last call, and leaves when their stool goes.
+//! These rooms send every customer to the bar; `host/tests/casino.rs` covers
+//! the tables.
 
 use avian3d::prelude::Position;
 use bevy::ecs::world::World;
@@ -16,7 +18,11 @@ fn timings(open: u32, last_call: u32) -> Timings {
 }
 
 fn room(timings: Timings, seed: u8) -> LocalRoom {
-    LocalRoom::with_config(1, HostConfig { timings, seed: [seed; 32], ..Default::default() }, |_| Script::Idle)
+    LocalRoom::with_config(
+        1,
+        HostConfig { timings, seed: [seed; 32], tastes: Some(host::customers::BAR_ONLY), ..Default::default() },
+        |_| Script::Idle,
+    )
 }
 
 fn customers(world: &mut World) -> Vec<(Customer, NpcPose)> {

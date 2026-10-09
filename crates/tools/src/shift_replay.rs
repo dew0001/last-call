@@ -21,7 +21,15 @@ pub fn run(update: bool, ticks: Option<u64>, describe: bool) -> i32 {
     });
     print!("{text}");
     let hex = format!("{:016x}", r.hash);
-    println!("{hex}  ({:.1} s; house {}, {} puddles)", start.elapsed().as_secs_f32(), r.house, r.puddles);
+    println!(
+        "{hex}  ({:.1} s; house {}, {} puddles, {} blackjack rounds, {} spins, {} slot pulls)",
+        start.elapsed().as_secs_f32(),
+        r.house,
+        r.puddles,
+        r.rounds,
+        r.spins,
+        r.pulls
+    );
     if update && ticks.is_none() {
         let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").join(GOLDEN);
         if let Err(e) = fs::write(&path, format!("{hex}\n")) {

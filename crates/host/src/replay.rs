@@ -8,6 +8,7 @@
 
 use avian3d::prelude::{Position, Rotation};
 use bevy::prelude::*;
+use shared::casino::TableAction;
 use shared::movement::buttons;
 use shared::protocol::*;
 
@@ -34,6 +35,8 @@ enum Step {
     Hold { buttons: u16, yaw: f32, pitch: f32, ticks: u64 },
     /// Walk forward while turning, for some ticks.
     Circle(u64),
+    /// Run a table for the rest of the shift (see [`run_table`]).
+    Run(shared::casino::TableId),
 }
 
 const BARTENDER: &[Step] = &[
@@ -62,6 +65,20 @@ const THROWER: &[Step] = &[
     Step::Hold { buttons: 0, yaw: std::f32::consts::PI, pitch: 0.0, ticks: 600 },
 ];
 
+const DEALER: &[Step] = &[
+    Step::Walk(-3.0, -0.6),
+    Step::Walk(-5.0, -0.6),
+    Step::Hold { buttons: 0, yaw: std::f32::consts::PI, pitch: 0.0, ticks: 8 },
+    Step::Run(shared::casino::TableId::Blackjack),
+];
+
+const CROUPIER: &[Step] = &[
+    Step::Walk(2.5, -0.2),
+    Step::Walk(4.5, -0.2),
+    Step::Hold { buttons: 0, yaw: std::f32::consts::PI, pitch: 0.0, ticks: 8 },
+    Step::Run(shared::casino::TableId::Roulette),
+];
+
 const SPILLER: &[Step] = &[
     Step::Walk(4.6, -1.5),
     Step::Walk(4.6, -3.0),
@@ -78,12 +95,21 @@ impl Bot {
         Self { steps, at: 0, since: 0 }
     }
 
+    /// The table this bot runs, once it got there.
+    fn running(&self) -> Option<shared::casino::TableId> {
+        match self.steps[self.at] {
+            Step::Run(t) => Some(t),
+            _ => None,
+        }
+    }
+
     fn input(&mut self, pos: Vec3) -> PlayerInput {
         loop {
             let step = self.steps[self.at];
             let done = match step {
                 Step::Walk(x, z) => Vec2::new(x - pos.x, z - pos.z).length() < 0.15 || self.since > 64 * 20,
                 Step::Hold { ticks, .. } | Step::Circle(ticks) => self.since >= ticks,
+                Step::Run(_) => false,
             };
             if !done {
                 self.since += 1;
@@ -94,6 +120,7 @@ impl Bot {
                     }
                     Step::Hold { buttons, yaw, pitch, .. } => PlayerInput::new(Vec2::ZERO, yaw, pitch, buttons),
                     Step::Circle(_) => PlayerInput::new(Vec2::Y, self.since as f32 * 0.02, 0.0, 0),
+                    Step::Run(_) => PlayerInput::new(Vec2::ZERO, std::f32::consts::PI, 0.0, 0),
                 };
             }
             self.at = (self.at + 1) % self.steps.len();
@@ -209,6 +236,24 @@ pub fn state_parts(world: &mut World) -> Vec<(&'static str, u64)> {
         h.vec3(p);
     }
     parts.push(("puddles", h.0));
+    let mut h = Fnv::new();
+    let mut chips: Vec<i64> = world.query::<&ChipValue>().iter(world).map(|c| c.0).collect();
+    chips.sort_unstable();
+    for c in chips {
+        h.u64(c as u64);
+    }
+    for v in world.query::<&BlackjackView>().iter(world) {
+        h.bytes(&serde_json::to_vec(v).unwrap_or_default());
+    }
+    for v in world.query::<&RouletteView>().iter(world) {
+        h.bytes(&serde_json::to_vec(v).unwrap_or_default());
+    }
+    let mut slots: Vec<SlotView> = world.query::<&SlotView>().iter(world).cloned().collect();
+    slots.sort_by_key(|s| s.machine);
+    for v in slots {
+        h.bytes(&serde_json::to_vec(&v).unwrap_or_default());
+    }
+    parts.push(("casino", h.0));
     parts
 }
 
@@ -216,9 +261,44 @@ pub fn state_parts(world: &mut World) -> Vec<(&'static str, u64)> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReplayResult {
     pub hash: u64,
-    /// The house pool at the end: $8 per beer served.
+    /// The house pool at the end.
     pub house: i64,
     pub puddles: usize,
+    /// Blackjack rounds dealt, roulette spins, slot pulls.
+    pub rounds: u32,
+    pub spins: u32,
+    pub pulls: u32,
+}
+
+/// A dealer's or croupier's requests for this tick, read from the table's
+/// view: take the role, deal when bets are down, play the house hand, spin
+/// when bets are down, rake losing chips. Every 16 ticks, like a player
+/// reacting about four times a second.
+fn run_table(world: &mut World, table: shared::casino::TableId, tick: u64, out: &mut Vec<TableAction>) {
+    if !tick.is_multiple_of(16) {
+        return;
+    }
+    out.push(TableAction::TakeRole);
+    match table {
+        shared::casino::TableId::Blackjack => {
+            let Some(v) = world.query::<&BlackjackView>().iter(world).next().cloned() else { return };
+            if v.phase == BjPhase::Betting && v.seats.iter().any(|s| s.bet > 0) {
+                out.push(TableAction::Deal);
+            }
+            if let Some(a) = v.dealer_should {
+                out.push(TableAction::Dealer(a));
+            }
+        }
+        shared::casino::TableId::Roulette => {
+            let Some(v) = world.query::<&RouletteView>().iter(world).next().cloned() else { return };
+            if v.to_rake > 0 {
+                out.push(TableAction::Rake);
+            } else if !v.spinning && !v.bets.is_empty() {
+                out.push(TableAction::Spin);
+            }
+        }
+        shared::casino::TableId::Slot(_) => {}
+    }
 }
 
 /// Run the scripted shift for `ticks` ticks and hash the final state.
@@ -229,7 +309,14 @@ pub fn run(ticks: u64) -> ReplayResult {
 /// [`run`], then let `inspect` look at the final world (debugging).
 pub fn run_with(ticks: u64, inspect: impl FnOnce(&mut World)) -> ReplayResult {
     let mut sim = HostSim::with_config(HostConfig { seed: SEED, ..Default::default() });
-    let mut bots = [Bot::new(BARTENDER), Bot::new(WALKER), Bot::new(THROWER), Bot::new(SPILLER)];
+    let mut bots = [
+        Bot::new(BARTENDER),
+        Bot::new(WALKER),
+        Bot::new(THROWER),
+        Bot::new(SPILLER),
+        Bot::new(DEALER),
+        Bot::new(CROUPIER),
+    ];
     let players: Vec<Entity> =
         (0..bots.len()).map(|i| sim.add_local_player(0xba5e_0000 + i as u64, "replay", i as u8)).collect();
     for _ in 0..ticks {
@@ -237,15 +324,28 @@ pub fn run_with(ticks: u64, inspect: impl FnOnce(&mut World)) -> ReplayResult {
             let pos = sim.world().get::<PlayerPos>(player).map_or(Vec3::ZERO, |p| p.0);
             let input = bot.input(pos);
             sim.set_input(player, input);
+            if let Some(table) = bot.running() {
+                let mut actions = Vec::new();
+                let tick = sim.tick_count();
+                run_table(sim.world_mut(), table, tick, &mut actions);
+                for action in actions {
+                    sim.table_request(player, TableRequest { table, action });
+                }
+            }
         }
         sim.tick();
+        // The log is checked by its own tests; keep memory flat here.
+        sim.drain_audit();
     }
     let world = sim.world_mut();
     let house = world.query::<&RunLedger>().iter(world).next().map_or(0, |r| r.ledger.house);
     let puddles = world.query::<&Puddle>().iter(world).count();
+    let rounds = world.query::<&BlackjackView>().iter(world).next().map_or(0, |v| v.rounds);
+    let spins = world.query::<&RouletteView>().iter(world).next().map_or(0, |v| v.spins);
+    let pulls = world.query::<&SlotView>().iter(world).map(|v| v.pulls).sum();
     let hash = state_hash(world);
     inspect(world);
-    ReplayResult { hash, house, puddles }
+    ReplayResult { hash, house, puddles, rounds, spins, pulls }
 }
 
 /// Text listing of the state parts and every player's and prop's position

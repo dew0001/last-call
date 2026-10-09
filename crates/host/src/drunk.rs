@@ -16,7 +16,7 @@ use lightyear::prelude::input::native::ActionState;
 use shared::drunk::{self, Tier};
 use shared::movement::buttons;
 use shared::protocol::*;
-use shared::rng::{RngDraw, RngLog, StreamId, TableRng};
+use shared::rng::{StreamId, TableRng};
 
 use crate::beer::GlassFill;
 use crate::physics::{Hands, HandsSet};
@@ -28,20 +28,14 @@ pub const DRAG_REACH: f32 = 1.2;
 /// Mass of a passed-out body (kg).
 const BODY_MASS: f32 = 70.0;
 
-struct NoLog;
-
-impl RngLog for NoLog {
-    fn record(&mut self, _draw: &RngDraw) {}
-}
-
 /// The room's RNG stream for player effects.
 #[derive(Resource)]
 pub struct PlayerRng(pub TableRng);
 
 impl PlayerRng {
     /// A uniform value in [-1, 1].
-    pub fn signed(&mut self, tick: u64) -> f32 {
-        self.0.below(20_001, tick, &mut NoLog) as f32 / 10_000.0 - 1.0
+    pub fn signed(&mut self, tick: u64, audit: &mut crate::casino::Audit) -> f32 {
+        self.0.below(20_001, tick, &mut audit.0) as f32 / 10_000.0 - 1.0
     }
 }
 
@@ -159,6 +153,7 @@ fn meters(
     mut commands: Commands,
     tick: Res<crate::TickCount>,
     mut rng: ResMut<PlayerRng>,
+    mut audit: ResMut<crate::casino::Audit>,
     mut players: Query<(Entity, &PlayerPos, &mut Drunk, &mut DrunkClock, Has<Stumble>)>,
 ) {
     for (entity, pos, mut drunk, mut clock, stumbling) in &mut players {
@@ -184,7 +179,8 @@ fn meters(
             clock.stumble += 1;
             if clock.stumble >= drunk::STUMBLE_EVERY_SECS * shared::TICK_HZ && !stumbling {
                 clock.stumble = 0;
-                let dir = Vec2::new(rng.signed(tick.0), rng.signed(tick.0)).normalize_or(Vec2::X);
+                let dir =
+                    Vec2::new(rng.signed(tick.0, &mut audit), rng.signed(tick.0, &mut audit)).normalize_or(Vec2::X);
                 commands.entity(entity).insert(Stumble { dir, ticks_left: drunk::STUMBLE_TICKS });
             }
         } else {

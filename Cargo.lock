@@ -3979,6 +3979,7 @@ dependencies = [
  "last_call_shared",
  "lightyear",
  "serde",
+ "serde_json",
  "vleue_navigator",
  "wasm-bindgen",
  "web-sys",

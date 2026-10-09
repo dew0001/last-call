@@ -135,6 +135,7 @@ pub fn host_worker_start(fast: u32, seed: &[u8], preset: &str) {
         timings: shared::shift::Timings::PLAN.scaled_down(fast),
         seed: room_seed,
         preset: crate::economy::Preset::parse(preset),
+        tastes: None,
     };
     STATE.with(|s| {
         *s.borrow_mut() = Some(State {

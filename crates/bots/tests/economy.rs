@@ -24,7 +24,13 @@ fn pockets(world: &mut World) -> Vec<i64> {
 
 fn fast_room(preset: Preset, script: Script) -> LocalRoom {
     // 2 + 9 + 2 + 1 second shifts; the outcome screen shows for 1 second.
-    let config = HostConfig { timings: Timings::PLAN.scaled_down(60), preset, ..Default::default() };
+    // Customers stay at the bar: gamblers would move the house pool.
+    let config = HostConfig {
+        timings: Timings::PLAN.scaled_down(60),
+        preset,
+        tastes: Some(host::customers::BAR_ONLY),
+        ..Default::default()
+    };
     LocalRoom::with_config(1, config, move |_| script)
 }
 

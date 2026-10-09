@@ -12,7 +12,7 @@ use lightyear::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// Protocol version. Bump on any breaking change. Sent in [`Join`].
-pub const PROTOCOL_VERSION: u16 = 7;
+pub const PROTOCOL_VERSION: u16 = 8;
 
 // ---------- Components (host to clients) ----------
 
@@ -82,6 +82,93 @@ pub struct PropPose {
 /// The player (by [`Player::id`]) holding this prop, if any.
 #[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct HeldBy(pub Option<u64>);
+
+/// Money on a chip prop: a payout waiting on the felt (or dropped on the
+/// floor). Whoever picks it up gets it.
+#[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ChipValue(pub i64);
+
+// ---------- Casino tables (host to clients) ----------
+
+/// A hidden card (the dealer's hole card) in a view.
+pub const HIDDEN_CARD: u8 = 255;
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Default)]
+pub struct HandView {
+    pub cards: Vec<u8>,
+    pub bet: i64,
+    pub done: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Default)]
+pub struct SeatView {
+    pub who: Option<crate::minigame::Who>,
+    /// The bet for the next round.
+    pub bet: i64,
+    /// Hands in the round being played.
+    pub hands: Vec<HandView>,
+    pub insurance: Option<i64>,
+    /// Money won (positive) or lost on the last round.
+    pub last: Option<i64>,
+}
+
+/// Where a blackjack round stands, for drawing.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum BjPhase {
+    /// Between rounds: bets go down, the dealer deals.
+    #[default]
+    Betting,
+    Insurance,
+    Players {
+        seat: u8,
+        hand: u8,
+    },
+    Dealer,
+}
+
+/// The blackjack table as every client sees it.
+#[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Default)]
+pub struct BlackjackView {
+    /// The dealing player's id.
+    pub dealer: Option<u64>,
+    pub phase: BjPhase,
+    /// Up card first; the hole card is [`HIDDEN_CARD`] until the dealer plays.
+    pub dealer_cards: Vec<u8>,
+    pub seats: Vec<SeatView>,
+    /// What the rules say the dealer must press now.
+    pub dealer_should: Option<crate::blackjack::Action>,
+    pub shoe_left: u16,
+    pub rounds: u32,
+}
+
+/// The roulette table as every client sees it.
+#[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Default)]
+pub struct RouletteView {
+    pub croupier: Option<u64>,
+    /// Bets on the layout for the coming (or current) spin.
+    pub bets: Vec<(crate::minigame::Who, crate::roulette::Bet, i64)>,
+    /// The ball's pocket, set when the spin starts so the wheel lands on it.
+    pub result: Option<u8>,
+    pub spinning: bool,
+    pub seconds_left: u8,
+    /// Losing chips still on the layout; the croupier rakes them before the next spin.
+    pub to_rake: u8,
+    pub last: Option<u8>,
+    pub spins: u32,
+}
+
+/// One slot machine as every client sees it.
+#[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Default)]
+pub struct SlotView {
+    pub machine: u8,
+    pub user: Option<crate::minigame::Who>,
+    pub spinning: bool,
+    /// Where the reels stop (set when the lever is pulled).
+    pub stops: [u8; 3],
+    pub last_bet: i64,
+    pub last_return: i64,
+    pub pulls: u32,
+}
 
 // ---------- Room state (host to clients) ----------
 
@@ -235,6 +322,14 @@ pub enum JoinReply {
     Refused { reason: String },
 }
 
+/// A player asks a table to do something. The host checks everything: where
+/// the player stands, the rules, the player's money and drunk tier.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TableRequest {
+    pub table: crate::casino::TableId,
+    pub action: crate::casino::TableAction,
+}
+
 /// Reliable, ordered control channel (join, replies, votes).
 pub struct Control;
 
@@ -256,6 +351,7 @@ impl Plugin for ProtocolPlugin {
 
         app.register_message::<Join>().add_direction(NetworkDirection::ClientToServer);
         app.register_message::<JoinReply>().add_direction(NetworkDirection::ServerToClient);
+        app.register_message::<TableRequest>().add_direction(NetworkDirection::ClientToServer);
 
         // Send inputs every 2 ticks (32 Hz); each packet repeats the last 4
         // sends, which covers about 125 ms of packet loss. Keeps upload under
@@ -280,6 +376,10 @@ impl Plugin for ProtocolPlugin {
         app.component::<PourGauge>().replicate();
         app.component::<Puddle>().replicate();
         app.component::<Drunk>().replicate();
+        app.component::<ChipValue>().replicate();
+        app.component::<BlackjackView>().replicate();
+        app.component::<RouletteView>().replicate();
+        app.component::<SlotView>().replicate();
     }
 }
 

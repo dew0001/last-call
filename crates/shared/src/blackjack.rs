@@ -610,7 +610,7 @@ mod tests {
     /// Reported, not gated: the edge against the 15%-mistake customer.
     #[test]
     fn house_edge_against_customers_is_reported() {
-        let (staked, returned) = simulate(100_000, CUSTOMER_MISTAKE_PERCENT, &mut SimRng::new(0xc0ff_ee));
+        let (staked, returned) = simulate(100_000, CUSTOMER_MISTAKE_PERCENT, &mut SimRng::new(0x00c0_ffee));
         let edge = 1.0 - returned as f64 / staked as f64;
         println!("blackjack edge vs customers (15% mistakes): {:.2}%", edge * 100.0);
         assert!(edge > 0.0);

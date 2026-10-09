@@ -10,6 +10,7 @@ use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::prelude::*;
 use bevy::render::renderer::RenderAdapterInfo;
 
+pub mod casino;
 pub mod online;
 #[cfg(target_arch = "wasm32")]
 mod web;

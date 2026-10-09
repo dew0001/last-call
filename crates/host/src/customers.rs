@@ -16,12 +16,14 @@ use avian3d::prelude::{Position, Rotation};
 use bevy::prelude::*;
 use lightyear::prelude::*;
 use shared::bar;
+use shared::casino::{self, TableId};
 use shared::customers::{self, DOOR, Mood, PATIENCE_SECS, RADIUS, WALK_SPEED};
 use shared::protocol::{Customer, HeldBy, NpcPose, PropKind};
-use shared::rng::{ROOM_STREAM, RngDraw, RngLog, TableRng};
+use shared::rng::{Draw, ROOM_STREAM, TableRng};
 use shared::shift::ShiftPhase;
 use vleue_navigator::NavMesh;
 
+use crate::casino::{Audit, PlayerSpots, WantsToLeave};
 use crate::shift::{PhaseStarted, RunClock, ShiftConfig, ShiftTimer};
 
 /// Height of a seated customer's feet: on top of a stool.
@@ -59,26 +61,42 @@ pub fn route(mesh: &NavMesh, from: Vec2, to: Vec2) -> Vec<Vec2> {
     mesh.path(from, to).map(|p| p.path).unwrap_or_else(|| vec![to])
 }
 
-/// RNG draws are not logged yet (the audit log arrives with the casino games).
-struct NoLog;
-
-impl RngLog for NoLog {
-    fn record(&mut self, _draw: &RngDraw) {}
-}
-
 /// The room's RNG stream for customers.
 #[derive(Resource)]
 pub struct CustomerRng(TableRng);
+
+/// What a customer came to do.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Activity {
+    /// Sit at the counter and drink.
+    Bar,
+    /// Gamble at a table or machine, at this bettor spot.
+    Table(TableId, u8),
+}
+
+/// How customers pick an activity: (bar, blackjack, roulette, slots).
+pub const ACTIVITY_WEIGHTS: [u32; 4] = [2, 3, 3, 2];
+
+/// The room's activity weights (tests send everyone to the bar).
+#[derive(Resource, Clone, Copy, Debug)]
+pub struct Tastes(pub [u32; 4]);
+
+/// Only the bar: the Phase 2 behaviour.
+pub const BAR_ONLY: [u32; 4] = [1, 0, 0, 0];
 
 /// Host-only customer state.
 #[derive(Component, Debug)]
 pub struct Npc {
     pub cash: i64,
+    /// Cash they came in with (walk-away thresholds and bet sizes).
+    pub start_cash: i64,
+    pub activity: Activity,
     /// The stool this customer is heading to or sitting on, and where it stood
     /// when they claimed it.
     pub seat: Option<(Entity, Vec3)>,
     pub path: Vec<Vec2>,
     /// Ticks left in the current wait (patience, or time until the next order).
+    /// Tables use it for patience with the dealer or croupier.
     pub ticks: u32,
 }
 
@@ -95,7 +113,13 @@ impl Plugin for CustomersPlugin {
         app.insert_resource(BarNavMesh(build_navmesh()));
         app.init_resource::<WaveTimer>();
         app.add_systems(Startup, seed_rng);
-        app.add_systems(FixedUpdate, (phase_changes, spawn_waves, walk, seated).chain().after(RunClock));
+        app.add_systems(
+            FixedUpdate,
+            (phase_changes, spawn_waves, walk, seated, walk_out)
+                .chain()
+                .after(RunClock)
+                .after(crate::casino::CasinoSet),
+        );
     }
 }
 
@@ -154,6 +178,25 @@ fn free_seats(
     seats
 }
 
+/// Free bettor spots at a table: not held by a player, not claimed by a customer.
+fn free_spots(
+    table: TableId,
+    players: &PlayerSpots,
+    npcs: &Query<(Entity, &mut Customer, &mut Npc, &NpcPose)>,
+) -> Vec<(Activity, Vec3)> {
+    casino::bettor_spots(table)
+        .into_iter()
+        .enumerate()
+        .map(|(i, (x, z))| (i as u8, x, z))
+        .filter(|(i, ..)| !players.0.contains(&(table, *i)))
+        .filter(|(i, ..)| {
+            !npcs.iter().any(|(_, c, n, _)| c.mood != Mood::Leaving && n.activity == Activity::Table(table, *i))
+        })
+        .map(|(i, x, z)| (Activity::Table(table, i), Vec3::new(x, 0.0, z)))
+        .collect()
+}
+
+#[allow(clippy::too_many_arguments)]
 fn spawn_waves(
     mut commands: Commands,
     config: Res<ShiftConfig>,
@@ -161,6 +204,9 @@ fn spawn_waves(
     tick: Res<crate::TickCount>,
     mesh: Res<BarNavMesh>,
     mut rng: ResMut<CustomerRng>,
+    mut audit: ResMut<Audit>,
+    tastes: Res<Tastes>,
+    player_spots: Res<PlayerSpots>,
     mut waves: ResMut<WaveTimer>,
     stools: Query<(Entity, &PropKind, &Position, &Rotation, &HeldBy)>,
     npcs: Query<(Entity, &mut Customer, &mut Npc, &NpcPose)>,
@@ -175,23 +221,68 @@ fn spawn_waves(
     waves.ticks_left = ticks(config.timings.wave);
     let week = timer.calendar.week;
     let mut seats = free_seats(&stools, &npcs);
+    let mut blackjack = free_spots(TableId::Blackjack, &player_spots, &npcs);
+    let mut roulette = free_spots(TableId::Roulette, &player_spots, &npcs);
+    let mut slots: Vec<(Activity, Vec3)> =
+        (0..casino::SLOT_MACHINES).flat_map(|m| free_spots(TableId::Slot(m), &player_spots, &npcs)).collect();
     let door = Vec2::new(DOOR.0, DOOR.1);
+    let mut d = rng.0.at(tick.0, &mut audit.0);
     for _ in 0..customers::wave_size(week) {
-        if seats.is_empty() {
+        let weights = tastes.0;
+        let open = [!seats.is_empty(), !blackjack.is_empty(), !roulette.is_empty(), !slots.is_empty()];
+        let total: u32 = (0..4).filter(|i| open[*i]).map(|i| weights[i]).sum();
+        if total == 0 {
             break;
         }
-        let pick = rng.0.below(seats.len() as u32, tick.0, &mut NoLog) as usize;
-        let (stool, at) = seats.remove(pick);
-        let cash = customers::starting_cash(rng.0.below(361, tick.0, &mut NoLog), week);
+        let mut roll = d.below(total);
+        let mut kind = 0;
+        for i in 0..4 {
+            if !open[i] || weights[i] == 0 {
+                continue;
+            }
+            if roll < weights[i] {
+                kind = i;
+                break;
+            }
+            roll -= weights[i];
+        }
+        let (activity, seat, at) = match kind {
+            0 => {
+                let (stool, at) = seats.remove(d.below(seats.len() as u32) as usize);
+                (Activity::Bar, Some((stool, at)), at)
+            }
+            k => {
+                let list = match k {
+                    1 => &mut blackjack,
+                    2 => &mut roulette,
+                    _ => &mut slots,
+                };
+                let (activity, at) = list.remove(d.below(list.len() as u32) as usize);
+                (activity, None, at)
+            }
+        };
+        let cash = customers::starting_cash(d.below(361), week);
         waves.next_id += 1;
         commands.spawn((
             Name::new("Customer"),
             Customer { id: waves.next_id, mood: Mood::Entering, patience: 0 },
             NpcPose { pos: Vec3::new(DOOR.0, 0.0, DOOR.1), yaw: 0.0 },
-            Npc { cash, seat: Some((stool, at)), path: route(&mesh.0, door, Vec2::new(at.x, at.z)), ticks: 0 },
+            Npc { cash, start_cash: cash, activity, seat, path: route(&mesh.0, door, Vec2::new(at.x, at.z)), ticks: 0 },
             Replicate::to_clients(NetworkTarget::All),
             InterpolationTarget::to_clients(NetworkTarget::All),
         ));
+    }
+}
+
+/// Customers a table sent away walk out.
+fn walk_out(
+    mut commands: Commands,
+    mesh: Res<BarNavMesh>,
+    mut npcs: Query<(Entity, &mut Customer, &mut Npc, &NpcPose), With<WantsToLeave>>,
+) {
+    for (e, mut c, mut npc, pose) in &mut npcs {
+        leave(&mesh.0, &mut c, &mut npc, pose);
+        commands.entity(e).remove::<WantsToLeave>();
     }
 }
 
@@ -233,20 +324,28 @@ fn walk(mut commands: Commands, mut npcs: Query<(Entity, &mut Customer, &mut Npc
         }
         if npc.path.is_empty() {
             match c.mood {
-                Mood::Entering => {
-                    // Sit down facing the counter and order.
-                    if let Some((_, at)) = npc.seat {
-                        next.pos = Vec3::new(at.x, SEAT_HEIGHT, at.z);
+                Mood::Entering => match npc.activity {
+                    Activity::Bar => {
+                        // Sit down facing the counter and order.
+                        if let Some((_, at)) = npc.seat {
+                            next.pos = Vec3::new(at.x, SEAT_HEIGHT, at.z);
+                        }
+                        next.yaw = 0.0;
+                        c.mood = Mood::Waiting;
+                        npc.ticks = ticks(PATIENCE_SECS);
                     }
-                    next.yaw = 0.0;
-                    c.mood = Mood::Waiting;
-                    npc.ticks = ticks(PATIENCE_SECS);
-                }
+                    Activity::Table(table, _) => {
+                        // Face the table (slot machines stand to the west).
+                        next.yaw = if matches!(table, TableId::Slot(_)) { std::f32::consts::FRAC_PI_2 } else { 0.0 };
+                        c.mood = Mood::Gambling;
+                        npc.ticks = ticks(casino::TABLE_PATIENCE_SECS);
+                    }
+                },
                 Mood::Leaving => {
                     commands.entity(e).despawn();
                     continue;
                 }
-                Mood::Waiting | Mood::Drinking => {}
+                Mood::Waiting | Mood::Drinking | Mood::Gambling => {}
             }
         }
         pose.set_if_neq(next);

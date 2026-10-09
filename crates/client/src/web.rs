@@ -13,6 +13,7 @@ use serde::Deserialize;
 use shared::client::Identity;
 use shared::pipe::PipeEnd;
 use shared::protocol::PlayerInput;
+use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
 use crate::RenderStatus;
@@ -77,7 +78,7 @@ pub fn client_start(config: JsValue) -> Result<(), JsValue> {
     let mut app = crate::build_app(online);
     if let Some(bridge) = app.world().get_resource::<NetBridge>() {
         INBOX.with(|i| *i.borrow_mut() = Some(bridge.0.clone()));
-        app.add_systems(PreUpdate, read_scripted_input);
+        app.add_systems(PreUpdate, (read_scripted_input, read_table_requests));
         app.add_systems(Last, send_outgoing);
     }
     app.add_systems(Last, publish_status);
@@ -113,6 +114,25 @@ fn read_scripted_input(mut scripted: ResMut<ScriptedInput>) {
     let num = |k: &str| Reflect::get(&value, &k.into()).ok().and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
     scripted.0 =
         Some(PlayerInput::new(Vec2::new(num("mx"), num("my")), num("yaw"), num("pitch"), num("buttons") as u16));
+}
+
+/// `window.__lcTable.push({ table, action })` sends a table request (tests
+/// and automation), in the protocol's JSON form: `{ table: "Blackjack",
+/// action: { Bet: 20 } }`, `{ table: { Slot: 0 }, action: { Pull: 5 } }`.
+fn read_table_requests(mut out: ResMut<shared::client::OutgoingTable>) {
+    let Some(window) = web_sys::window() else { return };
+    let Ok(value) = Reflect::get(&window, &"__lcTable".into()) else { return };
+    let Ok(list) = value.dyn_into::<Array>() else { return };
+    if list.length() == 0 {
+        return;
+    }
+    for item in list.iter() {
+        match serde_wasm_bindgen::from_value::<shared::protocol::TableRequest>(item) {
+            Ok(request) => out.0.push(request),
+            Err(e) => set_error(format!("bad table request: {e}")),
+        }
+    }
+    let _ = Reflect::set(&window, &"__lcTable".into(), &Array::new());
 }
 
 fn publish_status(status: Res<RenderStatus>, net: Option<Res<NetStatus>>) {

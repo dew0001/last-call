@@ -10,6 +10,7 @@ pub mod bar;
 pub mod beer;
 pub mod blackjack;
 pub mod cards;
+pub mod casino;
 pub mod customers;
 pub mod drunk;
 pub mod economy;

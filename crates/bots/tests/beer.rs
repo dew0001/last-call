@@ -68,7 +68,11 @@ fn holding_too_long_overflows_into_a_puddle() {
 fn a_glass_in_front_of_a_waiting_customer_is_served() {
     let _turn = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     let timings = Timings { setup: 1, open: 120, last_call: 30, payment: 1, outcome: 1, wave: 10_000 };
-    let mut room = LocalRoom::with_config(1, HostConfig { timings, ..Default::default() }, |_| Script::Idle);
+    let mut room = LocalRoom::with_config(
+        1,
+        HostConfig { timings, tastes: Some(host::customers::BAR_ONLY), ..Default::default() },
+        |_| Script::Idle,
+    );
     for _ in 0..(17 * shared::TICK_HZ) {
         room.step();
     }

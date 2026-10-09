@@ -92,7 +92,7 @@ impl Bet {
             Bet::Red => is_red(n),
             Bet::Black => is_black(n),
             Bet::Odd => n != 0 && n % 2 == 1,
-            Bet::Even => n != 0 && n % 2 == 0,
+            Bet::Even => n != 0 && n.is_multiple_of(2),
             Bet::Low => (1..=18).contains(&n),
             Bet::High => (19..=36).contains(&n),
         }

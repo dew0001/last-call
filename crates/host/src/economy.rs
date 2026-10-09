@@ -29,6 +29,8 @@ pub enum Preset {
     /// Players join Wasted (90 on the drunk meter) with 300 in their pockets:
     /// one beer passes them out.
     Wasted,
+    /// Players join with 1,000 in their pockets, to play the tables.
+    Casino,
 }
 
 impl Preset {
@@ -38,6 +40,7 @@ impl Preset {
             "broke" => Self::Broke,
             "tipsy" => Self::Tipsy,
             "wasted" => Self::Wasted,
+            "casino" => Self::Casino,
             _ => Self::None,
         }
     }
@@ -59,6 +62,7 @@ impl Preset {
             },
             Self::Tipsy => RunStart { pocket: 300, drunk: 45, ..RunStart::default() },
             Self::Wasted => RunStart { pocket: 300, drunk: 90, ..RunStart::default() },
+            Self::Casino => RunStart { pocket: 1_000, ..RunStart::default() },
         }
     }
 }

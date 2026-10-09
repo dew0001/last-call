@@ -103,7 +103,7 @@ fn drive(
                 && let Some((_, body, _)) =
                     others.iter().find(|(p, _, d)| Some(p.id) != session.player_id && d.passed_out)
             {
-                plan.0 = Some([(body.0.x, body.0.z + 3.0), (body.0.x, body.0.z + 1.4)]);
+                plan.0 = Some([(body.0.x, body.0.z + 2.0), (body.0.x, body.0.z + 1.4)]);
                 step.0 = 0;
             }
             match plan.0 {

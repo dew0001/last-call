@@ -84,6 +84,8 @@ pub struct GameStatus {
     pub drunk: Option<DrunkStatus>,
     /// Voice pitch per other player (hex id, factor): drunk speakers sound lower.
     pub voice_pitch: Vec<(String, f32)>,
+    /// The tables.
+    pub casino: crate::casino::CasinoStatus,
 }
 
 #[derive(Default, Debug, Clone, serde::Serialize)]
@@ -104,6 +106,7 @@ fn mood_name(m: shared::customers::Mood) -> &'static str {
         Mood::Waiting => "waiting",
         Mood::Drinking => "drinking",
         Mood::Leaving => "leaving",
+        Mood::Gambling => "gambling",
     }
 }
 
@@ -198,6 +201,7 @@ pub fn add(app: &mut App, cfg: OnlineConfig) {
     ));
     app.init_resource::<LocalPour>();
     app.add_systems(FixedUpdate, predict_pour);
+    crate::casino::add(app);
     app.add_systems(Startup, (setup_bar, setup_hud));
     app.add_systems(
         Update,
@@ -477,6 +481,8 @@ fn setup_bar(
             bar::BlockKind::Counter => Color::srgb(0.45, 0.28, 0.15),
             bar::BlockKind::Wall => gray(0.42),
             bar::BlockKind::Safe => Color::srgb(0.2, 0.22, 0.25),
+            bar::BlockKind::Table => Color::srgb(0.3, 0.18, 0.1),
+            bar::BlockKind::SlotMachine => Color::srgb(0.55, 0.1, 0.45),
         };
         solid(&mut commands, Vec3::new(b.hx * 2.0, b.height, b.hz * 2.0), Vec3::new(b.cx, b.height / 2.0, b.cz), color);
     }
@@ -833,6 +839,7 @@ fn update_status(
     link: Query<&Link, With<Client>>,
     timeline: Option<Res<LocalTimeline>>,
     game: GameQueries,
+    casino: crate::casino::CasinoQueries,
     mut status: ResMut<NetStatus>,
 ) {
     let GameQueries { room, pockets, customers, gauges, beers, puddles, drunks, local_pour } = game;
@@ -898,6 +905,7 @@ fn update_status(
                 v.dedup_by(|a, b| a.0 == b.0);
                 v
             },
+            casino: casino.status(session.player_id, own.single().ok().map(|p| p.0)),
         },
     };
 }

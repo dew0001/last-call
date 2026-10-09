@@ -19,6 +19,10 @@ use crate::protocol::*;
 #[derive(Resource, Default, Clone, Copy, Debug, PartialEq)]
 pub struct LocalInput(pub PlayerInput);
 
+/// Table requests to send to the host (UI buttons, bot scripts).
+#[derive(Resource, Default, Clone, Debug)]
+pub struct OutgoingTable(pub Vec<TableRequest>);
+
 /// Who this client is. Set by the app before connecting.
 #[derive(Resource, Clone, Debug)]
 pub struct Identity {
@@ -43,14 +47,17 @@ impl Plugin for ClientNetPlugin {
         if !app.is_plugin_added::<crate::pipe::PipePlugin>() {
             app.add_plugins(crate::pipe::PipePlugin);
         }
-        app.init_resource::<LocalInput>().init_resource::<Session>().init_resource::<ConnectAfterFrames>();
+        app.init_resource::<LocalInput>()
+            .init_resource::<Session>()
+            .init_resource::<OutgoingTable>()
+            .init_resource::<ConnectAfterFrames>();
         // Margin for jitter: 2x covers about 95% of packets. lightyear's default
         // (4x) put browser clients more than a second ahead of the host.
         app.insert_resource(
             InputTimelineConfig::default().with_sync_config(SyncConfig { jitter_multiple: 2, ..default() }),
         );
         app.add_systems(Update, connect_when_warm);
-        app.add_systems(Update, (send_join, read_join_reply, mark_own_player).chain());
+        app.add_systems(Update, (send_join, read_join_reply, mark_own_player, send_table_requests).chain());
         app.add_systems(FixedPreUpdate, write_input.in_set(InputSystems::WriteClientInputs));
         app.add_systems(FixedUpdate, predict_movement);
     }
@@ -111,6 +118,20 @@ fn send_join(
         cosmetic_id: identity.cosmetic_id,
     });
     session.join_sent = true;
+}
+
+fn send_table_requests(
+    session: Res<Session>,
+    mut out: ResMut<OutgoingTable>,
+    mut links: Query<&mut MessageSender<TableRequest>, (With<Client>, With<Connected>)>,
+) {
+    if session.player_id.is_none() || out.0.is_empty() {
+        return;
+    }
+    let Ok(mut sender) = links.single_mut() else { return };
+    for request in out.0.drain(..) {
+        sender.send::<Control>(request);
+    }
 }
 
 fn read_join_reply(mut session: ResMut<Session>, mut links: Query<&mut MessageReceiver<JoinReply>, With<Client>>) {
