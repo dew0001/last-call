@@ -2,8 +2,10 @@
 //!
 //!   tools protocol_doc [--check]   write docs/PROTOCOL.md from the protocol's doc comments
 //!   tools shift_replay [--update]  run the determinism replay; store its golden hash
+//!   tools replay FILE...           re-derive every outcome in RNG audit logs
 
 mod protocol_doc;
+mod replay;
 mod shift_replay;
 
 const COMMANDS: &[(&str, &str)] = &[
@@ -12,7 +14,7 @@ const COMMANDS: &[(&str, &str)] = &[
     ("fetch_assets", "download CC0 packs listed in assets/LICENSES.md (Phase 6)"),
     ("gen_sfx", "synthesize placeholder SFX to ogg (Phase 2)"),
     ("bake_lighting", "bake lightmaps for all rooms (Phase 6)"),
-    ("replay", "re-derive outcomes from an RNG audit log (Phase 3)"),
+    ("replay", "re-derive every outcome in RNG audit logs (JSONL from `host --audit` or the browser)"),
 ];
 
 fn main() {
@@ -33,6 +35,7 @@ fn main() {
                 args.iter().any(|a| a == "--describe"),
             ))
         }
+        Some("replay") => std::process::exit(replay::run(&args[1..])),
         Some(other) => {
             eprintln!("unknown or not yet built: {other}");
             std::process::exit(2);

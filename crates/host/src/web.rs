@@ -23,6 +23,10 @@ use crate::{HostConfig, HostSim};
 extern "C" {
     #[wasm_bindgen(js_namespace = globalThis, js_name = __hostOut)]
     fn host_out(peer: u32, bytes: &Uint8Array);
+
+    /// Store a JSONL chunk of the RNG audit log (IndexedDB, `web/audit.js`).
+    #[wasm_bindgen(js_namespace = globalThis, js_name = __hostAudit)]
+    fn host_audit(text: &str);
 }
 
 struct Peer {
@@ -163,6 +167,10 @@ pub fn host_worker_start(fast: u32, seed: &[u8], preset: &str) {
                 let (sum, max, n) = std::mem::take(&mut s.cost);
                 let avg = if n > 0 { sum / f64::from(n) } else { 0.0 };
                 post_report(&scope, &mut s.sim, tps, avg, max);
+                let text: String = s.sim.drain_audit().iter().map(|e| e.to_line() + "\n").collect();
+                if !text.is_empty() {
+                    host_audit(&text);
+                }
             }
             s.pacer.wait_ms(now)
         })
@@ -195,4 +203,15 @@ pub fn host_replay_parts(ticks: u32) -> String {
     let mut out = String::new();
     crate::replay::run_with(u64::from(ticks), |world| out = crate::replay::describe(world));
     out
+}
+
+/// Replay an RNG audit log (JSONL) with [`shared::audit::verify`]. Returns
+/// the report as JSON, or `{"error": "..."}`.
+#[wasm_bindgen]
+pub fn host_audit_verify(text: &str) -> String {
+    console_error_panic_hook::set_once();
+    match shared::audit::verify(text.lines()) {
+        Ok(report) => serde_json::to_string(&report).unwrap_or_default(),
+        Err(e) => serde_json::json!({ "error": e }).to_string(),
+    }
 }

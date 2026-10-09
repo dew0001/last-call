@@ -34,7 +34,31 @@ pub enum Script {
     /// Wait until another player passes out, walk up to the body from the
     /// room side, grab it with E, then walk backward (+Z) dragging it.
     Drag,
+    /// Walk to a table and play it: run it from the dealer or croupier spot
+    /// (`role`), or bet at bettor spot `spot` (see [`play_tables`]).
+    Casino { table: shared::casino::TableId, role: bool, spot: u8 },
 }
+
+/// The way from a spawn point to a table spot, around the tables: across
+/// the open floor at z = 3, then down the aisle beside the table.
+pub fn casino_route(table: shared::casino::TableId, role: bool, spot: u8) -> Vec<(f32, f32)> {
+    use shared::casino::{self, TableId};
+    if role {
+        let (x, z) = casino::role_spot(table).unwrap_or((0.0, 0.0));
+        // The aisle on the room's middle side of the table.
+        let aisle = match table {
+            TableId::Blackjack => x + 2.5,
+            _ => x - 2.5,
+        };
+        return vec![(aisle, 3.0), (aisle, z - 0.4), (x, z - 0.4)];
+    }
+    let (x, z) = casino::bettor_spots(table)[usize::from(spot)];
+    vec![(x, 3.0), (x, z)]
+}
+
+/// The planned route of a [`Script::Casino`] bot.
+#[derive(Resource, Default)]
+struct CasinoPlan(Vec<(f32, f32)>);
 
 /// A dragger's approach to a body, once one is seen.
 #[derive(Resource, Default)]
@@ -61,6 +85,7 @@ fn drive(
     mut clock: ResMut<BotClock>,
     mut step: ResMut<RouteStep>,
     mut plan: ResMut<DragPlan>,
+    casino_plan: Res<CasinoPlan>,
     mut input: ResMut<LocalInput>,
 ) {
     clock.0 += 1;
@@ -92,6 +117,21 @@ fn drive(
                     0
                 };
                 PlayerInput::new(Vec2::ZERO, 0.0, pitch, b)
+            }
+        }
+        Script::Casino { table, role, .. } => {
+            let pos = own.iter().find(|(p, _)| Some(p.id) == session.player_id).map(|(_, pos)| pos.0);
+            if step.0 < casino_plan.0.len() {
+                let i = follow_route(&casino_plan.0, pos, &mut step.0, clock.0);
+                PlayerInput::new(i.mv(), i.yaw(), 0.0, 0)
+            } else {
+                // Face the table: south of it face -Z, north of it +Z, slots -X.
+                let yaw = match (table, role) {
+                    (shared::casino::TableId::Slot(_), _) => std::f32::consts::FRAC_PI_2,
+                    (_, true) => std::f32::consts::PI,
+                    _ => 0.0,
+                };
+                PlayerInput::new(Vec2::ZERO, yaw, 0.0, 0)
             }
         }
         Script::Drag => {
@@ -128,6 +168,77 @@ fn drive(
             }
         }
     };
+}
+
+/// A [`Script::Casino`] bot's table requests, four times a second once it
+/// stands at its spot: run the table by the rules, or bet and play simply
+/// (hit below 17, never insure).
+#[allow(clippy::too_many_arguments)]
+fn play_tables(
+    script: Res<Script>,
+    session: Res<Session>,
+    clock: Res<BotClock>,
+    step: Res<RouteStep>,
+    plan: Res<CasinoPlan>,
+    bj: Query<&BlackjackView>,
+    wheel: Query<&RouletteView>,
+    mut out: ResMut<shared::client::OutgoingTable>,
+) {
+    use shared::casino::{TableAction, TableId};
+    use shared::minigame::Who;
+    let Script::Casino { table, role, .. } = *script else { return };
+    let Some(id) = session.player_id else { return };
+    if step.0 < plan.0.len() || !clock.0.is_multiple_of(16) {
+        return;
+    }
+    let me = Who::Player(id);
+    let mut send = |action| out.0.push(TableRequest { table, action });
+    match (table, role) {
+        (TableId::Blackjack, true) => {
+            send(TableAction::TakeRole);
+            let Some(v) = bj.iter().next() else { return };
+            if v.phase == BjPhase::Betting && v.seats.iter().any(|s| s.bet > 0) {
+                send(TableAction::Deal);
+            }
+            if let Some(a) = v.dealer_should {
+                send(TableAction::Dealer(a));
+            }
+        }
+        (TableId::Blackjack, false) => {
+            let Some(v) = bj.iter().next() else { return };
+            let mine = v.seats.iter().position(|s| s.who == Some(me));
+            match (v.phase, mine) {
+                (_, None) => send(TableAction::Bet(10)),
+                (BjPhase::Insurance, Some(s)) if v.seats[s].insurance.is_none() => send(TableAction::Insure(false)),
+                (BjPhase::Players { seat, hand }, Some(s)) if usize::from(seat) == s => {
+                    let cards = v.seats[s].hands.get(usize::from(hand)).map_or(&[][..], |h| &h.cards[..]);
+                    let hit = shared::blackjack::hand_value(cards).0 < 17;
+                    send(TableAction::Play(if hit {
+                        shared::blackjack::Action::Hit
+                    } else {
+                        shared::blackjack::Action::Stand
+                    }));
+                }
+                _ => {}
+            }
+        }
+        (TableId::Roulette, true) => {
+            send(TableAction::TakeRole);
+            let Some(v) = wheel.iter().next() else { return };
+            if v.to_rake > 0 {
+                send(TableAction::Rake);
+            } else if !v.spinning && !v.bets.is_empty() {
+                send(TableAction::Spin);
+            }
+        }
+        (TableId::Roulette, false) => {
+            let Some(v) = wheel.iter().next() else { return };
+            if !v.spinning && !v.bets.iter().any(|(w, ..)| *w == me) {
+                send(TableAction::RouletteBet(shared::roulette::Bet::Red, 5));
+            }
+        }
+        (TableId::Slot(_), _) => send(TableAction::Pull(1)),
+    }
 }
 
 /// Steer toward the current waypoint; at the end, tap E.
@@ -192,6 +303,11 @@ pub fn bot_app(io: PipeIo, index: u8, script: Script) -> App {
     app.insert_resource(script);
     app.init_resource::<BotClock>().init_resource::<RouteStep>().init_resource::<DragPlan>();
     app.add_systems(FixedPreUpdate, drive.before(lightyear::prelude::client::input::InputSystems::WriteClientInputs));
+    app.insert_resource(CasinoPlan(match script {
+        Script::Casino { table, role, spot } => casino_route(table, role, spot),
+        _ => Vec::new(),
+    }));
+    app.add_systems(Update, play_tables);
     let mut uuid = [0u8; 16];
     uuid[0] = 0xb0;
     uuid[1] = index;

@@ -31,6 +31,19 @@ canvas#bevy {
   overflow-wrap: anywhere;
   user-select: all;
 }
+#audit-export {
+  position: fixed;
+  bottom: 0.5rem;
+  right: 0.5rem;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.75rem;
+  opacity: 0.6;
+  background: rgba(20, 13, 8, 0.85);
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 0.3rem;
+  cursor: pointer;
+}
 #banner.alert {
   background: #7a1030;
   color: #fff;

@@ -9,7 +9,18 @@
 // Worker -> page messages:
 //   { t: 'tick', tick, tps }       once per second
 //   { t: 'out', items: [[peer, ArrayBuffer], ...] }  bytes for players
+//   { t: 'audit', run }            the RNG audit log's run id (IndexedDB)
 import init, { host_worker_start, host_connect, host_packet, host_leave } from './pkg/host.js';
+import { append, newRun, prune } from './audit.js';
+
+// The RNG audit log: the wasm host hands over JSONL once a second; chunks
+// go to IndexedDB in order.
+const RUN = newRun();
+let writes = prune().catch(() => {});
+globalThis.__hostAudit = (text) => {
+  writes = writes.then(() => append(RUN, text)).catch((e) => postMessage({ t: 'error', message: `audit: ${e}` }));
+};
+postMessage({ t: 'audit', run: RUN });
 
 const LOCAL_PEER = 0;
 let localPort = null;

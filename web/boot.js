@@ -247,12 +247,30 @@ function startHostWorker() {
   const worker = new Worker(url, { type: 'module' });
   worker.addEventListener('message', (e) => {
     if (e.data?.t === 'tick') window.__hostTicks.push(e.data);
+    if (e.data?.t === 'audit') exposeAudit(e.data.run);
     if (e.data?.t === 'error') console.error('host worker stack', e.data.message, e.data.stack);
   });
   worker.onerror = (e) => console.error('host worker error', e.message);
   return worker;
 }
 window.startHostWorker = startHostWorker;
+
+// The RNG audit log of this tab's room: `window.__lastCallAudit.export()`
+// gives the JSONL text; the "RNG log" button saves it as a file.
+function exposeAudit(run) {
+  const load = () => import('./audit.js');
+  window.__lastCallAudit = {
+    run,
+    export: async () => (await load()).exportRun(run),
+    download: async () => (await load()).download(run),
+  };
+  if (!document.getElementById('audit-export') && !params.has('hostonly')) {
+    const b = Object.assign(document.createElement('button'), { id: 'audit-export', textContent: 'RNG log' });
+    b.title = 'Download this room\'s RNG audit log (JSONL). Check it with: tools replay FILE';
+    b.addEventListener('click', () => window.__lastCallAudit.download());
+    document.body.append(b);
+  }
+}
 
 // ---------- modes ----------
 
