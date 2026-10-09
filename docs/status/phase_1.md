@@ -21,6 +21,8 @@ Date: 2026-10-08. Branch: `main-ygr4w2`.
   - Firefox skips the 8-tab test: headed Firefox draws only its front window.
   - WebKit skips voice: Playwright WebKit has no fake microphone.
   - Firefox and WebKit skip the hidden-tab test: it drives Chromium directly.
+  - The 8-tab host tick budget (6 ms) is asserted in Chromium only; WebKit records it.
+- **CI.** All jobs green on run 37862415439: Rust, wasm build, signaling, Playwright in Chromium, Firefox and WebKit, deploy and live smoke tests. Playwright is 1.64.0; its older WebKit 26.0 build crashed the host sim (see `docs/DECISIONS.md`, "WebKit host crash").
 
 ## What was swapped
 
@@ -56,7 +58,7 @@ Frame time cannot be measured here (no GPU). On SwiftShader, one 160 x 90 tab dr
 ## Known gaps
 
 - Voice has no wall occlusion or drunk pitch shift yet. They come with the rooms and drinks.
-- Bevy once hit a debug-only schedule assertion in WebKit. It did not happen again in later runs.
+- WebKit 26.0 crashed the host sim inside avian's narrow phase, and WebKit 27.2 does not. The cause is not known. Phase 7 testing on a real Safari must check for it.
 
 ## Deployed URLs
 
