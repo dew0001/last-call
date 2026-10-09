@@ -264,3 +264,18 @@ Drunk voice: each listener runs remote voices through an AudioWorklet pitch shif
 ### Presets for drunk tests
 
 `?preset=tipsy` starts players at 45 (Sloppy) and `?preset=wasted` at 90, both with $300 in their pockets.
+
+### Determinism: native and browser hosts simulate bit for bit alike
+
+The plan's replay test (section 11) runs a recorded 14-minute shift twice, natively and as wasm, and compares state hashes. `crates/host/src/replay.rs` scripts four local players (a bartender who pours and serves, a walker, a thrower, a spiller) for 53,760 ticks with a fixed seed and hashes the whole host state, floats by their bits. The native test (`crates/host/tests/replay.rs`) runs it twice and compares with the golden hash in `crates/host/tests/replay.hash`; the browser test runs the release wasm host's `host_replay` and compares with the same file. `cargo run -p last_call_tools -- shift_replay --update` refreshes the golden hash after an intended change; `--ticks N --describe` prints the state parts and every position, for finding where two builds part.
+
+Three causes of divergence, all fixed:
+- **Thread timing (native only).** Feature unification gives the native host Bevy's `multi_threaded` feature. Unordered systems then ran in an order that varied with thread timing, and two native runs under load gave different hashes. The host app now uses the single-threaded executor on every schedule and a one-thread task pool. The browser host was single-threaded already.
+- **SIMD rounding.** glam takes SSE2 paths on native x86-64 and scalar paths on wasm without SIMD. One quaternion component of a thrown bottle differed in its last bit at tick 265. glam's `scalar-math` feature would fix it from the native side but breaks `bevy_reflect` (glam has no serde for `BVec3A` in that mode). The host's wasm build now enables WebAssembly SIMD (`-C target-feature=+simd128`, own target dir; `wasm-opt --enable-simd`). Its glam SIMD paths then round like SSE2. Browser support for WebAssembly SIMD: Chrome 91, Firefox 89, Safari 16.4 (UNVERIFIED from memory; all three test browsers run it).
+- **Trigonometry.** Simulation code calls `sin`, `cos` and `atan2` through `libm` (`shared::math`), not the standard library, whose results can differ by platform. This changed no hash in our runs, but it removes a known risk.
+
+### Clients agree with the host
+
+`shared::state::replicated_hash` hashes the replicated game state (money, drunk meters, clock, ledger, customers, glasses, puddles; not positions, which clients predict or interpolate). `crates/bots/tests/consistency.rs` runs 8 bots for 1,000 ticks at the bar (pouring, drinking, throwing, walking, with customers) and checks every 100 ticks that each client's hash equals one of the host's recent hashes within a second. All 80 checks pass.
+
+Real-time bot tests in one file take turns (a shared lock): run in parallel, they starved each other of CPU and the bots' inputs reached the host late.

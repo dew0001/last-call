@@ -30,7 +30,7 @@ bindgen() { # <wasm file> <out name>
   "$TOOLS/wasm-bindgen" --target web --no-typescript --out-dir "$DIST/pkg" --out-name "$2" "$1"
   if [ "$MODE" = release ]; then
     "$TOOLS/wasm-opt" -Oz --enable-bulk-memory --enable-nontrapping-float-to-int \
-      --enable-sign-ext --enable-mutable-globals --enable-reference-types --enable-multivalue \
+      --enable-sign-ext --enable-mutable-globals --enable-reference-types --enable-multivalue --enable-simd \
       -o "$DIST/pkg/$2_bg.wasm" "$DIST/pkg/$2_bg.wasm"
   fi
 }
@@ -50,8 +50,13 @@ else
 fi
 
 echo "== host"
-cargo build --profile "$PROFILE" --target "$TARGET" -p last_call_host --lib
-bindgen "target/$TARGET/$OUT/host.wasm" host
+# WebAssembly SIMD: glam's SIMD paths then round like its SSE2 paths on a
+# native x86-64 build, so the browser host and the native host simulate bit for
+# bit alike (crates/host/tests/replay.rs). Own target dir: other flags would
+# otherwise rebuild everything for the client too.
+RUSTFLAGS="${RUSTFLAGS:-} -C target-feature=+simd128" \
+  cargo build --profile "$PROFILE" --target "$TARGET" -p last_call_host --lib --target-dir target/host-simd
+bindgen "target/host-simd/$TARGET/$OUT/host.wasm" host
 
 cp -r web/. "$DIST/"
 echo "$MODE" > "$DIST/build-mode.txt"

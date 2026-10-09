@@ -10,6 +10,7 @@ pub mod beer;
 pub mod customers;
 pub mod drunk;
 pub mod economy;
+pub mod math;
 pub mod movement;
 pub mod rng;
 pub mod room;
@@ -23,6 +24,8 @@ pub mod net;
 pub mod pipe;
 #[cfg(feature = "net")]
 pub mod protocol;
+#[cfg(feature = "net")]
+pub mod state;
 
 use core::time::Duration;
 

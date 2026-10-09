@@ -11,6 +11,10 @@ use shared::customers::Mood;
 use shared::protocol::{Beer, Customer, HeldBy, Player, Pocket, PropKind, Puddle, RoomState, RunLedger};
 use shared::shift::Timings;
 
+/// These tests run bots in real time. Run in parallel, they starve each
+/// other of CPU and the bots' inputs reach the host late, so take turns.
+static SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 fn glasses(world: &mut World) -> Vec<(Beer, HeldBy)> {
     world
         .query::<(&PropKind, &Beer, &HeldBy)>()
@@ -30,6 +34,7 @@ fn run_realtime(room: &mut LocalRoom, seconds: f32) {
 
 #[test]
 fn pouring_at_the_tap_puts_a_glass_in_the_hand() {
+    let _turn = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     // 148 frames of E at a good tilt: 92.5% full, little foam. If the bot's
     // thread stalls as E goes down, its inputs for those ticks arrive late and
     // the host keeps the last known input (no E), so the pour starts late.
@@ -49,6 +54,7 @@ fn pouring_at_the_tap_puts_a_glass_in_the_hand() {
 
 #[test]
 fn holding_too_long_overflows_into_a_puddle() {
+    let _turn = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     let mut room = LocalRoom::new(1, |_| Script::Pour { hold: 400, pitch: -0.4, drink: false });
     run_realtime(&mut room, 14.0);
     assert!(glasses(room.host.world_mut()).is_empty(), "no glass from an overflow");
@@ -60,6 +66,7 @@ fn holding_too_long_overflows_into_a_puddle() {
 
 #[test]
 fn a_glass_in_front_of_a_waiting_customer_is_served() {
+    let _turn = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     let timings = Timings { setup: 1, open: 120, last_call: 30, payment: 1, outcome: 1, wave: 10_000 };
     let mut room = LocalRoom::with_config(1, HostConfig { timings, ..Default::default() }, |_| Script::Idle);
     for _ in 0..(17 * shared::TICK_HZ) {

@@ -31,13 +31,14 @@ pub enum Script {
     /// Walk to the front of the tap, then hold E for `hold` frames with look
     /// pitch `pitch`, then let go. With `drink`, then press R to drink it.
     Pour { hold: u32, pitch: f32, drink: bool },
-    /// Wait `wait` frames, walk to just behind the front of the tap, tap E to
-    /// grab what lies there, then walk backward (+Z) dragging it.
-    Drag { wait: u32 },
+    /// Wait until another player passes out, walk up to the body from the
+    /// room side, grab it with E, then walk backward (+Z) dragging it.
+    Drag,
 }
 
-/// Where a dragger stands, facing the front of the tap.
-pub const DRAG_SPOT: (f32, f32) = (4.0, -1.9);
+/// A dragger's approach to a body, once one is seen.
+#[derive(Resource, Default)]
+struct DragPlan(Option<[(f32, f32); 2]>);
 
 /// From the main room to the front of the beer tap, between two stools.
 pub const ROUTE_TO_TAP: &[(f32, f32)] = &[(4.0, -1.5), (4.0, -3.0)];
@@ -56,8 +57,10 @@ fn drive(
     script: Res<Script>,
     session: Res<Session>,
     own: Query<(&Player, &PlayerPos), With<Predicted>>,
+    others: Query<(&Player, &PlayerPos, &Drunk), With<Interpolated>>,
     mut clock: ResMut<BotClock>,
     mut step: ResMut<RouteStep>,
+    mut plan: ResMut<DragPlan>,
     mut input: ResMut<LocalInput>,
 ) {
     clock.0 += 1;
@@ -91,26 +94,36 @@ fn drive(
                 PlayerInput::new(Vec2::ZERO, 0.0, pitch, b)
             }
         }
-        Script::Drag { wait } => {
+        Script::Drag => {
             use shared::movement::buttons::INTERACT;
             let pos = own.iter().find(|(p, _)| Some(p.id) == session.player_id).map(|(_, pos)| pos.0);
-            let spot = [(DRAG_SPOT.0, -0.5), DRAG_SPOT];
-            if clock.0 < u64::from(wait) {
-                PlayerInput::default()
-            } else if step.0 < spot.len() {
-                step.1 = clock.0;
-                let i = follow_route(&spot, pos, &mut step.0, clock.0);
-                PlayerInput::new(i.mv(), i.yaw(), 0.0, 0)
-            } else {
-                let t = clock.0 - step.1;
-                if t < 16 {
-                    // Face the counter and grab.
-                    PlayerInput::new(Vec2::ZERO, 0.0, 0.0, if t >= 8 { INTERACT } else { 0 })
-                } else if t < 16 + 96 {
-                    // Back away for 1.5 s, still facing the counter.
-                    PlayerInput::new(Vec2::new(0.0, -1.0), 0.0, 0.0, 0)
-                } else {
-                    PlayerInput::default()
+            // Wait until someone else is on the floor, then plan the approach
+            // from the room side of the body.
+            if plan.0.is_none()
+                && let Some((_, body, _)) =
+                    others.iter().find(|(p, _, d)| Some(p.id) != session.player_id && d.passed_out)
+            {
+                plan.0 = Some([(body.0.x, body.0.z + 3.0), (body.0.x, body.0.z + 1.4)]);
+                step.0 = 0;
+            }
+            match plan.0 {
+                None => PlayerInput::default(),
+                Some(route) if step.0 < route.len() => {
+                    step.1 = clock.0;
+                    let i = follow_route(&route, pos, &mut step.0, clock.0);
+                    PlayerInput::new(i.mv(), i.yaw(), 0.0, 0)
+                }
+                Some(_) => {
+                    let t = clock.0 - step.1;
+                    if t < 16 {
+                        // Face the body (toward -Z) and grab.
+                        PlayerInput::new(Vec2::ZERO, 0.0, 0.0, if t >= 8 { INTERACT } else { 0 })
+                    } else if t < 16 + 96 {
+                        // Back away for 1.5 s, still facing it.
+                        PlayerInput::new(Vec2::new(0.0, -1.0), 0.0, 0.0, 0)
+                    } else {
+                        PlayerInput::default()
+                    }
                 }
             }
         }
@@ -177,7 +190,7 @@ pub fn bot_app(io: PipeIo, index: u8, script: Script) -> App {
     app.add_plugins(ClientNetPlugin);
     app.insert_resource(PredictionManager::default());
     app.insert_resource(script);
-    app.init_resource::<BotClock>().init_resource::<RouteStep>();
+    app.init_resource::<BotClock>().init_resource::<RouteStep>().init_resource::<DragPlan>();
     app.add_systems(FixedPreUpdate, drive.before(lightyear::prelude::client::input::InputSystems::WriteClientInputs));
     let mut uuid = [0u8; 16];
     uuid[0] = 0xb0;

@@ -177,3 +177,21 @@ pub fn host_worker_start(fast: u32, seed: &[u8], preset: &str) {
         let _ = scope.set_timeout_with_callback_and_timeout_and_arguments_0(cb.as_ref().unchecked_ref(), 0);
     }
 }
+
+/// Run the determinism replay (`replay::run`) for `ticks` ticks and return
+/// the state hash as 16 hex digits. Tests compare it with the native result.
+#[wasm_bindgen]
+pub fn host_replay(ticks: u32) -> String {
+    console_error_panic_hook::set_once();
+    format!("{:016x}", crate::replay::run(u64::from(ticks)).hash)
+}
+
+/// The replay's state hash split by part (see `replay::state_parts`), plus
+/// every player's position, as text: for finding where native and wasm differ.
+#[wasm_bindgen]
+pub fn host_replay_parts(ticks: u32) -> String {
+    console_error_panic_hook::set_once();
+    let mut out = String::new();
+    crate::replay::run_with(u64::from(ticks), |world| out = crate::replay::describe(world));
+    out
+}

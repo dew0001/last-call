@@ -16,6 +16,7 @@ default = ["net"]
 net = ["dep:bevy", "dep:lightyear", "dep:crossbeam-channel", "dep:bytes", "dep:aeronet_io"]
 
 [dependencies]
+libm.workspace = true
 serde.workspace = true
 rand_core.workspace = true
 rand_chacha.workspace = true

@@ -1,6 +1,7 @@
 // Phase 2: shift loop and economy.
 // Rooms run with `&fast=60`: every shift phase is 60 times shorter, so a
 // 14-minute shift takes 14 seconds (Setup 2, Open 9, Last call 2, Payment 1).
+import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { DROP, INTERACT, ROUTE_TO_SAFE, ROUTE_TO_TAP, createRoom, openTab, setInput, status, tap, waitFor, walkTo } from './helpers';
 
@@ -273,4 +274,22 @@ test('a Sloppy speaker sounds lower to everyone else', async ({ browser, browser
   expect(low / normal).toBeLessThan(0.9);
   await player.context().close();
   await host.context().close();
+});
+
+test('the wasm host replays the recorded shift to the same state as native', async ({ page }) => {
+  test.setTimeout(300_000);
+  // crates/host/tests/replay.hash holds the native result; the native test
+  // checks it too (crates/host/tests/replay.rs).
+  const golden = readFileSync('crates/host/tests/replay.hash', 'utf8').trim();
+  await page.goto('/?hostonly');
+  const started = Date.now();
+  const hash = await page.evaluate(async () => {
+    // A runtime URL (not a module the test compiler should resolve).
+    const url = '/pkg/host.js';
+    const host = await import(/* @vite-ignore */ url);
+    await host.default();
+    return host.host_replay(14 * 60 * 64);
+  });
+  test.info().annotations.push({ type: 'replay', description: `${hash} in ${((Date.now() - started) / 1000).toFixed(1)} s` });
+  expect(hash).toBe(golden);
 });

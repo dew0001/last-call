@@ -3992,6 +3992,7 @@ dependencies = [
  "bevy",
  "bytes",
  "crossbeam-channel",
+ "libm",
  "lightyear",
  "proptest",
  "rand_chacha 0.10.0",
@@ -4003,6 +4004,7 @@ dependencies = [
 name = "last_call_tools"
 version = "0.1.0"
 dependencies = [
+ "last_call_host",
  "last_call_shared",
 ]
 

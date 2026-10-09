@@ -229,7 +229,7 @@ fn walk(mut commands: Commands, mut npcs: Query<(Entity, &mut Customer, &mut Npc
             let dir = to / d;
             next.pos = Vec3::new(here.x + dir.x * step, 0.0, here.y + dir.y * step);
             // Yaw 0 faces -Z: forward = (-sin yaw, -cos yaw).
-            next.yaw = (-dir.x).atan2(-dir.y);
+            next.yaw = shared::math::atan2(-dir.x, -dir.y);
         }
         if npc.path.is_empty() {
             match c.mood {

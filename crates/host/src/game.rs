@@ -27,6 +27,11 @@ impl Plugin for GamePlugin {
     }
 }
 
+/// A player driven directly by host code (replays and tests), with no link.
+/// [`crate::HostSim::set_input`] writes its input each tick.
+#[derive(Component)]
+pub struct LocalPlayer;
+
 /// Marks a player whose link is gone, waiting for a reconnect.
 #[derive(Component)]
 pub struct AwaitingReconnect {
@@ -90,7 +95,7 @@ fn handle_joins(
 fn track_disconnects(
     mut commands: Commands,
     tick: Res<crate::TickCount>,
-    players: Query<(Entity, Option<&ControlledBy>, Option<&AwaitingReconnect>), With<Player>>,
+    players: Query<(Entity, Option<&ControlledBy>, Option<&AwaitingReconnect>), (With<Player>, Without<LocalPlayer>)>,
     links: Query<(), (With<ClientOf>, With<Connected>)>,
 ) {
     let grace = (RECONNECT_GRACE_SECS * shared::TICK_HZ as f32) as u64;

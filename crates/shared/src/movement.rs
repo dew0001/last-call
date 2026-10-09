@@ -40,7 +40,7 @@ pub fn step_scaled(pos: [f32; 3], mv: [f32; 2], yaw: f32, buttons: u16, dt: f32,
     let scale = len.min(1.0) / len;
     let (right, fwd) = (mv[0] * scale, mv[1] * scale);
     let speed = if buttons & buttons::SPRINT != 0 { SPRINT_SPEED } else { WALK_SPEED } * speed_mult;
-    let (s, c) = yaw.sin_cos();
+    let (s, c) = crate::math::sin_cos(yaw);
     // Forward is -Z rotated by yaw; right is +X rotated by yaw.
     let dx = (right * c - fwd * s) * speed * dt;
     let dz = (-right * s - fwd * c) * speed * dt;
@@ -49,7 +49,7 @@ pub fn step_scaled(pos: [f32; 3], mv: [f32; 2], yaw: f32, buttons: u16, dt: f32,
 
 /// Unit vector the player faces (horizontal). Yaw 0 faces -Z.
 pub fn forward(yaw: f32) -> [f32; 3] {
-    let (s, c) = yaw.sin_cos();
+    let (s, c) = crate::math::sin_cos(yaw);
     [-s, 0.0, -c]
 }
 

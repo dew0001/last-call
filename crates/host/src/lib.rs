@@ -12,6 +12,7 @@
 
 use core::net::{IpAddr, Ipv4Addr, SocketAddr};
 
+use bevy::app::TaskPoolOptions;
 use bevy::prelude::*;
 use bevy::state::app::StatesPlugin;
 use bevy::time::TimeUpdateStrategy;
@@ -26,6 +27,7 @@ pub mod drunk;
 pub mod economy;
 pub mod game;
 pub mod physics;
+pub mod replay;
 pub mod runner;
 pub mod shift;
 #[cfg(target_arch = "wasm32")]
@@ -49,6 +51,18 @@ pub struct HostConfig {
     pub seed: [u8; 32],
     /// A test or demo start (`?preset=`).
     pub preset: economy::Preset,
+}
+
+/// Run every schedule on one thread, in its fixed topological order. The
+/// browser host is single-threaded anyway; a native build with Bevy's
+/// `multi_threaded` feature would otherwise run unordered systems in an order
+/// that varies with thread timing, and the same inputs could give a different
+/// result (the replay test caught it).
+fn deterministic_schedules(app: &mut App) {
+    let mut schedules = app.world_mut().resource_mut::<Schedules>();
+    for (_, schedule) in schedules.iter_mut() {
+        schedule.set_executor(bevy::ecs::schedule::SingleThreadedExecutor::new());
+    }
 }
 
 /// The room's RNG seed.
@@ -76,7 +90,10 @@ impl HostSim {
 
     pub fn with_config(config: HostConfig) -> Self {
         let mut app = App::new();
-        app.add_plugins((MinimalPlugins, TransformPlugin, StatesPlugin));
+        // One thread: a parallel task pool can visit items in a different
+        // order from run to run (see `deterministic_schedules`).
+        let one_thread = bevy::app::TaskPoolPlugin { task_pool_options: TaskPoolOptions::with_num_threads(1) };
+        app.add_plugins((MinimalPlugins.set(one_thread), TransformPlugin, StatesPlugin));
         // Native debugging: LASTCALL_LOG="lightyear_inputs=debug,info" prints logs.
         #[cfg(not(target_arch = "wasm32"))]
         if let Ok(filter) = std::env::var("LASTCALL_LOG") {
@@ -101,6 +118,7 @@ impl HostSim {
             drunk::DrunkPlugin,
         ));
 
+        deterministic_schedules(&mut app);
         let server = app.world_mut().spawn((Name::new("Server"), RawServer)).id();
         app.finish();
         app.cleanup();
@@ -138,6 +156,33 @@ impl HostSim {
     pub fn disconnect_peer(&mut self, link: Entity) {
         if let Ok(e) = self.app.world_mut().get_entity_mut(link) {
             e.despawn();
+        }
+    }
+
+    /// Add a player driven by host code instead of a client (replays and
+    /// tests). It joins like a networked player at `slot`'s spawn point.
+    pub fn add_local_player(&mut self, id: u64, name: &str, slot: u8) -> Entity {
+        let spawn = shared::bar::spawn_point(usize::from(slot));
+        self.app
+            .world_mut()
+            .spawn((
+                shared::protocol::Player { id, name: name.into(), slot },
+                shared::protocol::PlayerPos(Vec3::from_array(spawn)),
+                shared::protocol::PlayerYaw(0.0),
+                lightyear::prelude::input::native::ActionState::<shared::protocol::PlayerInput>::default(),
+                game::LocalPlayer,
+            ))
+            .id()
+    }
+
+    /// Set a local player's input for the coming ticks.
+    pub fn set_input(&mut self, player: Entity, input: shared::protocol::PlayerInput) {
+        if let Some(mut action) = self
+            .app
+            .world_mut()
+            .get_mut::<lightyear::prelude::input::native::ActionState<shared::protocol::PlayerInput>>(player)
+        {
+            action.0 = input;
         }
     }
 
