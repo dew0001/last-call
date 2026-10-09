@@ -17,6 +17,7 @@ Date: 2026-10-09. Branch: `main-ygr4w2`.
 - **Native unit tests** in `shared` cover shift timings, the economy (with property tests for money conservation), customer rules, pour rules, drunk tiers, collision with the office, and the `libm` trigonometry.
 - **Native integration tests** (`crates/bots/tests`, `crates/host`): shift clock and week rollover; deposits, winning, losing and the next run; customers seating, ordering, leaving, determinism by seed and bandwidth; pouring, overflow and serving; drinking, decay, stumbles, puddle slips, passing out, dragging and waking; the navmesh routes; 8 bots at the bar for 1,000 ticks with every client's replicated state matching the host's every 100 ticks; the 14-minute replay twice against the golden hash.
 - **Browser** (`tests/e2e/phase_2.spec.ts`, 10 tests): shift clock; safe deposit; win and next run; loss; customers; perfect pour served and tipped; drinking; pass-out, drag and wake; drunk voice pitch; wasm replay hash. All 10 pass locally in Chromium and Firefox. WebKit runs in CI only (its build opens no WebRTC connection in this container) and skips the voice test (no fake microphone).
+- **CI.** All jobs green on run 37887763075: Rust (with the native replay), wasm build, signaling, Playwright in Chromium, Firefox and WebKit (the wasm replay matches native in all three), deploy and live smoke tests.
 
 ## What was swapped or deferred
 
