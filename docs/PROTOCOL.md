@@ -26,6 +26,19 @@ Kind of physics prop.
 - `Bottle`
 - `Chip`
 - `Stool`
+- `Glass`: A beer glass from the tap. Carries a [`Beer`].
+
+### `Beer` (struct)
+
+The beer in a glass. `fill` is in percent; `perfect` records a perfect pour; `poured_by` is the player who gets the tip.
+
+### `PourGauge` (struct)
+
+A pour in progress at the tap, on the pouring player. Percent.
+
+### `Puddle` (struct)
+
+Spilled beer on the floor (a slip hazard).
 
 ### `PropPose` (struct)
 

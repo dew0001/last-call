@@ -226,3 +226,14 @@ The camera sat 3.5 m behind the player. At the spawn line that put it outside th
 - The wave interval (90 s) scales with `?fast`; patience (20 s), drink interval (120 s) and walking speed do not, so fast test rooms still play like the real game inside a phase.
 - Customers draw from the room's RNG stream (stream 0) with the room seed: the same seed brings the same customers with the same cash (tested).
 - Ten walking customers cost 4 KB/s of download per client (budget 40 KB/s).
+
+### Beer tap
+
+Plan section 5.4 sets the shape; these numbers are mine (OPINION), in `crates/shared/src/beer.rs`:
+- Fill rises 40% per second while E is held at the tap (2.5 s to full). The green zone is 85 to 100%. Past 100% a pour is "overfull" (pays, no tip); past 105% it overflows: no glass, and a puddle on the floor. After an overflow, E must be let go before the next pour.
+- Tilt is the look pitch: between -0.6 and -0.2 radians (looking a little down) foam rises 3% per second, outside it 40%. A perfect pour has at most 25% foam.
+- A served glass pays the customer's $8 to the house. A perfect pour still in the green zone also tips $2 to the pourer's pocket. Short, foamy or overfull pours pay but do not tip. A glass under 60% is refused.
+- Carrying: sprinting spills 30% per second; walking spills nothing; a thrown glass spills everything. The drunk multiplier hooks in with the drunk meter.
+- Serving: a glass at rest anywhere on the counter top within 0.55 m (along the counter) of a waiting customer's stool. The zone spans the whole counter depth, so a server can reach it from either side.
+- The hand point rose from 1.15 m to 1.3 m above the feet, so a held glass clears the counter top. Bottles moved to mid-counter and chips to the back edge, clear of the front edge where glasses land.
+- serde-wasm-bindgen turns `None` into `undefined` in `window.__lastCall`, not `null`. Tests treat both as absent.

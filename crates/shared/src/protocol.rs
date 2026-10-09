@@ -12,7 +12,7 @@ use lightyear::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// Protocol version. Bump on any breaking change. Sent in [`Join`].
-pub const PROTOCOL_VERSION: u16 = 5;
+pub const PROTOCOL_VERSION: u16 = 6;
 
 // ---------- Components (host to clients) ----------
 
@@ -38,6 +38,30 @@ pub enum PropKind {
     Bottle,
     Chip,
     Stool,
+    /// A beer glass from the tap. Carries a [`Beer`].
+    Glass,
+}
+
+/// The beer in a glass. `fill` is in percent; `perfect` records a perfect
+/// pour; `poured_by` is the player who gets the tip.
+#[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Beer {
+    pub fill: u8,
+    pub perfect: bool,
+    pub poured_by: u64,
+}
+
+/// A pour in progress at the tap, on the pouring player. Percent.
+#[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub struct PourGauge {
+    pub fill: u8,
+    pub foam: u8,
+}
+
+/// Spilled beer on the floor (a slip hazard).
+#[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+pub struct Puddle {
+    pub pos: Vec3,
 }
 
 /// Prop pose, copied from the host's physics each tick. Interpolated on clients.
@@ -244,6 +268,9 @@ impl Plugin for ProtocolPlugin {
         app.component::<Pocket>().replicate();
         app.component::<Customer>().replicate();
         app.component::<NpcPose>().replicate().add_linear_interpolation();
+        app.component::<Beer>().replicate();
+        app.component::<PourGauge>().replicate();
+        app.component::<Puddle>().replicate();
     }
 }
 

@@ -37,10 +37,17 @@ impl Plugin for HostPhysicsPlugin {
         app.add_plugins(PhysicsPlugins::default());
         app.add_systems(Startup, (spawn_room, spawn_props));
         app.add_observer(add_player_body);
-        app.add_systems(FixedUpdate, (drive_player_bodies, hands).chain().after(crate::game::MovePlayers));
+        app.add_systems(
+            FixedUpdate,
+            (drive_player_bodies, hands.in_set(HandsSet)).chain().after(crate::game::MovePlayers),
+        );
         app.add_systems(FixedPostUpdate, publish_poses.after(PhysicsSystems::Writeback));
     }
 }
+
+/// The pick-up, carry, throw and drop system.
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct HandsSet;
 
 /// Per-player hand state on the host.
 #[derive(Component, Default, Debug)]
@@ -81,6 +88,7 @@ pub fn prop_body(kind: PropKind) -> (Collider, f32) {
         // A flat box stacks far better than a thin cylinder; it still draws as a disc.
         PropKind::Chip => (Collider::cuboid(0.036, 0.012, 0.036), 0.01),
         PropKind::Stool => (Collider::cuboid(0.4, 0.75, 0.4), 5.0),
+        PropKind::Glass => (Collider::cylinder(0.045, 0.15), 0.5),
     }
 }
 
@@ -90,12 +98,13 @@ pub fn prop_layout() -> Vec<(PropKind, Vec3)> {
     let top = bar::COUNTER_HEIGHT;
     let mut out = Vec::new();
     for i in 0..BOTTLES {
-        out.push((PropKind::Bottle, Vec3::new(-4.75 + i as f32 * 0.5, top + 0.15, cz + 0.15)));
+        // Mid-counter, clear of the front edge where served glasses land.
+        out.push((PropKind::Bottle, Vec3::new(-4.75 + i as f32 * 0.5, top + 0.15, cz - 0.1)));
     }
     for i in 0..CHIPS {
         let (stack, level) = (i / CHIPS_PER_STACK, i % CHIPS_PER_STACK);
         let x = -4.5 + stack as f32 * 1.0;
-        out.push((PropKind::Chip, Vec3::new(x, top + 0.007 + level as f32 * 0.0125, cz - 0.2)));
+        out.push((PropKind::Chip, Vec3::new(x, top + 0.007 + level as f32 * 0.0125, cz - 0.35)));
     }
     for i in 0..STOOLS {
         out.push((PropKind::Stool, Vec3::new(-4.5 + i as f32 * 1.0, 0.38, cz + 1.3)));
@@ -152,7 +161,14 @@ fn drive_player_bodies(mut q: Query<(&PlayerPos, &Position, &mut LinearVelocity)
 type PropQuery<'w, 's> = Query<
     'w,
     's,
-    (Entity, &'static Position, &'static mut HeldBy, &'static mut LinearVelocity, &'static mut AngularVelocity),
+    (
+        Entity,
+        &'static Position,
+        &'static mut HeldBy,
+        &'static mut LinearVelocity,
+        &'static mut AngularVelocity,
+        Option<&'static mut Beer>,
+    ),
     Without<Player>,
 >;
 
@@ -170,8 +186,9 @@ fn hands(
         let hand = hand_point(pos.0, yaw.0);
         let fwd = forward(yaw.0);
 
-        // Pick up the nearest free prop in reach.
-        if hands.held.is_none() && pressed(buttons::INTERACT) {
+        // Pick up the nearest free prop in reach. At the tap, E pours instead.
+        let at_tap = shared::movement::distance_to_tap(pos.0.to_array()) < bar::TAP_REACH;
+        if hands.held.is_none() && pressed(buttons::INTERACT) && !at_tap {
             let nearest = props
                 .iter()
                 .filter(|(_, _, held, ..)| held.0.is_none())
@@ -189,7 +206,7 @@ fn hands(
         }
 
         if let Some(e) = hands.held {
-            let Ok((_, p, mut held, mut lin, mut ang)) = props.get_mut(e) else {
+            let Ok((_, p, mut held, mut lin, mut ang, beer)) = props.get_mut(e) else {
                 hands.held = None;
                 continue;
             };
@@ -202,6 +219,10 @@ fn hands(
                 held.0 = None;
                 lin.0 = fwd * speed + Vec3::Y * 2.0;
                 ang.0 = Vec3::new(4.0, 0.0, 2.0);
+                // A thrown glass spills everything.
+                if let Some(mut beer) = beer {
+                    beer.fill = 0;
+                }
                 hands.held = None;
                 commands.entity(e).insert(RigidBody::Dynamic).remove::<Sleeping>();
             } else if pressed(buttons::DROP) {

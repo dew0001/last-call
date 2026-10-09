@@ -28,7 +28,13 @@ pub enum Script {
     /// Walk through `route` (x, z waypoints) from its own predicted position,
     /// then tap E: 4 frames down, 4 up, until the script changes.
     Route { route: &'static [(f32, f32)] },
+    /// Walk to the front of the tap, then hold E for `hold` frames with look
+    /// pitch `pitch`, then let go and stand still.
+    Pour { hold: u32, pitch: f32 },
 }
+
+/// From the main room to the front of the beer tap, between two stools.
+pub const ROUTE_TO_TAP: &[(f32, f32)] = &[(4.0, -1.5), (4.0, -3.0)];
 
 /// From the main room, through the office door, to the safe.
 pub const ROUTE_TO_SAFE: &[(f32, f32)] = &[(8.2, -1.0), (8.2, -3.0), (9.4, -5.55)];
@@ -36,9 +42,9 @@ pub const ROUTE_TO_SAFE: &[(f32, f32)] = &[(8.2, -1.0), (8.2, -3.0), (9.4, -5.55
 #[derive(Resource, Default)]
 struct BotClock(u64);
 
-/// Next waypoint of a [`Script::Route`].
+/// Next waypoint of a route, and the frame the route ended.
 #[derive(Resource, Default)]
-struct RouteStep(usize);
+struct RouteStep(usize, u64);
 
 fn drive(
     script: Res<Script>,
@@ -57,6 +63,21 @@ fn drive(
         Script::Route { route } => {
             let pos = own.iter().find(|(p, _)| Some(p.id) == session.player_id).map(|(_, pos)| pos.0);
             follow_route(route, pos, &mut step.0, clock.0)
+        }
+        Script::Pour { hold, pitch } => {
+            let pos = own.iter().find(|(p, _)| Some(p.id) == session.player_id).map(|(_, pos)| pos.0);
+            if step.0 < ROUTE_TO_TAP.len() {
+                step.1 = clock.0;
+                let i = follow_route(ROUTE_TO_TAP, pos, &mut step.0, clock.0);
+                // No E at the end of the route; the pour starts a few frames later.
+                PlayerInput::new(i.mv(), i.yaw(), 0.0, 0)
+            } else if clock.0 < step.1 + 8 {
+                PlayerInput::new(Vec2::ZERO, 0.0, pitch, 0)
+            } else if clock.0 < step.1 + 8 + u64::from(hold) {
+                PlayerInput::new(Vec2::ZERO, 0.0, pitch, shared::movement::buttons::INTERACT)
+            } else {
+                PlayerInput::new(Vec2::ZERO, 0.0, pitch, 0)
+            }
         }
     };
 }

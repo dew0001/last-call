@@ -6,6 +6,7 @@
 //! simulation shared by host and predicting clients.
 
 pub mod bar;
+pub mod beer;
 pub mod customers;
 pub mod economy;
 pub mod movement;

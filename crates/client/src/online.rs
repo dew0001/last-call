@@ -74,6 +74,12 @@ pub struct GameStatus {
     pub pocket: Option<i64>,
     /// Customers this client sees: (id, mood, x, z).
     pub customers: Vec<(u32, &'static str, f32, f32)>,
+    /// This player's pour at the tap, percent: (fill, foam).
+    pub pour: Option<(u8, u8)>,
+    /// The beer in this player's hand: (fill percent, perfect).
+    pub beer: Option<(u8, bool)>,
+    /// Puddles on the floor.
+    pub puddles: usize,
 }
 
 fn mood_name(m: shared::customers::Mood) -> &'static str {
@@ -186,9 +192,11 @@ pub fn add(app: &mut App, cfg: OnlineConfig) {
             place_props,
             dress_customers,
             place_customers,
+            dress_puddles,
             follow_camera,
             update_status,
             update_hud,
+            update_pour_gauge,
         )
             .chain(),
     );
@@ -202,6 +210,19 @@ struct ClockText;
 /// House pool, debt and pocket. The office LED sign replaces it in the art pass.
 #[derive(Component)]
 struct MoneyText;
+
+/// The pour gauge: a fill bar with the green zone marked, and the foam.
+#[derive(Component)]
+struct PourPanel;
+
+#[derive(Component)]
+struct FillBar;
+
+#[derive(Component)]
+struct FoamBar;
+
+/// Gauge width in pixels for 100%.
+const GAUGE_PX: f32 = 200.0;
 
 /// The win or loss screen.
 #[derive(Component)]
@@ -229,6 +250,47 @@ fn setup_hud(mut commands: Commands, nodraw: Option<Res<NoDraw>>) {
         TextColor(Color::srgb(0.55, 1.0, 0.75)),
         Node { position_type: PositionType::Absolute, bottom: px(8), left: px(10), ..default() },
     ));
+    // Pour gauge, bottom center: fill (amber) over a track with the green
+    // zone, and foam (white) under it.
+    let bar =
+        |w: f32, h: f32, color: Color| (Node { width: px(w), height: px(h), ..default() }, BackgroundColor(color));
+    commands
+        .spawn((
+            PourPanel,
+            Visibility::Hidden,
+            Node {
+                position_type: PositionType::Absolute,
+                bottom: px(70),
+                left: percent(50),
+                margin: UiRect::left(px(-GAUGE_PX / 2.0)),
+                flex_direction: FlexDirection::Column,
+                row_gap: px(4),
+                ..default()
+            },
+        ))
+        .with_children(|panel| {
+            panel.spawn((Text::new("POUR: release in the green"), font(14.0), TextColor(Color::WHITE)));
+            panel
+                .spawn((
+                    Node { width: px(GAUGE_PX * 1.05), height: px(16), ..default() },
+                    BackgroundColor(Color::srgba(0.1, 0.1, 0.1, 0.8)),
+                ))
+                .with_children(|track| {
+                    let (g0, g1) = shared::beer::GREEN;
+                    track.spawn((
+                        Node {
+                            position_type: PositionType::Absolute,
+                            left: px(GAUGE_PX * g0),
+                            width: px(GAUGE_PX * (g1 - g0)),
+                            height: percent(100),
+                            ..default()
+                        },
+                        BackgroundColor(Color::srgba(0.1, 0.8, 0.2, 0.6)),
+                    ));
+                    track.spawn((FillBar, bar(0.0, 16.0, Color::srgba(0.95, 0.65, 0.15, 0.9))));
+                });
+            panel.spawn((FoamBar, bar(0.0, 6.0, Color::srgb(0.95, 0.95, 0.9))));
+        });
     commands
         .spawn((
             OutcomeScreen,
@@ -263,6 +325,26 @@ fn dollars(v: i64) -> String {
         out.push(c);
     }
     format!("{}${out}", if v < 0 { "-" } else { "" })
+}
+
+fn update_pour_gauge(
+    status: Res<NetStatus>,
+    mut panel: Query<&mut Visibility, With<PourPanel>>,
+    mut fill: Query<&mut Node, (With<FillBar>, Without<FoamBar>)>,
+    mut foam: Query<&mut Node, (With<FoamBar>, Without<FillBar>)>,
+) {
+    let Ok(mut vis) = panel.single_mut() else { return };
+    let Some((f, o)) = status.game.pour else {
+        vis.set_if_neq(Visibility::Hidden);
+        return;
+    };
+    vis.set_if_neq(Visibility::Inherited);
+    if let Ok(mut n) = fill.single_mut() {
+        n.width = px(GAUGE_PX * f32::from(f) / 100.0);
+    }
+    if let Ok(mut n) = foam.single_mut() {
+        n.width = px(GAUGE_PX * f32::from(o) / 100.0);
+    }
 }
 
 fn update_hud(
@@ -455,7 +537,7 @@ fn dress_props(
     props: Query<(Entity, &PropKind), (With<Interpolated>, Without<DressedProp>)>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut cache: Local<Option<[(Handle<Mesh>, Handle<StandardMaterial>); 3]>>,
+    mut cache: Local<Option<[(Handle<Mesh>, Handle<StandardMaterial>); 4]>>,
 ) {
     if props.is_empty() {
         return;
@@ -467,6 +549,15 @@ fn dress_props(
             (meshes.add(Cylinder::new(0.04, 0.28)), mat(Color::srgb(0.2, 0.55, 0.25))),
             (meshes.add(Cylinder::new(0.02, 0.012)), mat(Color::srgb(0.85, 0.15, 0.15))),
             (meshes.add(Cuboid::new(0.4, 0.75, 0.4)), mat(Color::srgb(0.4, 0.25, 0.12))),
+            (
+                meshes.add(Cylinder::new(0.045, 0.15)),
+                materials.add(StandardMaterial {
+                    base_color: Color::srgb(0.95, 0.65, 0.15),
+                    emissive: LinearRgba::rgb(0.3, 0.18, 0.02),
+                    perceptual_roughness: 0.2,
+                    ..default()
+                }),
+            ),
         ]
     });
     for (entity, kind) in &props {
@@ -474,6 +565,7 @@ fn dress_props(
             PropKind::Bottle => 0,
             PropKind::Chip => 1,
             PropKind::Stool => 2,
+            PropKind::Glass => 3,
         }];
         commands.entity(entity).insert((
             DressedProp,
@@ -500,6 +592,43 @@ fn place_props(
             _ => pose.pos,
         };
         t.rotation = pose.rot;
+    }
+}
+
+#[derive(Component)]
+struct DressedPuddle;
+
+/// Spilled beer: a flat amber disc on the floor.
+fn dress_puddles(
+    mut commands: Commands,
+    puddles: Query<(Entity, &Puddle), Without<DressedPuddle>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut cache: Local<Option<(Handle<Mesh>, Handle<StandardMaterial>)>>,
+) {
+    if puddles.is_empty() {
+        return;
+    }
+    let (mesh, mat) = cache
+        .get_or_insert_with(|| {
+            (
+                meshes.add(Cylinder::new(0.5, 0.01)),
+                materials.add(StandardMaterial {
+                    base_color: Color::srgba(0.75, 0.5, 0.1, 0.8),
+                    perceptual_roughness: 0.05,
+                    alpha_mode: AlphaMode::Blend,
+                    ..default()
+                }),
+            )
+        })
+        .clone();
+    for (entity, puddle) in &puddles {
+        commands.entity(entity).insert((
+            DressedPuddle,
+            Mesh3d(mesh.clone()),
+            MeshMaterial3d(mat.clone()),
+            Transform::from_translation(puddle.pos),
+        ));
     }
 }
 
@@ -595,6 +724,9 @@ fn update_status(
     room: Query<(&ShiftClock, Option<&RunLedger>), With<RoomState>>,
     pockets: Query<(&Player, &Pocket)>,
     customers: Query<(&Customer, &NpcPose), With<Interpolated>>,
+    gauges: Query<(&Player, &PourGauge)>,
+    beers: Query<(&Beer, &HeldBy)>,
+    puddles: Query<(), With<Puddle>>,
     mut status: ResMut<NetStatus>,
 ) {
     let (rtt_ms, jitter_ms) = link
@@ -630,6 +762,12 @@ fn update_status(
                 v.sort_by_key(|c| c.0);
                 v
             },
+            pour: gauges.iter().find(|(p, _)| Some(p.id) == session.player_id).map(|(_, g)| (g.fill, g.foam)),
+            beer: beers
+                .iter()
+                .find(|(_, h)| h.0.is_some() && h.0 == session.player_id)
+                .map(|(b, _)| (b.fill, b.perfect)),
+            puddles: puddles.iter().count(),
         },
     };
 }

@@ -430,7 +430,7 @@ Each phase ends with a demo build at a URL and a checklist. Do not start the nex
 ### Phase 2: Shift loop and economy (week 4)
 - [x] Shift phases with timers and server-driven transitions.
 - [x] House pool, pockets, safe transfer, loan shark payment, win and loss screens.
-- [ ] Customer NPC: spawn, walk to a stool, buy a drink, leave. Navmesh with `vleue_navigator` or `oxidized_navigation` (verify Bevy support).
+- [x] Customer NPC: spawn, walk to a stool, buy a drink, leave. Navmesh with `vleue_navigator` or `oxidized_navigation` (verify Bevy support).
 - [ ] Beer tap minigame complete. Pour, carry, serve, tips.
 - [ ] Drunk meter and all four drunk tiers including pass-out ragdoll and drag.
 

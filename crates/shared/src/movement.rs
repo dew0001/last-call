@@ -46,10 +46,20 @@ pub fn forward(yaw: f32) -> [f32; 3] {
     [-s, 0.0, -c]
 }
 
+/// Height of the hand above the feet: above the counter top, so a held glass
+/// or bottle clears it.
+pub const HAND_HEIGHT: f32 = 1.3;
+
 /// Where a player's hand is, in front of the chest. Held props sit here.
 pub fn hand_point(pos: [f32; 3], yaw: f32) -> [f32; 3] {
     let f = forward(yaw);
-    [pos[0] + f[0] * 0.7, pos[1] + 1.15, pos[2] + f[2] * 0.7]
+    [pos[0] + f[0] * 0.7, pos[1] + HAND_HEIGHT, pos[2] + f[2] * 0.7]
+}
+
+/// Horizontal distance from a player to the beer tap.
+pub fn distance_to_tap(pos: [f32; 3]) -> f32 {
+    let (tx, tz) = crate::bar::TAP;
+    ((pos[0] - tx).powi(2) + (pos[2] - tz).powi(2)).sqrt()
 }
 
 /// Keep a player inside the walls and out of every block (counter, office

@@ -51,6 +51,11 @@ pub const SAFE: (f32, f32) = (9.4, -6.4);
 /// How close (horizontal distance to the safe's center) a player must stand to use it.
 pub const SAFE_REACH: f32 = 1.3;
 
+/// The beer tap on the counter top: (x, z).
+pub const TAP: (f32, f32) = (4.0, COUNTER.1);
+/// How close (horizontal distance to the tap) a player must stand to pour.
+pub const TAP_REACH: f32 = 1.4;
+
 /// Everything players collide with besides the outer walls.
 pub const BLOCKS: [Block; 5] = [
     block(COUNTER.0, COUNTER.1, COUNTER.2, COUNTER.3, COUNTER_HEIGHT, BlockKind::Counter),

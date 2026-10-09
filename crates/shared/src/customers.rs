@@ -56,11 +56,22 @@ pub fn is_bar_seat(x: f32, z: f32, up_y: f32) -> bool {
     up_y > 0.9 && (x - cx).abs() < hx - 0.2 && z > front + 0.3 && z < front + 1.6
 }
 
-/// Where a customer on a stool at (x, z) wants their beer: the counter top
-/// straight in front of them. Returns (center x, center z, half x, half z).
+/// Where a customer on a stool at x wants their beer: the counter top
+/// straight in front of them, the full depth of the counter so a server can
+/// reach it from either side. Returns (center x, center z, half x, half z).
 pub fn serve_zone(stool_x: f32) -> (f32, f32, f32, f32) {
     let (_, cz, _, hz) = crate::bar::COUNTER;
-    (stool_x, cz + hz * 0.5, 0.4, hz * 0.5 + 0.05)
+    (stool_x, cz, 0.55, hz + 0.05)
+}
+
+/// Is a point (x, y, z) inside the serve zone of a stool at `stool_x`, on
+/// the counter top?
+pub fn in_serve_zone(stool_x: f32, p: [f32; 3]) -> bool {
+    let (x, z, hx, hz) = serve_zone(stool_x);
+    (p[0] - x).abs() <= hx
+        && (p[2] - z).abs() <= hz
+        && p[1] > crate::bar::COUNTER_HEIGHT - 0.05
+        && p[1] < crate::bar::COUNTER_HEIGHT + 0.5
 }
 
 #[cfg(test)]
@@ -98,5 +109,9 @@ mod tests {
         let (x, z, zx, zz) = serve_zone(1.5);
         assert_eq!(x, 1.5);
         assert!(x + zx <= cx + hx && z - zz >= cz - hz - 0.1 && z + zz <= cz + hz + 0.1);
+        let top = crate::bar::COUNTER_HEIGHT + 0.08;
+        assert!(in_serve_zone(1.5, [1.9, top, cz + hz - 0.1]));
+        assert!(!in_serve_zone(1.5, [2.2, top, cz]), "next stool's zone");
+        assert!(!in_serve_zone(1.5, [1.5, 0.05, cz + hz + 0.5]), "on the floor");
     }
 }

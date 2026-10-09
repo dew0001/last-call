@@ -2,7 +2,7 @@
 // Rooms run with `&fast=60`: every shift phase is 60 times shorter, so a
 // 14-minute shift takes 14 seconds (Setup 2, Open 9, Last call 2, Payment 1).
 import { expect, test } from '@playwright/test';
-import { INTERACT, ROUTE_TO_SAFE, createRoom, openTab, status, tap, waitFor, walkTo } from './helpers';
+import { DROP, INTERACT, ROUTE_TO_SAFE, ROUTE_TO_TAP, createRoom, openTab, setInput, status, tap, waitFor, walkTo } from './helpers';
 
 test.beforeEach(({ page }, info) => {
   const tag = `[${info.project.name}]`;
@@ -64,10 +64,13 @@ test('the last payment wins, and a new run starts', async ({ browser }) => {
   expect(s0.game.money.due).toBe(40_000);
 
   // At the end of week 6 the loan shark takes the 40,000 left: the run is won.
-  const won = await waitFor(player, 'run won', (s) => s.game?.money?.outcome === 'won', 90_000);
+  // Both clients show the win screen (only 1 second long at fast=60).
+  const [won] = await Promise.all([
+    waitFor(player, 'run won', (s) => s.game?.money?.outcome === 'won', 90_000),
+    waitFor(host, 'host sees the win', (s) => s.game?.money?.outcome === 'won', 90_000),
+  ]);
   expect(won.game.money.paid).toBe(120_000);
   expect(won.game.money.last).toEqual(['paid', 40_000]);
-  expect((await status(host)).game.money.outcome).toBe('won');
 
   // Then a new run at new game plus 1, with no money carried over.
   const next = await waitFor(player, 'new run', (s) => s.game?.money?.outcome === 'playing' && s.game.money.ng === 1);
@@ -110,6 +113,51 @@ test('customers walk in, sit at the bar, order, and leave at last call', async (
   await waitFor(player, 'last call', (s) => s.game?.shift?.phase === 'LAST CALL', 60_000);
   await waitFor(player, 'everyone leaving', (s) => (s.game?.customers ?? []).every((c: C) => c[1] === 'leaving'), 5_000);
   await waitFor(player, 'bar empty by next setup', (s) => s.game?.shift?.shift === 2 && s.game.customers.length === 0, 60_000);
+  await player.context().close();
+  await host.context().close();
+});
+
+test('a perfect pour, carried to a waiting customer, is paid for and tipped', async ({ browser }) => {
+  // fast=20: Setup 6 s, then customers arrive at the start of Open.
+  const { host, room } = await createRoom(browser, undefined, '&fast=20');
+  const player = await openTab(browser, `${room.link}&gpu=webgl2&novoice&name=Rook`, 'player');
+  await waitFor(player, 'player joined', (s) => !!s.playerId && !!s.game?.money);
+
+  // Stand at the tap and wait for a customer to sit down.
+  await walkTo(player, ROUTE_TO_TAP);
+  type C = [number, string, number, number];
+  const waiting = (s: any) => (s.game?.customers ?? []).filter((c: C) => c[1] === 'waiting') as C[];
+  const s0 = await waitFor(player, 'a customer waits at the bar', (s) => waiting(s).length > 0, 60_000);
+  const house0 = s0.game.money.house;
+
+  // Hold E at a good tilt; let go in the green zone.
+  // Poll the gauge quickly: it rises 2% every 50 ms.
+  await setInput(player, { mx: 0, my: 0, yaw: 0, pitch: -0.4, buttons: INTERACT });
+  await player.waitForFunction(() => ((window as any).__lastCall?.game?.pour?.[0] ?? 0) >= 86, null, { polling: 20, timeout: 10_000 });
+  await setInput(player, { mx: 0, my: 0, yaw: 0, pitch: -0.4, buttons: 0 });
+  const poured = await waitFor(player, 'a beer in hand', (s) => !!s.game?.beer);
+  expect(poured.game.beer[1]).toBe(true);
+
+  // Walk (not run) to the gap between that customer's stool and the next,
+  // face the counter, and put the glass down in front of them.
+  const target = waiting(await status(player))[0];
+  const x = target[2] + 0.5;
+  await walkTo(player, [
+    [4.0, -1.5],
+    [x, -1.5],
+    [x, -3.05],
+  ]);
+  await setInput(player, { mx: 0, my: 0, yaw: 0, pitch: 0, buttons: 0 });
+  await player.waitForTimeout(300);
+  await tap(player, DROP);
+
+  const served = await waitFor(
+    player,
+    'customer served',
+    (s) => s.game?.money?.house === house0 + 8 && s.game.pocket === 2 && !s.game.beer,
+    10_000,
+  );
+  expect(served.game.customers.some((c: C) => c[1] === 'drinking')).toBe(true);
   await player.context().close();
   await host.context().close();
 });

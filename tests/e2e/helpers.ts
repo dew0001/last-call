@@ -65,6 +65,7 @@ export async function createRoom(browser: Browser, size?: { width: number; heigh
 export type Input = { mx: number; my: number; yaw: number; pitch: number; buttons: number };
 export const setInput = (page: Page, input: Input) => page.evaluate((i) => ((window as any).__lcInput = i), input);
 export const INTERACT = 1 << 3;
+export const DROP = 1 << 5;
 
 /**
  * Walk the player through (x, z) waypoints with scripted input, steering from
@@ -96,6 +97,12 @@ export const ROUTE_TO_SAFE: [number, number][] = [
   [8.2, -1.0],
   [8.2, -3.0],
   [9.4, -5.55],
+];
+
+/** From the main room to the front of the beer tap, between two stools. */
+export const ROUTE_TO_TAP: [number, number][] = [
+  [4.0, -1.5],
+  [4.0, -3.0],
 ];
 
 /** Tap a button: down for `ms`, then up for `ms`. */
