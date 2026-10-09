@@ -282,13 +282,16 @@ fn grab_and_throw(frame: u64) -> PlayerInput {
     }
 }
 
-/// The [`Script::GrabAndDrop`] timeline: like [`grab_and_throw`], then Q.
+/// The [`Script::GrabAndDrop`] timeline: like [`grab_and_throw`], then a
+/// step away from the counter (clear of the stools, so the prop reaches the
+/// floor) and Q.
 fn grab_and_drop(frame: u64) -> PlayerInput {
     use shared::movement::buttons::DROP;
     let half_turn = std::f32::consts::PI;
     match frame {
         0..524 => grab_and_throw(frame),
-        524..534 => PlayerInput::new(Vec2::ZERO, half_turn, 0.0, DROP),
+        524..556 => PlayerInput::new(Vec2::Y, half_turn, 0.0, 0),
+        556..566 => PlayerInput::new(Vec2::ZERO, half_turn, 0.0, DROP),
         _ => PlayerInput::new(Vec2::ZERO, half_turn, 0.0, 0),
     }
 }
