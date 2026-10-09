@@ -70,8 +70,11 @@ pub fn run(
     mut npcs: Query<(Entity, &Customer, &mut Npc), Without<WantsToLeave>>,
     mut chips: Query<(Entity, &Position, &mut LinearVelocity), With<RakeChip>>,
     mut room: Query<&mut RunLedger, With<RoomState>>,
+    owned: Res<crate::fixtures::Owned>,
 ) {
     let Ok((mut host, mut view)) = tables.single_mut() else { return };
+    let table_max = owned.0.table_max(casino::ROULETTE_MAX);
+    let patience = casino::TABLE_PATIENCE_SECS * shared::TICK_HZ * owned.0.patience_percent() / 100;
     let host = &mut *host;
     let tick = tick.0;
 
@@ -114,7 +117,7 @@ pub fn run(
                 let mine = host.bets.iter().filter(|(e, _)| *e == who_e).count();
                 if host.spin.is_none()
                     && bet.is_valid()
-                    && (casino::ROULETTE_MIN..=casino::max_bet(casino::ROULETTE_MAX, tier)).contains(&amount)
+                    && (casino::ROULETTE_MIN..=casino::max_bet(table_max, tier)).contains(&amount)
                     && casino::can_reach(TABLE, pos.0.x, pos.0.z)
                     && mine < casino::ROULETTE_BETS_PER_PLAYER
                     && pocket.0 >= amount
@@ -190,7 +193,7 @@ pub fn run(
                 let mut rng = rngs.draw(TABLE, tick, &mut audit);
                 let outcome = Roulette::apply(spin, Who::Customer(0), (), &mut rng).ok().flatten();
                 if let Some(outcome) = outcome {
-                    settle(&mut commands, host, outcome.result, &mut players, &mut npcs, &mut room);
+                    settle(&mut commands, host, outcome.result, patience, &mut players, &mut npcs, &mut room);
                 }
                 host.spin = None;
                 host.betting = 0;
@@ -224,6 +227,7 @@ fn settle(
     commands: &mut Commands,
     host: &mut RouletteHost,
     result: u8,
+    patience: u32,
     players: &mut Players,
     npcs: &mut Query<(Entity, &Customer, &mut Npc), Without<WantsToLeave>>,
     room: &mut Query<&mut RunLedger, With<RoomState>>,
@@ -234,7 +238,7 @@ fn settle(
     for (p, (entity, bet)) in payouts.iter_mut().zip(&host.bets) {
         // A spin came: customers' patience starts over.
         if let Ok((_, _, mut npc)) = npcs.get_mut(*entity) {
-            npc.ticks = casino::TABLE_PATIENCE_SECS * shared::TICK_HZ;
+            npc.ticks = patience;
         }
         if p.returned == 0 {
             if losers < MAX_RAKE_CHIPS {

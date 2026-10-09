@@ -74,7 +74,7 @@ fn props_rest_and_a_bot_throws_a_bottle() {
 
     for (_, kind, pose, _) in room.host_props() {
         let p = pose.pos;
-        assert!(p.y > -0.2 && p.x.abs() < 10.5 && p.z.abs() < 7.5, "{kind:?} left the room at {p:?}");
+        assert!(p.y > -0.2 && shared::world::room_at(p.x, p.z).is_some(), "{kind:?} left the map at {p:?}");
     }
     let awake = host::physics::awake_bodies(room.host.world_mut());
     println!("awake bodies: {awake}, worst host tick: {worst_tick:?}");

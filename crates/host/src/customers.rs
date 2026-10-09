@@ -206,6 +206,7 @@ fn spawn_waves(
     mut rng: ResMut<CustomerRng>,
     mut audit: ResMut<Audit>,
     tastes: Res<Tastes>,
+    owned: Res<crate::fixtures::Owned>,
     player_spots: Res<PlayerSpots>,
     mut waves: ResMut<WaveTimer>,
     stools: Query<(Entity, &PropKind, &Position, &Rotation, &HeldBy)>,
@@ -227,7 +228,7 @@ fn spawn_waves(
         (0..casino::SLOT_MACHINES).flat_map(|m| free_spots(TableId::Slot(m), &player_spots, &npcs)).collect();
     let door = Vec2::new(DOOR.0, DOOR.1);
     let mut d = rng.0.at(tick.0, &mut audit.0);
-    for _ in 0..customers::wave_size(week) {
+    for _ in 0..customers::wave_size(week) + owned.0.extra_customers() {
         let weights = tastes.0;
         let open = [!seats.is_empty(), !blackjack.is_empty(), !roulette.is_empty(), !slots.is_empty()];
         let total: u32 = (0..4).filter(|i| open[*i]).map(|i| weights[i]).sum();
@@ -261,7 +262,7 @@ fn spawn_waves(
                 (activity, None, at)
             }
         };
-        let cash = customers::starting_cash(d.below(361), week);
+        let cash = owned.0.customer_cash(customers::starting_cash(d.below(361), week));
         waves.next_id += 1;
         commands.spawn((
             Name::new("Customer"),
@@ -302,7 +303,12 @@ fn leave(mesh: &NavMesh, c: &mut Customer, npc: &mut Npc, pose: &NpcPose) {
 }
 
 /// Walk along the path; arrive at the stool or out the door.
-fn walk(mut commands: Commands, mut npcs: Query<(Entity, &mut Customer, &mut Npc, &mut NpcPose)>) {
+fn walk(
+    mut commands: Commands,
+    owned: Res<crate::fixtures::Owned>,
+    mut npcs: Query<(Entity, &mut Customer, &mut Npc, &mut NpcPose)>,
+) {
+    let pct = owned.0.patience_percent();
     let step = WALK_SPEED * shared::TICK.as_secs_f32();
     for (e, mut c, mut npc, mut pose) in &mut npcs {
         if npc.path.is_empty() {
@@ -332,13 +338,13 @@ fn walk(mut commands: Commands, mut npcs: Query<(Entity, &mut Customer, &mut Npc
                         }
                         next.yaw = 0.0;
                         c.mood = Mood::Waiting;
-                        npc.ticks = ticks(PATIENCE_SECS);
+                        npc.ticks = ticks(PATIENCE_SECS) * pct / 100;
                     }
                     Activity::Table(table, _) => {
                         // Face the table (slot machines stand to the west).
                         next.yaw = if matches!(table, TableId::Slot(_)) { std::f32::consts::FRAC_PI_2 } else { 0.0 };
                         c.mood = Mood::Gambling;
-                        npc.ticks = ticks(casino::TABLE_PATIENCE_SECS);
+                        npc.ticks = ticks(casino::TABLE_PATIENCE_SECS) * pct / 100;
                     }
                 },
                 Mood::Leaving => {
@@ -355,6 +361,7 @@ fn walk(mut commands: Commands, mut npcs: Query<(Entity, &mut Customer, &mut Npc
 /// Seated customers: patience runs out, drinks finish, stools get taken away.
 fn seated(
     mesh: Res<BarNavMesh>,
+    owned: Res<crate::fixtures::Owned>,
     stools: Query<(&Position, &Rotation, &HeldBy)>,
     mut npcs: Query<(&mut Customer, &mut Npc, &NpcPose)>,
 ) {
@@ -376,7 +383,7 @@ fn seated(
         if c.mood == Mood::Drinking && npc.ticks == 0 {
             if npc.cash >= customers::BEER_PRICE {
                 c.mood = Mood::Waiting;
-                npc.ticks = ticks(PATIENCE_SECS);
+                npc.ticks = ticks(PATIENCE_SECS) * owned.0.patience_percent() / 100;
             } else {
                 leave(&mesh.0, &mut c, &mut npc, pose);
                 continue;

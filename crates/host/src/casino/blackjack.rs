@@ -108,8 +108,11 @@ pub fn run(
     mut players: Players,
     mut npcs: Query<(Entity, &Customer, &mut Npc), Without<WantsToLeave>>,
     mut room: Query<&mut RunLedger, With<RoomState>>,
+    owned: Res<crate::fixtures::Owned>,
 ) {
     let Ok((mut host, mut view)) = tables.single_mut() else { return };
+    let table_max = owned.0.table_max(casino::BLACKJACK_MAX);
+    let patience = casino::TABLE_PATIENCE_SECS * shared::TICK_HZ * owned.0.patience_percent() / 100;
     let host = &mut *host;
     let tick = tick.0;
     let seated_customers = customers_at(&npcs);
@@ -161,7 +164,7 @@ pub fn run(
                 }
             }
             TableAction::Bet(amount) => {
-                if !casino::blackjack_bet_ok(amount, tier)
+                if !casino::blackjack_bet_ok(amount, tier, table_max)
                     || !casino::can_reach(TABLE, pos.x, pos.z)
                     || money < amount
                     || host.dealer == Some(who_e)
@@ -206,7 +209,7 @@ pub fn run(
                         match casino::customer_blackjack_bet(npc.start_cash, npc.cash) {
                             Some(bet) => {
                                 npc.cash -= bet;
-                                npc.ticks = casino::TABLE_PATIENCE_SECS * shared::TICK_HZ;
+                                npc.ticks = patience;
                                 round.push((s, Who::Customer(c.id), ce));
                                 bets.push(Bet { who: Who::Customer(c.id), amount: bet, selection: () });
                             }

@@ -22,10 +22,12 @@ use shared::pipe::{PipeIo, PipePlugin};
 use shared::protocol::ProtocolPlugin;
 
 pub mod beer;
+pub mod buffs;
 pub mod casino;
 pub mod customers;
 pub mod drunk;
 pub mod economy;
+pub mod fixtures;
 pub mod game;
 pub mod physics;
 pub mod replay;
@@ -121,6 +123,7 @@ impl HostSim {
         if let Some(save) = &config.resume {
             start.ledger = save.ledger;
             start.calendar = save.calendar;
+            start.upgrades = save.upgrades;
             app.insert_resource(save::SavedPockets(save.pockets_by_id()));
         }
         app.insert_resource(start);
@@ -134,6 +137,8 @@ impl HostSim {
             drunk::DrunkPlugin,
             casino::CasinoPlugin,
             save::SavePlugin,
+            buffs::BuffsPlugin,
+            fixtures::FixturesPlugin,
         ));
 
         deterministic_schedules(&mut app);
@@ -218,6 +223,11 @@ impl HostSim {
     /// The host's lightyear tick (the tick inputs and tap stamps are numbered by).
     pub fn net_tick(&self) -> u32 {
         self.app.world().resource::<lightyear::prelude::LocalTimeline>().tick().0
+    }
+
+    /// A fixture request from a local player (tests), as if it had come over the network.
+    pub fn fixture_request(&mut self, player: Entity, request: shared::protocol::FixtureRequest) {
+        self.app.world_mut().resource_mut::<fixtures::FixtureQueue>().0.push((player, request));
     }
 
     /// Take the newest run save, if one was written since the last call

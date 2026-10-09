@@ -76,6 +76,8 @@ pub struct RunStart {
     pub pocket: i64,
     /// A joining player's drunk meter.
     pub drunk: u8,
+    /// Upgrades owned (a resumed run keeps its own).
+    pub upgrades: shared::upgrades::Upgrades,
 }
 
 /// Present while the win or loss screen shows.
@@ -112,7 +114,12 @@ impl Plugin for EconomyPlugin {
 fn open_books(mut commands: Commands, start: Res<RunStart>, room: Query<Entity, With<RoomState>>) {
     for room in &room {
         let ledger = start.ledger;
-        commands.entity(room).insert(RunLedger { ledger, due: ledger.due(start.calendar.week), ..default() });
+        commands.entity(room).insert((
+            RunLedger { ledger, due: ledger.due(start.calendar.week), ..default() },
+            shared::protocol::RoomUpgrades(start.upgrades),
+            shared::protocol::JukeboxState::default(),
+            shared::protocol::ChaosState::default(),
+        ));
     }
 }
 
@@ -185,7 +192,7 @@ fn end_run(
     config: Res<ShiftConfig>,
     over: Option<ResMut<RunOver>>,
     mut timer: ResMut<ShiftTimer>,
-    mut room: Query<&mut RunLedger, With<RoomState>>,
+    mut room: Query<(&mut RunLedger, &mut shared::protocol::RoomUpgrades), With<RoomState>>,
     mut pockets: Query<&mut Pocket>,
     mut saved: ResMut<crate::save::SavedPockets>,
     mut started: MessageWriter<PhaseStarted>,
@@ -196,9 +203,11 @@ fn end_run(
         return;
     }
     commands.remove_resource::<RunOver>();
-    let Ok(mut run) = room.single_mut() else { return };
+    let Ok((mut run, mut upgrades)) = room.single_mut() else { return };
     let ng = run.ledger.ng.saturating_add(1);
     *run = RunLedger { ledger: Ledger::new_run(ng), ..default() };
+    // Upgrades are bought for a run; a new run starts bare.
+    upgrades.0 = shared::upgrades::Upgrades::default();
     for mut pocket in &mut pockets {
         pocket.0 = 0;
     }

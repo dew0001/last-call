@@ -176,9 +176,10 @@ pub fn max_bet(table_max: i64, tier: Tier) -> i64 {
     (table_max as f32 * drunk::max_bet_multiplier(tier)) as i64
 }
 
-/// Is `amount` a blackjack bet a player of `tier` may make?
-pub fn blackjack_bet_ok(amount: i64, tier: Tier) -> bool {
-    amount % 2 == 0 && (BLACKJACK_MIN..=max_bet(BLACKJACK_MAX, tier)).contains(&amount)
+/// Is `amount` a blackjack bet a player of `tier` may make, at a table whose
+/// maximum is `table_max` ([`BLACKJACK_MAX`], doubled per Felt rank)?
+pub fn blackjack_bet_ok(amount: i64, tier: Tier, table_max: i64) -> bool {
+    amount % 2 == 0 && (BLACKJACK_MIN..=max_bet(table_max, tier)).contains(&amount)
 }
 
 /// The bet buttons a client shows: (key label, amount). A Wasted player's
@@ -267,11 +268,12 @@ mod tests {
 
     #[test]
     fn courage_raises_the_max_bet() {
-        assert!(blackjack_bet_ok(100, Tier::Sober));
-        assert!(!blackjack_bet_ok(150, Tier::Sober));
-        assert!(blackjack_bet_ok(150, Tier::Courage));
-        assert!(!blackjack_bet_ok(15, Tier::Courage), "odd");
-        assert!(!blackjack_bet_ok(8, Tier::Sober), "under the minimum");
+        assert!(blackjack_bet_ok(100, Tier::Sober, BLACKJACK_MAX));
+        assert!(!blackjack_bet_ok(150, Tier::Sober, BLACKJACK_MAX));
+        assert!(blackjack_bet_ok(150, Tier::Courage, BLACKJACK_MAX));
+        assert!(!blackjack_bet_ok(15, Tier::Courage, BLACKJACK_MAX), "odd");
+        assert!(!blackjack_bet_ok(8, Tier::Sober, BLACKJACK_MAX), "under the minimum");
+        assert!(blackjack_bet_ok(200, Tier::Sober, 200), "a Felt rank doubles the maximum");
     }
 
     #[test]

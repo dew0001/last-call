@@ -54,8 +54,9 @@ struct Pouring {
 }
 
 impl Pouring {
-    fn step(&mut self, tick: u32, pitch: f32) -> bool {
-        let over = self.pour.step(pitch, shared::TICK.as_secs_f32());
+    /// `speed` is the Tap Wall multiplier.
+    fn step(&mut self, tick: u32, pitch: f32, speed: f32) -> bool {
+        let over = self.pour.step(pitch, shared::TICK.as_secs_f32() * speed);
         self.history.push_back((tick, self.pour));
         while self.history.len() > HISTORY {
             self.history.pop_front();
@@ -145,8 +146,15 @@ type PourPlayers<'w, 's> = Query<
 /// and the stamps put the pour right. A release stamp ends the pour at the
 /// fill it had at that tick; a press stamp from before the pour started
 /// here adds the missed steps. Bots send no stamps and pour by inputs alone.
-fn pour(mut commands: Commands, timeline: Res<LocalTimeline>, mut queue: ResMut<TapQueue>, mut players: PourPlayers) {
+fn pour(
+    mut commands: Commands,
+    timeline: Res<LocalTimeline>,
+    owned: Res<crate::fixtures::Owned>,
+    mut queue: ResMut<TapQueue>,
+    mut players: PourPlayers,
+) {
     let now = timeline.tick().0;
+    let speed = owned.0.pour_speed();
     // A client runs a few ticks ahead of the host, so a stamp often arrives
     // before its tick: keep it until the host gets there. Drop stale ones.
     queue.0.retain(|(_, t)| now.saturating_sub(t.tick) < HISTORY as u32);
@@ -172,7 +180,7 @@ fn pour(mut commands: Commands, timeline: Res<LocalTimeline>, mut queue: ResMut<
                 let mut new = Pouring { started: press.unwrap_or(now), seen_down: can_pour, ..default() };
                 // A late press: the steps this host missed, then this tick's.
                 for t in new.started..=now {
-                    new.step(t, input.pitch());
+                    new.step(t, input.pitch(), speed);
                 }
                 commands
                     .entity(entity)
@@ -220,7 +228,7 @@ fn pour(mut commands: Commands, timeline: Res<LocalTimeline>, mut queue: ResMut<
         let stale = !p.seen_down && now - p.started <= MAX_CATCH_UP && at_tap && hands.held.is_none();
         if can_pour || stale {
             p.seen_down |= can_pour;
-            if p.step(now, input.pitch()) {
+            if p.step(now, input.pitch(), speed) {
                 p.overflowed = Some((now, OVERFLOW_GRACE_TICKS));
             }
             let gauge = PourGauge { fill: percent(p.pour.fill), foam: percent(p.pour.foam) };

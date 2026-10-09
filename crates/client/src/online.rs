@@ -468,13 +468,33 @@ fn setup_bar(
             Transform::from_translation(at),
         ));
     };
-    let (hx, hz, h) = (bar::HALF_X, bar::HALF_Z, bar::WALL_HEIGHT);
-    // Floor and walls.
-    solid(&mut commands, Vec3::new(hx * 2.0, 0.1, hz * 2.0), Vec3::new(0.0, -0.05, 0.0), gray(0.35));
-    solid(&mut commands, Vec3::new(hx * 2.0, h, 0.2), Vec3::new(0.0, h / 2.0, -hz - 0.1), gray(0.5));
-    solid(&mut commands, Vec3::new(hx * 2.0, h, 0.2), Vec3::new(0.0, h / 2.0, hz + 0.1), gray(0.5));
-    solid(&mut commands, Vec3::new(0.2, h, hz * 2.0), Vec3::new(-hx - 0.1, h / 2.0, 0.0), gray(0.45));
-    solid(&mut commands, Vec3::new(0.2, h, hz * 2.0), Vec3::new(hx + 0.1, h / 2.0, 0.0), gray(0.45));
+    use shared::world::{AREAS, Room};
+    // A floor per room, walls along their edges (door gaps open).
+    for a in AREAS.iter().filter(|a| a.room != Room::Office) {
+        let color = match a.room {
+            Room::ParkingLot => Color::srgb(0.12, 0.12, 0.14),
+            Room::Pier => Color::srgb(0.32, 0.22, 0.13),
+            Room::Roof => Color::srgb(0.18, 0.17, 0.17),
+            Room::Basement | Room::Stairwell => Color::srgb(0.25, 0.24, 0.22),
+            Room::Kitchen => Color::srgb(0.55, 0.55, 0.5),
+            _ => gray(0.35),
+        };
+        let (w, d) = (a.x1 - a.x0, a.z1 - a.z0);
+        solid(&mut commands, Vec3::new(w, 0.1, d), Vec3::new(a.x0 + w / 2.0, -0.05, a.z0 + d / 2.0), color);
+    }
+    for b in shared::world::walls() {
+        let color = if b.height < bar::WALL_HEIGHT { gray(0.3) } else { gray(0.45) };
+        solid(&mut commands, Vec3::new(b.hx * 2.0, b.height, b.hz * 2.0), Vec3::new(b.cx, b.height / 2.0, b.cz), color);
+    }
+    // The harbor around the pier.
+    let pier = shared::world::area_of(Room::Pier);
+    solid(
+        &mut commands,
+        Vec3::new(60.0, 0.05, pier.z1 - pier.z0 + 10.0),
+        Vec3::new(0.0, -0.6, (pier.z0 + pier.z1) / 2.0 + 5.0),
+        Color::srgb(0.05, 0.15, 0.3),
+    );
+    let hz = bar::HALF_Z;
     // Counter, office walls, safe.
     for b in &bar::BLOCKS {
         let color = match b.kind {
@@ -496,13 +516,22 @@ fn setup_bar(
         })),
         Transform::from_xyz(0.0, 2.4, -hz + 0.05),
     ));
-    // Warm lights.
-    for x in [-6.0, 0.0, 6.0] {
+    // Warm lights in the bar, one in each other indoor room; a cold moon outside.
+    let mut lamps: Vec<(f32, f32)> = vec![(-6.0, 0.0), (0.0, 0.0), (6.0, 0.0)];
+    for a in AREAS.iter().filter(|a| !a.room.outdoors() && a.room != Room::Bar) {
+        lamps.push(((a.x0 + a.x1) / 2.0, (a.z0 + a.z1) / 2.0));
+    }
+    for (x, z) in lamps {
         commands.spawn((
+            RoomLamp,
             PointLight { intensity: 400_000.0, range: 14.0, color: Color::srgb(1.0, 0.8, 0.55), ..default() },
-            Transform::from_xyz(x, 2.9, 0.0),
+            Transform::from_xyz(x, 2.9, z),
         ));
     }
+    commands.spawn((
+        DirectionalLight { illuminance: 1_500.0, color: Color::srgb(0.6, 0.7, 1.0), ..default() },
+        Transform::from_xyz(5.0, 20.0, 30.0).looking_at(Vec3::new(0.0, 0.0, 20.0), Vec3::Y),
+    ));
     commands.spawn((
         Camera3d::default(),
         // No lookup-table tonemapper: the LUT ships as zstd KTX2 and failed to
@@ -511,6 +540,10 @@ fn setup_bar(
         Transform::from_xyz(0.0, 6.0, 12.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
 }
+
+/// An indoor lamp (the power outage turns these off).
+#[derive(Component)]
+pub struct RoomLamp;
 
 fn read_input(
     keys: Res<ButtonInput<KeyCode>>,
@@ -567,6 +600,7 @@ fn predict_pour(
     held: Query<&HeldBy>,
     mut pour: ResMut<LocalPour>,
     mut taps: ResMut<shared::client::OutgoingTaps>,
+    upgrades: Query<&RoomUpgrades>,
 ) {
     let Some(id) = session.player_id else { return };
     let Ok(pos) = own.single() else { return };
@@ -587,7 +621,8 @@ fn predict_pour(
     }
     let p = pour.0.get_or_insert_default();
     if p.fill <= shared::beer::OVERFLOW {
-        p.step(input.pitch(), shared::TICK.as_secs_f32());
+        let speed = upgrades.single().map_or(1.0, |u| u.0.pour_speed());
+        p.step(input.pitch(), shared::TICK.as_secs_f32() * speed);
     }
 }
 
@@ -636,7 +671,7 @@ fn dress_props(
     props: Query<(Entity, &PropKind), (With<Interpolated>, Without<DressedProp>)>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut cache: Local<Option<[(Handle<Mesh>, Handle<StandardMaterial>); 4]>>,
+    mut cache: Local<Option<[(Handle<Mesh>, Handle<StandardMaterial>); 5]>>,
 ) {
     if props.is_empty() {
         return;
@@ -644,6 +679,7 @@ fn dress_props(
     let looks = cache.get_or_insert_with(|| {
         let mut mat =
             |c: Color| materials.add(StandardMaterial { base_color: c, perceptual_roughness: 0.6, ..default() });
+        let mop = (meshes.add(Cuboid::new(0.06, 1.3, 0.06)), mat(Color::srgb(0.55, 0.5, 0.42)));
         [
             (meshes.add(Cylinder::new(0.04, 0.28)), mat(Color::srgb(0.2, 0.55, 0.25))),
             (meshes.add(Cylinder::new(0.02, 0.012)), mat(Color::srgb(0.85, 0.15, 0.15))),
@@ -657,6 +693,7 @@ fn dress_props(
                     ..default()
                 }),
             ),
+            mop,
         ]
     });
     for (entity, kind) in &props {
@@ -665,6 +702,7 @@ fn dress_props(
             PropKind::Chip => 1,
             PropKind::Stool => 2,
             PropKind::Glass => 3,
+            PropKind::Mop => 4,
         }];
         commands.entity(entity).insert((
             DressedProp,
@@ -815,8 +853,12 @@ fn follow_camera(
     let mut eye = pos.0 + Vec3::Y * 2.2 + back;
     // Stay inside the room: behind a player near a wall, the camera would
     // otherwise see the wall's outside.
-    eye.x = eye.x.clamp(-bar::HALF_X + 0.3, bar::HALF_X - 0.3);
-    eye.z = eye.z.clamp(-bar::HALF_Z + 0.3, bar::HALF_Z - 0.3);
+    if let Some(room) = shared::world::room_at(pos.0.x, pos.0.z) {
+        let a =
+            shared::world::area_of(if room == shared::world::Room::Office { shared::world::Room::Bar } else { room });
+        eye.x = eye.x.clamp(a.x0 + 0.3, a.x1 - 0.3);
+        eye.z = eye.z.clamp(a.z0 + 0.3, a.z1 - 0.3);
+    }
     *t = Transform::from_translation(eye).looking_at(pos.0 + Vec3::Y * 1.2, Vec3::Y);
     // Courage and up: the view sways.
     let sway = shared::drunk::camera_sway(drunk.map_or(0, |d| d.level));

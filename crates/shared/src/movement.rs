@@ -3,7 +3,7 @@
 //!
 //! Pure functions on plain arrays; the Bevy wrappers live in `net`.
 
-use crate::bar::{BLOCKS, HALF_X, HALF_Z, PLAYER_RADIUS};
+use crate::bar::{BLOCKS, PLAYER_RADIUS};
 
 /// Walk speed in meters per second.
 pub const WALK_SPEED: f32 = 4.0;
@@ -74,7 +74,7 @@ pub fn distance_to_tap(pos: [f32; 3]) -> f32 {
 pub fn collide(mut p: [f32; 3]) -> [f32; 3] {
     let r = PLAYER_RADIUS;
     for _ in 0..2 {
-        for b in &BLOCKS {
+        for b in BLOCKS.iter().chain(crate::world::walls()) {
             let (ox, oz) = (b.hx + r - (p[0] - b.cx).abs(), b.hz + r - (p[2] - b.cz).abs());
             if ox > 0.0 && oz > 0.0 {
                 // Push out along the axis of least overlap.
@@ -85,8 +85,9 @@ pub fn collide(mut p: [f32; 3]) -> [f32; 3] {
                 }
             }
         }
-        p[0] = p[0].clamp(-HALF_X + r, HALF_X - r);
-        p[2] = p[2].clamp(-HALF_Z + r, HALF_Z - r);
+        let (x0, x1, z0, z1) = crate::world::bounds();
+        p[0] = p[0].clamp(x0 + r, x1 - r);
+        p[2] = p[2].clamp(z0 + r, z1 - r);
     }
     p
 }
@@ -133,7 +134,9 @@ mod tests {
     #[test]
     fn walls_and_counter_block() {
         use crate::bar::COUNTER;
-        assert_eq!(collide([50.0, 0.0, 0.0])[0], HALF_X - PLAYER_RADIUS);
+        // The bar's east wall stops a walk east except at the roof door.
+        let p = walk([0.0, 0.0, 0.0], [15.0, 0.0], 600);
+        assert!(p[0] <= 10.0 - PLAYER_RADIUS + 1e-4, "{p:?}");
         let (cx, cz, _, _) = COUNTER;
         let p = collide([cx, 0.0, cz]);
         assert!((p[2] - cz).abs() >= COUNTER.3 + PLAYER_RADIUS - 1e-5);
@@ -153,6 +156,30 @@ mod tests {
     }
 
     #[test]
+    fn every_room_is_reached_through_its_door() {
+        use crate::world::{Room, room_at};
+        // Bar to parking lot to pier.
+        let mut p = walk([0.0, 0.0, 5.0], [0.0, 10.0], 600);
+        p = walk(p, [0.0, 40.0], 2000);
+        assert_eq!(room_at(p[0], p[2]), Some(Room::Pier), "{p:?}");
+        // Bar to the basement, by the stairs.
+        let mut p = walk([-8.0, 0.0, 3.4], [-12.0, 3.4], 600);
+        p = walk(p, [-20.0, 3.4], 600);
+        assert_eq!(room_at(p[0], p[2]), Some(Room::Basement), "{p:?}");
+        // Bar to the roof.
+        let p = walk([8.0, 0.0, 3.4], [15.0, 3.4], 600);
+        assert_eq!(room_at(p[0], p[2]), Some(Room::Roof), "{p:?}");
+        // Behind the counter to the kitchen; bar to the back room.
+        let mut p = walk([-6.2, 0.0, -5.5], [-6.2, -10.0], 600);
+        assert_eq!(room_at(p[0], p[2]), Some(Room::Kitchen), "{p:?}");
+        // The back room door is behind the counter: round the counter's end.
+        p = walk([-7.0, 0.0, -1.0], [-7.0, -5.5], 600);
+        p = walk(p, [2.0, -5.5], 600);
+        let p = walk(p, [2.0, -10.0], 600);
+        assert_eq!(room_at(p[0], p[2]), Some(Room::BackRoom), "{p:?}");
+    }
+
+    #[test]
     fn the_office_is_reached_through_its_door() {
         use crate::bar::{OFFICE_DOOR, SAFE, SAFE_REACH};
         let door_x = (OFFICE_DOOR.0 + OFFICE_DOOR.1) / 2.0;
@@ -168,13 +195,12 @@ mod tests {
 
     proptest! {
         #[test]
-        fn never_leaves_the_room(x in -9.0f32..9.0, z in -6.0f32..6.0, mx in -1.0f32..1.0, my in -1.0f32..1.0, yaw in -7.0f32..7.0) {
+        fn never_leaves_the_map(x in -9.0f32..9.0, z in -6.0f32..6.0, mx in -1.0f32..1.0, my in -1.0f32..1.0, yaw in -7.0f32..7.0) {
             let mut p = [x, 0.0, z];
-            for _ in 0..200 {
+            for _ in 0..400 {
                 p = step(p, [mx, my], yaw, buttons::SPRINT, DT);
             }
-            prop_assert!(p[0].abs() <= HALF_X - PLAYER_RADIUS + 1e-4);
-            prop_assert!(p[2].abs() <= HALF_Z - PLAYER_RADIUS + 1e-4);
+            prop_assert!(crate::world::room_at(p[0], p[2]).is_some(), "left every room: {:?}", p);
         }
 
         #[test]

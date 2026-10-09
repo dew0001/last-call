@@ -9,11 +9,14 @@ pub mod audit;
 pub mod bar;
 pub mod beer;
 pub mod blackjack;
+pub mod buffs;
 pub mod cards;
 pub mod casino;
+pub mod chaos;
 pub mod customers;
 pub mod drunk;
 pub mod economy;
+pub mod fixtures;
 pub mod math;
 pub mod minigame;
 pub mod movement;
@@ -23,6 +26,8 @@ pub mod roulette;
 pub mod save;
 pub mod shift;
 pub mod slots;
+pub mod upgrades;
+pub mod world;
 
 #[cfg(feature = "net")]
 pub mod client;

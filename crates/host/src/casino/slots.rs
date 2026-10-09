@@ -55,8 +55,10 @@ pub fn run(
     mut players: Players,
     mut npcs: Query<(Entity, &Customer, &mut Npc), Without<WantsToLeave>>,
     mut room: Query<&mut RunLedger, With<RoomState>>,
+    owned: Res<crate::fixtures::Owned>,
 ) {
     let tick = tick.0;
+    let slot_max = owned.0.table_max(casino::SLOT_MAX);
     let mut sorted: Vec<_> = machines.iter_mut().collect();
     sorted.sort_by_key(|(h, _)| h.machine);
     for (mut host, mut view) in sorted {
@@ -87,7 +89,7 @@ pub fn run(
                 && free
                 && pull.is_none()
                 && casino::can_reach(table, pos.0.x, pos.0.z)
-                && (casino::SLOT_MIN..=casino::max_bet(casino::SLOT_MAX, tier(drunk))).contains(&bet)
+                && (casino::SLOT_MIN..=casino::max_bet(slot_max, tier(drunk))).contains(&bet)
                 && pocket.0 >= bet
             {
                 pocket.0 -= bet;

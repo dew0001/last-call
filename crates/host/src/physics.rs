@@ -73,17 +73,17 @@ pub fn hand_point(pos: Vec3, yaw: f32) -> Vec3 {
 }
 
 fn spawn_room(mut commands: Commands) {
-    let (hx, hz, h) = (bar::HALF_X, bar::HALF_Z, bar::WALL_HEIGHT);
-    let mut wall = |size: Vec3, at: Vec3| {
+    let mut solid = |size: Vec3, at: Vec3| {
         commands.spawn((RigidBody::Static, Collider::cuboid(size.x, size.y, size.z), Transform::from_translation(at)));
     };
-    wall(Vec3::new(hx * 2.0, 0.2, hz * 2.0), Vec3::new(0.0, -0.1, 0.0));
-    wall(Vec3::new(hx * 2.0, h, 0.2), Vec3::new(0.0, h / 2.0, -hz - 0.1));
-    wall(Vec3::new(hx * 2.0, h, 0.2), Vec3::new(0.0, h / 2.0, hz + 0.1));
-    wall(Vec3::new(0.2, h, hz * 2.0), Vec3::new(-hx - 0.1, h / 2.0, 0.0));
-    wall(Vec3::new(0.2, h, hz * 2.0), Vec3::new(hx + 0.1, h / 2.0, 0.0));
-    for b in &bar::BLOCKS {
-        wall(Vec3::new(b.hx * 2.0, b.height, b.hz * 2.0), Vec3::new(b.cx, b.height / 2.0, b.cz));
+    // A floor slab under every room, walls along their edges (door gaps
+    // open), and the bar's blocks.
+    for a in shared::world::AREAS.iter().filter(|a| a.room != shared::world::Room::Office) {
+        let (w, d) = (a.x1 - a.x0, a.z1 - a.z0);
+        solid(Vec3::new(w, 0.2, d), Vec3::new(a.x0 + w / 2.0, -0.1, a.z0 + d / 2.0));
+    }
+    for b in bar::BLOCKS.iter().chain(shared::world::walls()) {
+        solid(Vec3::new(b.hx * 2.0, b.height, b.hz * 2.0), Vec3::new(b.cx, b.height / 2.0, b.cz));
     }
 }
 
@@ -95,6 +95,7 @@ pub fn prop_body(kind: PropKind) -> (Collider, f32) {
         PropKind::Chip => (Collider::cuboid(0.036, 0.012, 0.036), 0.01),
         PropKind::Stool => (Collider::cuboid(0.4, 0.75, 0.4), 5.0),
         PropKind::Glass => (Collider::cylinder(0.045, 0.15), 0.5),
+        PropKind::Mop => (Collider::cuboid(0.06, 1.3, 0.06), 1.2),
     }
 }
 
@@ -115,6 +116,8 @@ pub fn prop_layout() -> Vec<(PropKind, Vec3)> {
     for i in 0..STOOLS {
         out.push((PropKind::Stool, Vec3::new(-4.5 + i as f32 * 1.0, 0.38, cz + 1.3)));
     }
+    let (mx, mz) = shared::fixtures::MOP_CLOSET;
+    out.push((PropKind::Mop, Vec3::new(mx, 0.66, mz)));
     out
 }
 

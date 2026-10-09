@@ -2,8 +2,8 @@
 //! group can stop and pick the run up later in a new room.
 //!
 //! A save holds what carries from shift to shift: the ledger (house pool,
-//! debt paid, misses, new game plus level), the calendar, and each player's
-//! pocket by player id. Props, customers and table rounds reset at every
+//! debt paid, misses, new game plus level), the calendar, the upgrades, and
+//! each player's pocket by player id. Props, customers and table rounds reset at every
 //! shift anyway, and a resumed room draws a fresh RNG seed.
 
 use std::collections::BTreeMap;
@@ -14,7 +14,7 @@ use crate::economy::Ledger;
 use crate::shift::Calendar;
 
 /// Bump when the save format changes; older saves are refused.
-pub const SAVE_VERSION: u16 = 1;
+pub const SAVE_VERSION: u16 = 2;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RunSave {
@@ -24,6 +24,9 @@ pub struct RunSave {
     pub calendar: Calendar,
     /// Pockets by player id (hex, so JSON keeps all 64 bits).
     pub pockets: BTreeMap<String, i64>,
+    /// Upgrades bought this run.
+    #[serde(default)]
+    pub upgrades: crate::upgrades::Upgrades,
 }
 
 impl RunSave {
@@ -33,6 +36,7 @@ impl RunSave {
             ledger,
             calendar,
             pockets: pockets.into_iter().map(|(id, m)| (format!("{id:016x}"), m)).collect(),
+            upgrades: crate::upgrades::Upgrades::default(),
         }
     }
 
@@ -43,7 +47,8 @@ impl RunSave {
     /// Parse a save; refuse another version.
     pub fn from_json(text: &str) -> Result<Self, String> {
         let save: Self = serde_json::from_str(text).map_err(|e| e.to_string())?;
-        if save.version != SAVE_VERSION {
+        // Version 1 had no upgrades; they default to none.
+        if !(1..=SAVE_VERSION).contains(&save.version) {
             return Err(format!("save version {} (this build reads {SAVE_VERSION})", save.version));
         }
         Ok(save)
@@ -76,6 +81,8 @@ mod tests {
     fn other_versions_and_junk_are_refused() {
         let mut s = sample();
         s.version = SAVE_VERSION + 1;
+        assert!(RunSave::from_json(&s.to_json()).unwrap_err().contains("version"));
+        s.version = 0;
         assert!(RunSave::from_json(&s.to_json()).unwrap_err().contains("version"));
         assert!(RunSave::from_json("{").is_err());
     }

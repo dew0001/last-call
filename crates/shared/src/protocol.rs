@@ -12,7 +12,7 @@ use lightyear::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// Protocol version. Bump on any breaking change. Sent in [`Join`].
-pub const PROTOCOL_VERSION: u16 = 9;
+pub const PROTOCOL_VERSION: u16 = 10;
 
 // ---------- Components (host to clients) ----------
 
@@ -40,6 +40,8 @@ pub enum PropKind {
     Stool,
     /// A beer glass from the tap. Carries a [`Beer`].
     Glass,
+    /// The kitchen mop: held near vomit or a puddle, it cleans it up.
+    Mop,
 }
 
 /// The beer in a glass. `fill` is in percent; `perfect` records a perfect
@@ -65,6 +67,30 @@ pub struct Drunk {
     pub level: u8,
     pub passed_out: bool,
 }
+
+/// A player's Focus meter, 0 to 100 (see [`crate::buffs`]). `spinning` is
+/// set while The Spins roll the camera.
+#[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub struct Focus {
+    pub level: u8,
+    pub spinning: bool,
+}
+
+/// A player's one-shift items and food effects.
+#[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub struct Inventory {
+    pub rigged_dice: u8,
+    pub marked_deck: bool,
+    /// Burger: +10% max health in the fight pit this shift.
+    pub well_fed: bool,
+    /// Fish plate: one reroll of the next losing roulette spin.
+    pub lucky: bool,
+}
+
+/// Vomit on the floor (from The Spins). Also a [`Puddle`] (it is slippery);
+/// it stays until someone mops it.
+#[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub struct Vomit;
 
 /// Spilled beer on the floor (a slip hazard).
 #[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
@@ -168,6 +194,55 @@ pub struct SlotView {
     pub last_bet: i64,
     pub last_return: i64,
     pub pulls: u32,
+}
+
+/// The upgrades the crew owns (on the room entity).
+#[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub struct RoomUpgrades(pub crate::upgrades::Upgrades);
+
+/// The jukebox (on the room entity): the playing track, if any.
+#[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub struct JukeboxState {
+    pub track: Option<u8>,
+}
+
+/// One chaos event in progress.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ActiveChaos {
+    pub kind: crate::chaos::ChaosKind,
+    /// Seconds left, for timed events.
+    pub seconds_left: Option<u16>,
+    /// The machine (slot jam) or table seat (card counter) involved.
+    pub target: Option<u8>,
+    /// Raid: the cops are in.
+    pub cops_in: bool,
+}
+
+/// Chaos on the room entity: what is running, how the last ones ended, and
+/// lasting consequences.
+#[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Default)]
+pub struct ChaosState {
+    pub active: Vec<ActiveChaos>,
+    /// Recent endings, newest last (at most 4).
+    pub recent: Vec<(crate::chaos::ChaosKind, crate::chaos::Ending)>,
+    pub kitchen_offline: bool,
+    pub blackjack_broken: bool,
+    pub dark: bool,
+}
+
+/// A chaos NPC: a cop, a brawler, the inspector, the loan shark, the card
+/// counter (also carries [`Customer`]-like pose via [`NpcPose`]).
+#[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ChaosNpc {
+    pub kind: crate::chaos::ChaosKind,
+    /// Shown to everyone (the Security Camera's outline on a cheat).
+    pub outlined: bool,
+}
+
+/// The kitchen fire (a hazard area).
+#[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+pub struct Fire {
+    pub pos: Vec3,
 }
 
 // ---------- Room state (host to clients) ----------
@@ -341,6 +416,14 @@ pub struct TapEvent {
     pub down: bool,
 }
 
+/// A player uses a fixture (drawer, kitchen pass, shop, breaker...). The
+/// host checks where the player stands, the money and the rules.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FixtureRequest {
+    pub fixture: crate::fixtures::Fixture,
+    pub action: crate::fixtures::FixtureAction,
+}
+
 /// Reliable, ordered control channel (join, replies, votes).
 pub struct Control;
 
@@ -364,6 +447,7 @@ impl Plugin for ProtocolPlugin {
         app.register_message::<JoinReply>().add_direction(NetworkDirection::ServerToClient);
         app.register_message::<TableRequest>().add_direction(NetworkDirection::ClientToServer);
         app.register_message::<TapEvent>().add_direction(NetworkDirection::ClientToServer);
+        app.register_message::<FixtureRequest>().add_direction(NetworkDirection::ClientToServer);
 
         // Send inputs every 2 ticks (32 Hz); each packet repeats the last 4
         // sends, which covers about 125 ms of packet loss. Keeps upload under
@@ -392,6 +476,14 @@ impl Plugin for ProtocolPlugin {
         app.component::<BlackjackView>().replicate();
         app.component::<RouletteView>().replicate();
         app.component::<SlotView>().replicate();
+        app.component::<Focus>().replicate();
+        app.component::<Inventory>().replicate();
+        app.component::<Vomit>().replicate();
+        app.component::<RoomUpgrades>().replicate();
+        app.component::<JukeboxState>().replicate();
+        app.component::<ChaosState>().replicate();
+        app.component::<ChaosNpc>().replicate();
+        app.component::<Fire>().replicate();
     }
 }
 

@@ -9,7 +9,7 @@
 use std::collections::BTreeMap;
 
 use bevy::prelude::*;
-use shared::protocol::{Player, Pocket, RoomState, RunLedger};
+use shared::protocol::{Player, Pocket, RoomState, RoomUpgrades, RunLedger};
 use shared::save::RunSave;
 use shared::shift::ShiftPhase;
 
@@ -41,7 +41,7 @@ fn write_save(
     mut started: MessageReader<PhaseStarted>,
     timer: Res<ShiftTimer>,
     saved: Res<SavedPockets>,
-    room: Query<&RunLedger, With<RoomState>>,
+    room: Query<(&RunLedger, &RoomUpgrades), With<RoomState>>,
     players: Query<(&Player, &Pocket)>,
     mut pending: ResMut<PendingSave>,
 ) {
@@ -52,10 +52,12 @@ fn write_save(
         *first = true;
         return;
     }
-    let Ok(run) = room.single() else { return };
+    let Ok((run, upgrades)) = room.single() else { return };
     let mut pockets = saved.0.clone();
     for (p, pocket) in &players {
         pockets.insert(p.id, pocket.0);
     }
-    pending.0 = Some(RunSave::new(run.ledger, timer.calendar, pockets));
+    let mut save = RunSave::new(run.ledger, timer.calendar, pockets);
+    save.upgrades = upgrades.0;
+    pending.0 = Some(save);
 }

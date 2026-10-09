@@ -254,7 +254,9 @@ fn table_keys(
     mut choice: ResMut<RouletteChoice>,
     mut out: ResMut<OutgoingTable>,
     bj: Query<&BlackjackView>,
+    upgrades: Query<&RoomUpgrades>,
 ) {
+    let up = upgrades.single().map(|u| u.0).unwrap_or_default();
     let Some(pos) = status.own_pos else { return };
     let Some(table) = casino::nearest_table(pos.x, pos.z) else { return };
     let tier = Tier::of(status.game.drunk.as_ref().map_or(0, |d| d.level));
@@ -285,7 +287,7 @@ fn table_keys(
                 }
                 return;
             }
-            let amounts = buttons_for(&BLACKJACK_BUTTONS, casino::BLACKJACK_MAX, tier, t);
+            let amounts = buttons_for(&BLACKJACK_BUTTONS, up.table_max(casino::BLACKJACK_MAX), tier, t);
             for (key, amount) in DIGITS.iter().zip(&amounts) {
                 if keys.just_pressed(*key) {
                     send(TableAction::Bet(*amount));
@@ -323,7 +325,7 @@ fn table_keys(
                 choice.0 = (choice.0 + n - 1) % n;
             }
             let bet = roulette_choices()[choice.0 % n];
-            let amounts = buttons_for(&ROULETTE_BUTTONS, casino::ROULETTE_MAX, tier, t);
+            let amounts = buttons_for(&ROULETTE_BUTTONS, up.table_max(casino::ROULETTE_MAX), tier, t);
             for (key, amount) in DIGITS.iter().zip(&amounts) {
                 if keys.just_pressed(*key) {
                     send(TableAction::RouletteBet(bet, *amount));
@@ -331,7 +333,7 @@ fn table_keys(
             }
         }
         TableId::Slot(_) => {
-            let amounts = buttons_for(&SLOT_BUTTONS, casino::SLOT_MAX, tier, t);
+            let amounts = buttons_for(&SLOT_BUTTONS, up.table_max(casino::SLOT_MAX), tier, t);
             for (key, amount) in DIGITS.iter().zip(&amounts) {
                 if keys.just_pressed(*key) {
                     send(TableAction::Pull(*amount));
@@ -373,7 +375,9 @@ fn update_panel(
     status: Res<NetStatus>,
     choice: Res<RouletteChoice>,
     mut panel: Query<(&mut Text, &mut Visibility), With<TablePanel>>,
+    upgrades: Query<&RoomUpgrades>,
 ) {
+    let up = upgrades.single().map(|u| u.0).unwrap_or_default();
     let Ok((mut text, mut vis)) = panel.single_mut() else { return };
     let c = &status.game.casino;
     let me = status.player_id.map(|id| format!("p:{id:016x}"));
@@ -406,7 +410,7 @@ fn update_panel(
                     s += &format!("\nThe house must {}", a.to_uppercase());
                 }
             } else {
-                let amounts = buttons_for(&BLACKJACK_BUTTONS, casino::BLACKJACK_MAX, tier, t);
+                let amounts = buttons_for(&BLACKJACK_BUTTONS, up.table_max(casino::BLACKJACK_MAX), tier, t);
                 let keys: Vec<String> = amounts.iter().enumerate().map(|(i, a)| format!("{} ${a}", i + 1)).collect();
                 s += &format!(
                     "\nBet: {}   0 stand up\nH hit   G stand   J double   K split   Y/N insurance",
@@ -441,7 +445,7 @@ fn update_panel(
             } else {
                 let choices = roulette_choices();
                 let bet = choices[choice.0 % choices.len()];
-                let amounts = buttons_for(&ROULETTE_BUTTONS, casino::ROULETTE_MAX, tier, t);
+                let amounts = buttons_for(&ROULETTE_BUTTONS, up.table_max(casino::ROULETTE_MAX), tier, t);
                 let keys: Vec<String> = amounts.iter().enumerate().map(|(i, a)| format!("{} ${a}", i + 1)).collect();
                 s += &format!("\nZ/X pick: {} (pays {} to 1)\n{}", bet.label(), bet.odds(), keys.join("  "));
             }
@@ -450,7 +454,7 @@ fn update_panel(
         Some(name) if name.starts_with("slot") => {
             let i: usize = name[4..].parse().unwrap_or(0);
             let Some(m) = c.slots.iter().find(|m| usize::from(m.machine) == i) else { return };
-            let amounts = buttons_for(&SLOT_BUTTONS, casino::SLOT_MAX, tier, t);
+            let amounts = buttons_for(&SLOT_BUTTONS, up.table_max(casino::SLOT_MAX), tier, t);
             let keys: Vec<String> = amounts.iter().enumerate().map(|(i, a)| format!("{} ${a}", i + 1)).collect();
             format!(
                 "SLOTS  (pull {})\n{}\nLast: ${} back on ${}\nPull: {}\n7 7 7 pays 150, BAR x3 50, bells 10, lemons 8,\ncherries 5, two cherries 2, one cherry 1",
