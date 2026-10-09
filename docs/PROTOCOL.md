@@ -53,6 +53,14 @@ The run's money and standing. `due` is the payment due at the end of the current
 
 A player's personal money.
 
+### `Customer` (struct)
+
+A customer NPC. `id` counts up per room. `patience` is the seconds left before a waiting customer gives up.
+
+### `NpcPose` (struct)
+
+NPC feet position and facing. Interpolated on clients.
+
 ## Inputs (client to host, per tick)
 
 ### `PlayerInput` (struct)

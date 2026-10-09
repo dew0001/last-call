@@ -31,7 +31,7 @@ pub enum Script {
 }
 
 /// From the main room, through the office door, to the safe.
-pub const ROUTE_TO_SAFE: &[(f32, f32)] = &[(8.2, -1.0), (8.2, -3.0), (9.4, -5.3)];
+pub const ROUTE_TO_SAFE: &[(f32, f32)] = &[(8.2, -1.0), (8.2, -3.0), (9.4, -5.55)];
 
 #[derive(Resource, Default)]
 struct BotClock(u64);

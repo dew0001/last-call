@@ -95,7 +95,7 @@ export async function walkTo(page: Page, points: [number, number][], timeoutMs =
 export const ROUTE_TO_SAFE: [number, number][] = [
   [8.2, -1.0],
   [8.2, -3.0],
-  [9.4, -5.3],
+  [9.4, -5.55],
 ];
 
 /** Tap a button: down for `ms`, then up for `ms`. */

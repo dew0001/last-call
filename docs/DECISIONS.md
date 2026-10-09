@@ -217,3 +217,12 @@ The office is the back-right corner (x 6 to 10, z -7 to -2) with a doorway in it
 ### Third-person camera stays inside the room
 
 The camera sat 3.5 m behind the player. At the spawn line that put it outside the back wall, so the screen showed only the wall's outside. It is now clamped inside the room. Found from a screenshot during Phase 2.
+
+### Customers and the navmesh
+
+- `vleue_navigator` 0.16.0 (VERIFIED: it requires Bevy 0.19.1 and avian3d 0.7, the versions we use). The host builds one navmesh at start with `NavMesh::from_edge_and_obstacles`: the room inset by the customer radius, minus every block in `shared::bar::BLOCKS` grown by the same radius. Paths come from the synchronous `path()` call, not the async updater, so the simulation stays deterministic. Default features (gizmos) are off.
+- Customers sit on the stool props: any upright stool in the strip in front of the counter is a seat. If someone knocks over or carries off a customer's stool, the customer leaves (OPINION; the plan does not cover it).
+- Customers have no physics body yet. They walk the navmesh and pass through players and props. Bodies come with the brawl chaos event, which needs ragdolls anyway.
+- The wave interval (90 s) scales with `?fast`; patience (20 s), drink interval (120 s) and walking speed do not, so fast test rooms still play like the real game inside a phase.
+- Customers draw from the room's RNG stream (stream 0) with the room seed: the same seed brings the same customers with the same cash (tested).
+- Ten walking customers cost 4 KB/s of download per client (budget 40 KB/s).

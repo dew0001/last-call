@@ -20,6 +20,7 @@ use lightyear::prelude::*;
 use shared::pipe::{PipeIo, PipePlugin};
 use shared::protocol::ProtocolPlugin;
 
+pub mod customers;
 pub mod economy;
 pub mod game;
 pub mod physics;
@@ -88,7 +89,13 @@ impl HostSim {
         app.insert_resource(shift::ShiftConfig { timings: config.timings });
         app.insert_resource(RoomSeed(config.seed));
         app.insert_resource(config.preset.start());
-        app.add_plugins((game::GamePlugin, physics::HostPhysicsPlugin, shift::ShiftPlugin, economy::EconomyPlugin));
+        app.add_plugins((
+            game::GamePlugin,
+            physics::HostPhysicsPlugin,
+            shift::ShiftPlugin,
+            economy::EconomyPlugin,
+            customers::CustomersPlugin,
+        ));
 
         let server = app.world_mut().spawn((Name::new("Server"), RawServer)).id();
         app.finish();

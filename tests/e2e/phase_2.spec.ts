@@ -40,18 +40,28 @@ test('the shift clock runs Setup, Open, Last call, Payment and rolls into the ne
   await host.context().close();
 });
 
-test('money goes into the safe, the last payment wins, and a new run starts', async ({ browser }) => {
-  // Week 6, 80,000 paid, 45,000 in the house, 300 in each pocket.
-  const { host, room } = await createRoom(browser, undefined, '&fast=60&preset=lastweek');
+test('money goes from a pocket into the house pool at the office safe', async ({ browser }) => {
+  // Normal speed, so the walk has all the time it needs. 300 in each pocket.
+  const { host, room } = await createRoom(browser, undefined, '&preset=lastweek');
   const player = await openTab(browser, `${room.link}&gpu=webgl2&novoice&name=Rook`, 'player');
   const s0 = await waitFor(player, 'player joined', (s) => !!s.playerId && s.game?.pocket === 300 && !!s.game?.money);
-  expect(s0.game.money.due).toBe(40_000);
+  expect(s0.game.money.house).toBe(45_000);
 
   // Walk into the office and press E at the safe three times.
   await walkTo(player, ROUTE_TO_SAFE);
   for (let i = 0; i < 3; i++) await tap(player, INTERACT);
-  const s1 = await waitFor(player, 'pocket emptied into the house', (s) => s.game?.pocket === 0);
+  const s1 = await waitFor(player, 'pocket emptied into the house', (s) => s.game?.pocket === 0 && s.game.money.house > 45_000);
   expect(s1.game.money.house).toBe(45_300);
+  await player.context().close();
+  await host.context().close();
+});
+
+test('the last payment wins, and a new run starts', async ({ browser }) => {
+  // Week 6, 80,000 paid, 45,000 in the house.
+  const { host, room } = await createRoom(browser, undefined, '&fast=60&preset=lastweek');
+  const player = await openTab(browser, `${room.link}&gpu=webgl2&novoice&name=Rook`, 'player');
+  const s0 = await waitFor(player, 'player joined', (s) => !!s.playerId && !!s.game?.money);
+  expect(s0.game.money.due).toBe(40_000);
 
   // At the end of week 6 the loan shark takes the 40,000 left: the run is won.
   const won = await waitFor(player, 'run won', (s) => s.game?.money?.outcome === 'won', 90_000);
@@ -75,5 +85,31 @@ test('a second missed payment burns the bar down', async ({ browser }) => {
   const lost = await waitFor(host, 'run lost', (s) => s.game?.money?.outcome === 'lost', 90_000);
   expect(lost.game.money.missedInARow).toBe(2);
   expect(lost.game.money.last).toEqual(['missed', 16_000]);
+  await host.context().close();
+});
+
+test('customers walk in, sit at the bar, order, and leave at last call', async ({ browser }) => {
+  // fast=20: Setup 6 s, Open 27 s with a wave every 4.5 s, Last call 6 s.
+  const { host, room } = await createRoom(browser, undefined, '&fast=20');
+  const player = await openTab(browser, `${room.link}&gpu=webgl2&novoice&name=Rook`, 'player');
+  await waitFor(player, 'player joined', (s) => !!s.playerId && !!s.game?.shift);
+
+  // A customer reaches a stool in front of the counter and waits for a beer.
+  type C = [number, string, number, number];
+  const seated = await waitFor(
+    player,
+    'a customer waits at the bar',
+    (s) => (s.game?.customers ?? []).some((c: C) => c[1] === 'waiting' && c[3] > -3.3 && c[3] < -2.0),
+    60_000,
+  );
+  const n = seated.game.customers.length;
+  test.info().annotations.push({ type: 'customers', description: JSON.stringify(seated.game.customers) });
+  expect(n).toBeGreaterThanOrEqual(6);
+
+  // Last call: everyone walks out, and nobody is left by the next Setup.
+  await waitFor(player, 'last call', (s) => s.game?.shift?.phase === 'LAST CALL', 60_000);
+  await waitFor(player, 'everyone leaving', (s) => (s.game?.customers ?? []).every((c: C) => c[1] === 'leaving'), 5_000);
+  await waitFor(player, 'bar empty by next setup', (s) => s.game?.shift?.shift === 2 && s.game.customers.length === 0, 60_000);
+  await player.context().close();
   await host.context().close();
 });

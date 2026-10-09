@@ -12,7 +12,7 @@ use lightyear::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// Protocol version. Bump on any breaking change. Sent in [`Join`].
-pub const PROTOCOL_VERSION: u16 = 4;
+pub const PROTOCOL_VERSION: u16 = 5;
 
 // ---------- Components (host to clients) ----------
 
@@ -80,6 +80,31 @@ pub struct RunLedger {
 /// A player's personal money.
 #[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct Pocket(pub i64);
+
+/// A customer NPC. `id` counts up per room. `patience` is the seconds left
+/// before a waiting customer gives up.
+#[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Customer {
+    pub id: u32,
+    pub mood: crate::customers::Mood,
+    pub patience: u8,
+}
+
+/// NPC feet position and facing. Interpolated on clients.
+#[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Default, Reflect)]
+pub struct NpcPose {
+    pub pos: Vec3,
+    pub yaw: f32,
+}
+
+impl Ease for NpcPose {
+    fn interpolating_curve_unbounded(start: Self, end: Self) -> impl Curve<Self> {
+        FunctionCurve::new(Interval::UNIT, move |t| NpcPose {
+            pos: start.pos.lerp(end.pos, t),
+            yaw: lerp_angle(start.yaw, end.yaw, t),
+        })
+    }
+}
 
 impl Ease for PlayerPos {
     fn interpolating_curve_unbounded(start: Self, end: Self) -> impl Curve<Self> {
@@ -217,6 +242,8 @@ impl Plugin for ProtocolPlugin {
         app.component::<ShiftClock>().replicate();
         app.component::<RunLedger>().replicate();
         app.component::<Pocket>().replicate();
+        app.component::<Customer>().replicate();
+        app.component::<NpcPose>().replicate().add_linear_interpolation();
     }
 }
 

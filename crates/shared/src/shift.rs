@@ -57,11 +57,20 @@ pub struct Timings {
     pub payment: u32,
     /// How long the win or loss screen shows before the next run starts.
     pub outcome: u32,
+    /// Seconds between customer waves during Open.
+    pub wave: u32,
 }
 
 impl Timings {
     /// The plan's timings: 2 + 9 + 2 + 1 minutes = a 14-minute shift.
-    pub const PLAN: Self = Self { setup: 120, open: 540, last_call: 120, payment: 60, outcome: 30 };
+    pub const PLAN: Self = Self {
+        setup: 120,
+        open: 540,
+        last_call: 120,
+        payment: 60,
+        outcome: 30,
+        wave: crate::customers::WAVE_EVERY_SECS,
+    };
 
     /// Length of one phase.
     pub fn seconds(&self, phase: ShiftPhase) -> u32 {
@@ -89,6 +98,7 @@ impl Timings {
             last_call: s(self.last_call),
             payment: s(self.payment),
             outcome: s(self.outcome),
+            wave: s(self.wave),
         }
     }
 }
@@ -156,7 +166,7 @@ mod tests {
     #[test]
     fn scaled_timings_keep_every_phase() {
         let t = Timings::PLAN.scaled_down(60);
-        assert_eq!(t, Timings { setup: 2, open: 9, last_call: 2, payment: 1, outcome: 1 });
+        assert_eq!(t, Timings { setup: 2, open: 9, last_call: 2, payment: 1, outcome: 1, wave: 1 });
         let tiny = Timings::PLAN.scaled_down(10_000);
         assert!([tiny.setup, tiny.open, tiny.last_call, tiny.payment, tiny.outcome].iter().all(|&s| s == 1));
         assert_eq!(Timings::PLAN.scaled_down(0), Timings::PLAN);

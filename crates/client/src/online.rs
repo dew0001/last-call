@@ -72,6 +72,18 @@ pub struct GameStatus {
     pub money: Option<MoneyStatus>,
     /// This player's pocket.
     pub pocket: Option<i64>,
+    /// Customers this client sees: (id, mood, x, z).
+    pub customers: Vec<(u32, &'static str, f32, f32)>,
+}
+
+fn mood_name(m: shared::customers::Mood) -> &'static str {
+    use shared::customers::Mood;
+    match m {
+        Mood::Entering => "entering",
+        Mood::Waiting => "waiting",
+        Mood::Drinking => "drinking",
+        Mood::Leaving => "leaving",
+    }
 }
 
 #[derive(Default, Debug, Clone, serde::Serialize)]
@@ -166,7 +178,18 @@ pub fn add(app: &mut App, cfg: OnlineConfig) {
     app.add_systems(Startup, (setup_bar, setup_hud));
     app.add_systems(
         Update,
-        (read_input, dress_players, place_players, dress_props, place_props, follow_camera, update_status, update_hud)
+        (
+            read_input,
+            dress_players,
+            place_players,
+            dress_props,
+            place_props,
+            dress_customers,
+            place_customers,
+            follow_camera,
+            update_status,
+            update_hud,
+        )
             .chain(),
     );
 }
@@ -480,6 +503,70 @@ fn place_props(
     }
 }
 
+#[derive(Component)]
+struct DressedCustomer;
+
+/// The yellow marker over a customer who is waiting for a beer.
+#[derive(Component)]
+struct OrderMarker;
+
+/// Give every customer a capsule (muted colors, so players stand out) and an
+/// order marker above the head.
+fn dress_customers(
+    mut commands: Commands,
+    customers: Query<(Entity, &Customer), (With<Interpolated>, Without<DressedCustomer>)>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut cache: Local<Option<(Handle<Mesh>, Handle<Mesh>, Handle<StandardMaterial>)>>,
+) {
+    if customers.is_empty() {
+        return;
+    }
+    let (body, marker, marker_mat) = cache
+        .get_or_insert_with(|| {
+            (
+                meshes.add(Capsule3d::new(0.3, bar::PLAYER_HEIGHT - 0.6)),
+                meshes.add(Sphere::new(0.12)),
+                materials.add(StandardMaterial {
+                    base_color: Color::srgb(1.0, 0.85, 0.2),
+                    emissive: LinearRgba::rgb(1.5, 1.2, 0.2),
+                    ..default()
+                }),
+            )
+        })
+        .clone();
+    for (entity, c) in &customers {
+        let hue = (c.id * 47 % 360) as f32;
+        let mat = materials.add(StandardMaterial { base_color: Color::hsl(hue, 0.25, 0.45), ..default() });
+        commands
+            .entity(entity)
+            .insert((DressedCustomer, Mesh3d(body.clone()), MeshMaterial3d(mat), Transform::default()))
+            .with_child((
+                OrderMarker,
+                Mesh3d(marker.clone()),
+                MeshMaterial3d(marker_mat.clone()),
+                Transform::from_xyz(0.0, 1.15, 0.0),
+                Visibility::Hidden,
+            ));
+    }
+}
+
+fn place_customers(
+    mut customers: Query<(&Customer, &NpcPose, &mut Transform, &Children), With<DressedCustomer>>,
+    mut markers: Query<&mut Visibility, With<OrderMarker>>,
+) {
+    for (c, pose, mut t, children) in &mut customers {
+        t.translation = pose.pos + Vec3::Y * (bar::PLAYER_HEIGHT / 2.0);
+        t.rotation = Quat::from_rotation_y(pose.yaw);
+        let shown = if c.mood == shared::customers::Mood::Waiting { Visibility::Inherited } else { Visibility::Hidden };
+        for child in children.iter() {
+            if let Ok(mut v) = markers.get_mut(child) {
+                v.set_if_neq(shown);
+            }
+        }
+    }
+}
+
 fn follow_camera(
     look: Res<Look>,
     own: Query<&PlayerPos, (With<Predicted>, With<Player>)>,
@@ -507,6 +594,7 @@ fn update_status(
     timeline: Option<Res<LocalTimeline>>,
     room: Query<(&ShiftClock, Option<&RunLedger>), With<RoomState>>,
     pockets: Query<(&Player, &Pocket)>,
+    customers: Query<(&Customer, &NpcPose), With<Interpolated>>,
     mut status: ResMut<NetStatus>,
 ) {
     let (rtt_ms, jitter_ms) = link
@@ -536,6 +624,12 @@ fn update_status(
             shift: room.iter().next().map(|(c, _)| (*c).into()),
             money: room.iter().next().and_then(|(_, l)| l.copied()).map(Into::into),
             pocket: pockets.iter().find(|(p, _)| Some(p.id) == session.player_id).map(|(_, m)| m.0),
+            customers: {
+                let mut v: Vec<_> =
+                    customers.iter().map(|(c, p)| (c.id, mood_name(c.mood), p.pos.x, p.pos.z)).collect();
+                v.sort_by_key(|c| c.0);
+                v
+            },
         },
     };
 }
