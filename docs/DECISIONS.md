@@ -335,3 +335,13 @@ A text panel at the top right shows the nearest table's state and keys. Keys: T 
 ### Determinism: Startup spawn order
 
 The table spawns first ran unordered against the prop spawns. The native and wasm builds register a few engine systems differently, so the single-threaded executor picked a different order for unordered systems: one build spawned a table before the props, the other after. Entity ids then differed by one, and the replay hash (which sorts props by entity id) disagreed from tick 1. Startup spawns now run in a fixed chain: room and props (`physics::SpawnRoom`), then the shift clock, then the tables. Any new Startup system that spawns entities must join that chain.
+
+### Slot lever
+
+The plan makes the lever pull a physics interaction. In the gray box the pull is a table request (keys 1 to 3, by bet), and the reels show the stops. A grabbable lever needs the machine's mesh and a joint; it is deferred to the art pass (Phase 6).
+
+## User decisions
+
+### No debt-tier unlocks (2026-10-09)
+
+The user asked that every activity be available from the beginning of the game. Plan sections 4.1 and 4.5 gated rooms behind debt tiers (kitchen at tier 1, pier at 2, roof at 3, parking lot at 4, basement and back room at 5). Now every room and game is open from the start of every run. The debt tier stays as a progress number on the HUD (`economy::tier`); nothing checks it. The Phase 4 box "Tier unlock gates and room doors" becomes "Room doors", with no gates. The plan text is updated to match.

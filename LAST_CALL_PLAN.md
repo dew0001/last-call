@@ -165,7 +165,7 @@ Host to client:
 
 ### 4.1 Setting
 
-A dive bar called Last Call on a rainy pier town street. Rooms: main bar, back office, back room (poker), basement (fight pit), roof (hoop), kitchen, parking lot (football and soccer), pier (fishing). Only the main bar and office are open at the start. Rooms unlock with debt tiers.
+A dive bar called Last Call on a rainy pier town street. Rooms: main bar, back office, back room (poker), basement (fight pit), roof (hoop), kitchen, parking lot (football and soccer), pier (fishing). All rooms and activities are open from the start (user decision, 2026-10-09: no debt-tier unlocks).
 
 ### 4.2 The goal
 
@@ -202,7 +202,7 @@ Customer waves (per shift, scales with week):
 
 ### 4.5 Progression and upgrades
 
-Debt tiers unlock rooms. Upgrades are bought from the house pool during Setup.
+User decision (2026-10-09): every room and activity below is available from the start of a run. Debt tiers no longer unlock anything; the tier number stays as a progress marker. Upgrades are bought from the house pool during Setup.
 
 | Tier | Paid so far | Unlocks |
 |---|---|---|
@@ -445,7 +445,7 @@ Each phase ends with a demo build at a URL and a checklist. Do not start the nex
 - [ ] All eight chaos events with counters and consequences.
 - [ ] Upgrade shop in the office. All upgrades functional.
 - [ ] Zeen consumable with Focus tiers and The Spins.
-- [ ] Tier unlock gates and room doors.
+- [ ] Room doors. No tier gates: every room is open from the start (user decision, 2026-10-09).
 
 ### Phase 5: Side minigames (weeks 9 to 12)
 - [ ] Fishing with bets.

@@ -358,7 +358,8 @@ fn setup_panel(mut commands: Commands, nodraw: Option<Res<NoDraw>>) {
         BackgroundColor(Color::srgba(0.0, 0.08, 0.02, 0.7)),
         Node {
             position_type: PositionType::Absolute,
-            top: px(10),
+            // Below the page's room banner.
+            top: px(56),
             right: px(10),
             max_width: px(420),
             padding: UiRect::all(px(8)),

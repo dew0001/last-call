@@ -20,6 +20,8 @@ Date: 2026-10-09. Branch: `main-ygr4w2`.
 - **Bots** (`crates/bots/tests/consistency.rs`): 8 bot clients over the in-memory transport play the casino (a dealer, a croupier, two blackjack players, two roulette players, two slot players, plus customers) for 1,000 ticks; every 100 ticks each client's replicated state hash matches the host's. All 80 checks pass. The bar test from Phase 2 passes too.
 - **Browser** (`tests/e2e/phase_3.spec.ts`, 6 tests): blackjack with money conservation and a chip pick-up; roulette with the result known at spin start, payouts and the rake; slots against the paytable; Wasted cannot deal and Courage bets $150; customers at every game, with the audit log exported from IndexedDB and replayed in wasm; table keys (T, 2, Enter).
 
+- **CI.** Run 37953955821: Rust (with the native replay), wasm build, signaling, and Playwright in Chromium, Firefox and WebKit all green; the wasm replay matches native in all three browsers.
+
 ## What was swapped or deferred
 
 See `docs/DECISIONS.md`, Phase 3 section. Main items:
@@ -27,6 +29,7 @@ See `docs/DECISIONS.md`, Phase 3 section. Main items:
 - No double after a split (the plan's "double on any two" read as the first two cards).
 - The blackjack edge test runs 1,000,000 hands instead of 100,000, so the gate is not at the mercy of sampling noise.
 - `Minigame::apply` takes the table's RNG instead of a tick.
+- The slot lever is a key press (1 to 3 pick the bet), not a physics handle. The plan calls the pull a physics interaction; a grabbable lever comes with the slot machine mesh in the art pass.
 - Spawn points moved so every lane straight ahead is clear of the tables.
 
 ## Budgets measured
@@ -45,7 +48,7 @@ The average tick is well inside the 6 ms budget. The worst single tick (15 ms, o
 
 - The worst single host tick (15 ms) is over the Phase 7 soak target (see Budgets).
 - Customers do not drink at the tables (only bar customers order beer).
-- One blackjack table and one wheel; the second blackjack table and the high-stakes room come with tier unlocks (Phase 4).
+- One blackjack table and one wheel so far. The second blackjack table and the high-stakes back room come with their rooms in later phases, open from the start (no tier unlocks, per the user).
 - The audit log holds the room seed: whoever has the log can predict the room's later draws. It stays in the host's browser unless exported.
 
 ## Deployed URLs
