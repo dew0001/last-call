@@ -182,3 +182,17 @@ On failure the throw test prints the bot's host position and the distance from i
 ### Host tick budget in the 8-tab test: Chromium only
 
 The 8-tab test checks that the host's worst 1-second average tick stays under 6 ms. With WebKit 27.2 in CI, one run passed and the next measured 15.5 ms. Eight WebKit processes share the runner's 4 cores, so the wall-clock tick time mostly measures CPU contention. The test still runs in WebKit and checks that all 8 clients join, see each other and move. The 6 ms budget is asserted in Chromium only; WebKit records its figure as a test annotation. Real tick profiling is Phase 7 work.
+
+## Phase 2
+
+### Shift clock
+
+- The host owns the clock (`crates/host/src/shift.rs`) and counts ticks: 64 per second, so a phase lasts exactly its length in simulated time. Clients get a replicated `ShiftClock` on one room-state entity. It changes once per second, so it costs almost no bandwidth.
+- The clock runs only while at least one player is in the room (OPINION; the plan does not say). An empty room, or one where everyone is reconnecting, keeps its time.
+- `?fast=N` on a host page divides every phase length by N (at least 1 second each). Tests use `?fast=60`: a 14-second shift. Native tests use `Timings::scaled_down` through `HostConfig`.
+- The room seed comes from `crypto.getRandomValues` in the host Worker. Native tests fix it, so runs can replay.
+- The clock shows as a `bevy_ui` text line for now. The plan wants a diegetic bar clock and wall sign (section 7); those come with the art pass in Phase 6. `bevy_ui`, `bevy_text` and the default font added 1.06 MB Brotli to the first load (6.01 to 7.07 MB; budget 12 MB).
+
+### A lightyear debug assertion after long client stalls
+
+A client that misses more than 256 replication updates in a row hits a `debug_assert!` in lightyear 0.30.1 ("missing authoritative checkpoint mapping for completed mutate tick"): its checkpoint map keeps the last 256 entries. Release builds, which the web uses, log an error and continue (VERIFIED in `lightyear_replication/src/client.rs`). Native tests hit it only when the host ticked for 45 seconds without updating the bot, so tests now update bots every tick.

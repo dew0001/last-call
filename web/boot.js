@@ -221,7 +221,10 @@ function startVoiceWhenJoined(code) {
 // Tick reports land in window.__hostTicks.
 window.__hostTicks = [];
 function startHostWorker() {
-  const worker = new Worker(new URL('./host-worker.js', import.meta.url), { type: 'module' });
+  const url = new URL('./host-worker.js', import.meta.url);
+  // `?fast=N` runs shifts N times faster (tests and demos).
+  if (params.get('fast')) url.searchParams.set('fast', params.get('fast'));
+  const worker = new Worker(url, { type: 'module' });
   worker.addEventListener('message', (e) => {
     if (e.data?.t === 'tick') window.__hostTicks.push(e.data);
     if (e.data?.t === 'error') console.error('host worker stack', e.data.message, e.data.stack);

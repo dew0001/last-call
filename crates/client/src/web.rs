@@ -144,6 +144,8 @@ fn publish_status(status: Res<RenderStatus>, net: Option<Res<NetStatus>>) {
         set("rttMs", JsValue::from_f64(f64::from(net.rtt_ms)));
         set("jitterMs", JsValue::from_f64(f64::from(net.jitter_ms)));
         set("tick", JsValue::from_f64(f64::from(net.tick)));
+        let ser = serde_wasm_bindgen::Serializer::json_compatible();
+        set("game", serde::Serialize::serialize(&net.game, &ser).unwrap_or(JsValue::NULL));
     }
     let _ = Reflect::set(&window, &"__lastCall".into(), &obj);
 }

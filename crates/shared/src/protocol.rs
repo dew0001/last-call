@@ -12,7 +12,7 @@ use lightyear::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// Protocol version. Bump on any breaking change. Sent in [`Join`].
-pub const PROTOCOL_VERSION: u16 = 2;
+pub const PROTOCOL_VERSION: u16 = 3;
 
 // ---------- Components (host to clients) ----------
 
@@ -50,6 +50,22 @@ pub struct PropPose {
 /// The player (by [`Player::id`]) holding this prop, if any.
 #[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct HeldBy(pub Option<u64>);
+
+// ---------- Room state (host to clients) ----------
+
+/// Marks the one room-state entity. Room-wide components live on it.
+#[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub struct RoomState;
+
+/// The shift clock. The host updates it when the phase changes and once per
+/// second; `running` is false while no player is in the room.
+#[derive(Component, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub struct ShiftClock {
+    pub calendar: crate::shift::Calendar,
+    pub phase: crate::shift::ShiftPhase,
+    pub seconds_left: u16,
+    pub running: bool,
+}
 
 impl Ease for PlayerPos {
     fn interpolating_curve_unbounded(start: Self, end: Self) -> impl Curve<Self> {
@@ -183,6 +199,8 @@ impl Plugin for ProtocolPlugin {
         app.component::<PropKind>().replicate();
         app.component::<PropPose>().replicate().add_linear_interpolation();
         app.component::<HeldBy>().replicate();
+        app.component::<RoomState>().replicate();
+        app.component::<ShiftClock>().replicate();
     }
 }
 

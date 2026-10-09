@@ -131,7 +131,12 @@ pub struct LocalRoom {
 
 impl LocalRoom {
     pub fn new(bots: u8, script: impl Fn(u8) -> Script) -> Self {
-        let host = HostSim::new();
+        Self::with_config(bots, host::HostConfig::default(), script)
+    }
+
+    /// Like [`LocalRoom::new`], with room settings (shorter shifts, a seed).
+    pub fn with_config(bots: u8, config: host::HostConfig, script: impl Fn(u8) -> Script) -> Self {
+        let host = HostSim::with_config(config);
         let bot_stats = Vec::new();
         let links = Vec::new();
         let scripts: Vec<Script> = (0..bots).map(&script).collect();

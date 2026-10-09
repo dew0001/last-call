@@ -33,8 +33,13 @@ bevy = { workspace = true, features = [
     "keyboard",
     "mouse",
     "bevy_state",
+    "bevy_ui",
+    "bevy_ui_render",
+    "bevy_text",
+    "default_font",
 ] }
 lightyear.workspace = true
+serde.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 bevy = { workspace = true, features = ["x11", "multi_threaded"] }
@@ -44,6 +49,5 @@ bevy = { workspace = true, features = ["web", "webgl2"] }
 wasm-bindgen.workspace = true
 js-sys.workspace = true
 web-sys = { workspace = true, features = ["Window"] }
-serde = { workspace = true }
 serde-wasm-bindgen = "0.6.5"
 console_error_panic_hook.workspace = true

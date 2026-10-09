@@ -68,6 +68,8 @@ addEventListener('error', (e) => {
 onmessage = (e) => (ready ? handle(e.data) : pending.push(e.data));
 
 await init();
-host_worker_start();
+// `?fast=N` on the worker URL shortens every shift phase N times (tests).
+const fast = Number(new URL(self.location.href).searchParams.get('fast') ?? 1) || 1;
+host_worker_start(fast, crypto.getRandomValues(new Uint8Array(32)));
 ready = true;
 for (const m of pending.splice(0)) handle(m);

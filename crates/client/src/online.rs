@@ -60,6 +60,38 @@ pub struct NetStatus {
     pub jitter_ms: f32,
     /// This client's simulation tick.
     pub tick: u32,
+    /// Game state for the page and tests (`window.__lastCall.game`).
+    pub game: GameStatus,
+}
+
+/// Game state published to the page, in JSON-friendly form.
+#[derive(Default, Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GameStatus {
+    pub shift: Option<ShiftStatus>,
+}
+
+#[derive(Default, Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShiftStatus {
+    pub week: u8,
+    /// 1-based shift within the week.
+    pub shift: u8,
+    pub phase: &'static str,
+    pub seconds_left: u16,
+    pub running: bool,
+}
+
+impl From<ShiftClock> for ShiftStatus {
+    fn from(c: ShiftClock) -> Self {
+        Self {
+            week: c.calendar.week,
+            shift: c.calendar.shift + 1,
+            phase: c.phase.label(),
+            seconds_left: c.seconds_left,
+            running: c.running,
+        }
+    }
 }
 
 /// Add online play to the app.
@@ -87,11 +119,49 @@ pub fn add(app: &mut App, cfg: OnlineConfig) {
         ReplicationReceiver,
         ReplicationSender,
     ));
-    app.add_systems(Startup, setup_bar);
+    app.add_systems(Startup, (setup_bar, setup_hud));
     app.add_systems(
         Update,
-        (read_input, dress_players, place_players, dress_props, place_props, follow_camera, update_status).chain(),
+        (read_input, dress_players, place_players, dress_props, place_props, follow_camera, update_status, update_hud)
+            .chain(),
     );
+}
+
+/// The shift clock line at the top of the screen. A wall clock replaces it
+/// in the art pass (plan section 7: diegetic UI).
+#[derive(Component)]
+struct ClockText;
+
+fn setup_hud(mut commands: Commands, nodraw: Option<Res<NoDraw>>) {
+    if nodraw.is_some() {
+        return;
+    }
+    commands.spawn((
+        ClockText,
+        Text::new(""),
+        TextFont { font_size: bevy::text::FontSize::Px(18.0), ..default() },
+        TextColor(Color::srgb(1.0, 0.85, 0.55)),
+        Node { position_type: PositionType::Absolute, top: px(8), left: px(10), ..default() },
+    ));
+}
+
+fn update_hud(status: Res<NetStatus>, mut text: Query<&mut Text, With<ClockText>>) {
+    let Ok(mut text) = text.single_mut() else { return };
+    let line = match &status.game.shift {
+        Some(s) => format!(
+            "Week {}  ·  Shift {}/{}  ·  {} {}{}",
+            s.week,
+            s.shift,
+            shared::shift::SHIFTS_PER_WEEK,
+            s.phase,
+            shared::shift::clock_text(u32::from(s.seconds_left)),
+            if s.running { "" } else { "  (paused)" }
+        ),
+        None => String::new(),
+    };
+    if text.0 != line {
+        text.0 = line;
+    }
 }
 
 fn setup_bar(
@@ -294,6 +364,7 @@ fn update_status(
     props: Query<(&PropKind, &PropPose, &HeldBy), With<Interpolated>>,
     link: Query<&Link, With<Client>>,
     timeline: Option<Res<LocalTimeline>>,
+    room: Query<&ShiftClock, With<RoomState>>,
     mut status: ResMut<NetStatus>,
 ) {
     let (rtt_ms, jitter_ms) = link
@@ -319,5 +390,6 @@ fn update_status(
         rtt_ms,
         jitter_ms,
         tick: timeline.map(|t| t.tick().0).unwrap_or(0),
+        game: GameStatus { shift: room.iter().next().map(|c| (*c).into()) },
     };
 }

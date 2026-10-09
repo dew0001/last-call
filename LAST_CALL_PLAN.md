@@ -428,7 +428,7 @@ Each phase ends with a demo build at a URL and a checklist. Do not start the nex
 - [x] Budgets: time to lobby under 15 s. Net up and down within budget with 8 bots.
 
 ### Phase 2: Shift loop and economy (week 4)
-- [ ] Shift phases with timers and server-driven transitions.
+- [x] Shift phases with timers and server-driven transitions.
 - [ ] House pool, pockets, safe transfer, loan shark payment, win and loss screens.
 - [ ] Customer NPC: spawn, walk to a stool, buy a drink, leave. Navmesh with `vleue_navigator` or `oxidized_navigation` (verify Bevy support).
 - [ ] Beer tap minigame complete. Pour, carry, serve, tips.

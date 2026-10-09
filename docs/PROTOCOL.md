@@ -35,6 +35,16 @@ Prop pose, copied from the host's physics each tick. Interpolated on clients.
 
 The player (by [`Player::id`]) holding this prop, if any.
 
+## Room state (host to clients)
+
+### `RoomState` (struct)
+
+Marks the one room-state entity. Room-wide components live on it.
+
+### `ShiftClock` (struct)
+
+The shift clock. The host updates it when the phase changes and once per second; `running` is false while no player is in the room.
+
 ## Inputs (client to host, per tick)
 
 ### `PlayerInput` (struct)

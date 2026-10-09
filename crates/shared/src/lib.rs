@@ -9,6 +9,7 @@ pub mod bar;
 pub mod movement;
 pub mod rng;
 pub mod room;
+pub mod shift;
 
 #[cfg(feature = "net")]
 pub mod client;

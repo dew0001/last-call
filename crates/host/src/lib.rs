@@ -23,6 +23,7 @@ use shared::protocol::ProtocolPlugin;
 pub mod game;
 pub mod physics;
 pub mod runner;
+pub mod shift;
 #[cfg(target_arch = "wasm32")]
 mod web;
 
@@ -33,6 +34,20 @@ pub struct TickCount(pub u64);
 fn advance_tick(mut tick: ResMut<TickCount>) {
     tick.0 += 1;
 }
+
+/// Room settings chosen when the host starts.
+#[derive(Clone, Debug, Default)]
+pub struct HostConfig {
+    /// Shift phase lengths. Tests and `?fast` rooms shorten them.
+    pub timings: shared::shift::Timings,
+    /// Seed for every RNG stream in the room. The browser host draws it from
+    /// `crypto.getRandomValues`; tests fix it so runs replay exactly.
+    pub seed: [u8; 32],
+}
+
+/// The room's RNG seed.
+#[derive(Resource, Clone, Copy, Debug)]
+pub struct RoomSeed(pub [u8; 32]);
 
 /// A headless host simulation.
 pub struct HostSim {
@@ -48,7 +63,12 @@ impl Default for HostSim {
 }
 
 impl HostSim {
+    /// A room with the plan's timings and a zero seed.
     pub fn new() -> Self {
+        Self::with_config(HostConfig::default())
+    }
+
+    pub fn with_config(config: HostConfig) -> Self {
         let mut app = App::new();
         app.add_plugins((MinimalPlugins, TransformPlugin, StatesPlugin));
         // Native debugging: LASTCALL_LOG="lightyear_inputs=debug,info" prints logs.
@@ -62,7 +82,9 @@ impl HostSim {
         app.insert_resource(ReplicationMetadata::new(shared::SNAPSHOT_INTERVAL));
         app.init_resource::<TickCount>();
         app.add_systems(FixedUpdate, advance_tick);
-        app.add_plugins((game::GamePlugin, physics::HostPhysicsPlugin));
+        app.insert_resource(shift::ShiftConfig { timings: config.timings });
+        app.insert_resource(RoomSeed(config.seed));
+        app.add_plugins((game::GamePlugin, physics::HostPhysicsPlugin, shift::ShiftPlugin));
 
         let server = app.world_mut().spawn((Name::new("Server"), RawServer)).id();
         app.finish();
