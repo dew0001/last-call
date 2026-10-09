@@ -126,9 +126,10 @@ pub fn host_leave(peer: u32) {
 ///
 /// `fast` divides every shift phase length (1 for the plan's timings; tests
 /// use `?fast=60` for a 14-second shift). `seed` is 32 random bytes. `preset`
-/// picks a test start (`lastweek`, `broke`) or is empty.
+/// picks a test start (`lastweek`, `broke`) or is empty. `customers` is
+/// `bar` to send every customer to the bar (tests of the beer tap), or empty.
 #[wasm_bindgen]
-pub fn host_worker_start(fast: u32, seed: &[u8], preset: &str) {
+pub fn host_worker_start(fast: u32, seed: &[u8], preset: &str, customers: &str) {
     console_error_panic_hook::set_once();
     let scope = scope();
     let mut room_seed = [0u8; 32];
@@ -139,7 +140,7 @@ pub fn host_worker_start(fast: u32, seed: &[u8], preset: &str) {
         timings: shared::shift::Timings::PLAN.scaled_down(fast),
         seed: room_seed,
         preset: crate::economy::Preset::parse(preset),
-        tastes: None,
+        tastes: (customers == "bar").then_some(crate::customers::BAR_ONLY),
     };
     STATE.with(|s| {
         *s.borrow_mut() = Some(State {

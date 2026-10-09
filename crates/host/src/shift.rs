@@ -46,7 +46,7 @@ impl Plugin for ShiftPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ShiftConfig>();
         app.add_message::<PhaseStarted>();
-        app.add_systems(Startup, start_clock);
+        app.add_systems(Startup, start_clock.after(crate::physics::SpawnRoom));
         app.add_systems(FixedUpdate, run_clock.in_set(RunClock).after(crate::game::MovePlayers));
     }
 }

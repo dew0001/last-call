@@ -242,8 +242,9 @@ watchDrunkBlur();
 window.__hostTicks = [];
 function startHostWorker() {
   const url = new URL('./host-worker.js', import.meta.url);
-  // `?fast=N` runs shifts N times faster; `?preset=` picks a test start.
-  for (const key of ['fast', 'preset']) if (params.get(key)) url.searchParams.set(key, params.get(key));
+  // `?fast=N` runs shifts N times faster; `?preset=` picks a test start;
+  // `?customers=bar` keeps every customer at the bar.
+  for (const key of ['fast', 'preset', 'customers']) if (params.get(key)) url.searchParams.set(key, params.get(key));
   const worker = new Worker(url, { type: 'module' });
   worker.addEventListener('message', (e) => {
     if (e.data?.t === 'tick') window.__hostTicks.push(e.data);

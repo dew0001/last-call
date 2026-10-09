@@ -279,3 +279,59 @@ Three causes of divergence, all fixed:
 `shared::state::replicated_hash` hashes the replicated game state (money, drunk meters, clock, ledger, customers, glasses, puddles; not positions, which clients predict or interpolate). `crates/bots/tests/consistency.rs` runs 8 bots for 1,000 ticks at the bar (pouring, drinking, throwing, walking, with customers) and checks every 100 ticks that each client's hash equals one of the host's recent hashes within a second. All 80 checks pass.
 
 Real-time bot tests in one file take turns (a shared lock): run in parallel, they starved each other of CPU and the bots' inputs reached the host late.
+
+## Phase 3
+
+### Blackjack rules the plan leaves open
+
+The plan fixes: 6 decks, reshuffle at 75%, dealer stands on soft 17, blackjack pays 3 to 2, double on any two, split once, no surrender, insurance 2 to 1. Choices made here:
+- **No double after a split.** "Double on any two" reads as any first two cards. Allowing it after a split would lower the edge by about 0.14% (UNVERIFIED, from published rule-effect tables), toward the bottom of the 0.4% to 0.9% target.
+- **The dealer peeks** for blackjack under an ace or a ten, so a player loses only the original bet to a dealer blackjack (the usual American rule).
+- **Split any two cards of the same value** (a king and a jack too). Split aces take one card each; an ace and a ten after a split pays even money.
+- **Bets are even dollars**, $10 to $100 (Courage and worse: $150), so 3 to 2 and half-bet insurance stay whole.
+
+House edge test (`shared::blackjack::tests`): 1,000,000 hands of basic strategy for these rules give 0.64%, inside the plan's 0.4% to 0.9%. The plan asks for at least 100,000; at 100,000 the standard error is about 0.36%, wide enough that a fixed seed could land outside the band by chance; at 1,000,000 it is about 0.11%. The run takes under half a second. The edge against the 15%-mistake customer is reported, not gated: 10.4%. A mistake picks another legal action at random, and many of those (hitting a hard 20, standing on 5) are costly. The plan calls this intended.
+
+### The minigame contract
+
+`shared::minigame::Minigame` follows the plan's sketch with one change: `apply` takes the table's RNG instead of the tick. Blackjack reshuffles inside `apply`, and the draw needs its stream; the caller's RNG logs each draw with its tick. `payout` returns stake plus winnings per bettor (`Payout { staked, returned }`), and `house_take` turns payouts into the house's net and the dealer's 10% commission (on a positive net only).
+
+### Roulette and slots
+
+Roulette: every bet pays `36 / numbers covered - 1` to 1, so every bet has the same edge, exactly 1/37 (2.70%). The test checks this over all 154 bets on the layout and simulates 100,000 spins. Bets: $1 to $100 each, up to 8 per player per spin. The result is drawn when the croupier spins and sent to clients at once, so the wheel lands on it. Each losing bet leaves a chip on the layout; the croupier's rake sweeps chips toward the croupier side, and a chip off the layout is gone. The wheel will not spin while losing chips remain.
+
+Slots: the plan says "3 reels, 5 symbols each". Read as 5 symbol kinds on a 20-stop strip per reel (5 cherries, 6 lemons, 5 bells, 3 bars, 1 seven). Paytable: 7 7 7 pays 150, BAR x3 50, bells 10, lemons 8, cherries 5, two cherries 2, a cherry on reel 1 pays 1 (stake included). The exact RTP over all 8,000 stop combinations is 91.9125%, inside 91% to 93%; a 100,000-spin simulation is within 6% of it (standard error 1.2%). Slot wins pay coins straight into the pocket.
+
+### Table roles
+
+A player becomes the dealer (or croupier) by pressing T at the spot behind the table. The role ends when they walk more than 2.4 m away, press T again, leave, or reach Wasted (70). The dealer presses Deal, then Hit or Stand for the house; the host accepts only the press the rules call for. Without a dealer nothing is dealt, and seated customers leave after 30 s. A player who does not act on their hand within 20 s stands.
+
+### Money on the tables
+
+Stakes leave the bettor when they go down. At the end of a round or spin, customers are paid in cash; players are paid as a chip stack (a dynamic chip prop with `ChipValue`) on the felt in front of their seat. Whoever picks it up with E gets the money; a stack that falls out of the room returns to the house. The house books the net of every round, less the commission. Tests check that house plus pockets plus chip stacks never change across rounds.
+
+### Customers at the tables
+
+Customers pick an activity on arrival, weighted bar 2, blackjack 3, roulette 3, slots 2, among those with a free spot. They bet about an eighth (blackjack), a tenth (roulette) or a fortieth (slots) of the cash they came with, and leave at the plan's walk-away thresholds. "Lose 70% or win 150% of their cash" is read as: down to 30% of the starting cash, or up to 250% of it. Tests that need everyone at the bar set `HostConfig::tastes` to bar only (`?customers=bar` in the browser).
+
+### The RNG audit log
+
+Every draw from every stream (customers, player effects, each table) goes into `shared::audit::AuditLog` with its stream, tick and index, plus a record of each outcome the draws decided: a shuffled shoe, a roulette result, slot stops. `shared::audit::verify` rebuilds every stream from the room seed, checks each draw, and derives each outcome again with the same rule functions.
+
+- Native: `host-native --audit FILE` appends JSONL.
+- Browser: the host Worker hands its lines to `web/audit.js` once a second, which appends them to IndexedDB (`lastcall-audit`). The newest 3 rooms are kept. The host page's "RNG log" button (or `window.__lastCallAudit.export()`) gives the room's JSONL.
+- `cargo run -p last_call_tools -- replay FILE...` checks either. The browser test runs the same check in wasm (`host_audit_verify`) on the log exported from IndexedDB.
+
+The log holds the seed. Anyone with the log can predict the room's future draws; it stays in the host's browser unless the host exports it. Fake money among friends makes this acceptable (plan section 0, rule 4).
+
+### Layout
+
+Blackjack table at (-5, 1), roulette at (4.5, 1), two slot machines against the west wall. Tables are blocks: players collide with them, physics props rest on the felt, and the navmesh routes customers around them. The drag bot's approach point moved (it now stops 2 m from the body, not 3 m), because the 3 m point fell inside the roulette table.
+
+### Gray-box table UI
+
+A text panel at the top right shows the nearest table's state and keys. Keys: T takes or leaves the role; Enter deals or spins; H hit, G stand, J double, K split, Y and N insurance; 1 to 4 bet (the top button rises to $150 for Courage; the buttons shuffle once a second when Wasted); 0 stands up; Z and X pick a roulette bet; K rakes. Cards are blank tiles on the felt; the panel spells them out. The plan's physical chips and diegetic UI belong to the art pass (Phase 6). Tests send the same requests through `window.__lcTable`.
+
+### Determinism: Startup spawn order
+
+The table spawns first ran unordered against the prop spawns. The native and wasm builds register a few engine systems differently, so the single-threaded executor picked a different order for unordered systems: one build spawned a table before the props, the other after. Entity ids then differed by one, and the replay hash (which sorts props by entity id) disagreed from tick 1. Startup spawns now run in a fixed chain: room and props (`physics::SpawnRoom`), then the shift clock, then the tables. Any new Startup system that spawns entities must join that chain.

@@ -32,7 +32,10 @@ impl Plugin for CasinoPlugin {
         let seed = app.world().resource::<crate::RoomSeed>().0;
         let rngs = TableId::all().into_iter().map(|t| (t, TableRng::new(seed, t.stream()))).collect();
         app.insert_resource(TableRngs(rngs));
-        app.add_systems(Startup, (blackjack::spawn, roulette::spawn, slots::spawn));
+        app.add_systems(
+            Startup,
+            (blackjack::spawn, roulette::spawn, slots::spawn).chain().after(crate::shift::start_clock),
+        );
         app.add_systems(
             FixedUpdate,
             (collect_requests, blackjack::run, roulette::run, slots::run, cash_out_lost_chips, clear_queue)

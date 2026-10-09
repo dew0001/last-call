@@ -79,10 +79,16 @@ addEventListener('error', (e) => {
 onmessage = (e) => (ready ? handle(e.data) : pending.push(e.data));
 
 await init();
-// `?fast=N` on the worker URL shortens every shift phase N times, and
-// `?preset=` picks a test start (tests and demos).
+// `?fast=N` on the worker URL shortens every shift phase N times,
+// `?preset=` picks a test start (tests and demos), and `?customers=bar`
+// sends every customer to the bar.
 const search = new URL(self.location.href).searchParams;
 const fast = Number(search.get('fast') ?? 1) || 1;
-host_worker_start(fast, crypto.getRandomValues(new Uint8Array(32)), search.get('preset') ?? '');
+host_worker_start(
+  fast,
+  crypto.getRandomValues(new Uint8Array(32)),
+  search.get('preset') ?? '',
+  search.get('customers') ?? '',
+);
 ready = true;
 for (const m of pending.splice(0)) handle(m);

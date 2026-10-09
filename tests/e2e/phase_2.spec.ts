@@ -94,7 +94,7 @@ test('a second missed payment burns the bar down', async ({ browser }) => {
 
 test('customers walk in, sit at the bar, order, and leave at last call', async ({ browser }) => {
   // fast=20: Setup 6 s, Open 27 s with a wave every 4.5 s, Last call 6 s.
-  const { host, room } = await createRoom(browser, undefined, '&fast=20');
+  const { host, room } = await createRoom(browser, undefined, '&fast=20&customers=bar');
   const player = await openTab(browser, `${room.link}&gpu=webgl2&novoice&name=Rook`, 'player');
   await waitFor(player, 'player joined', (s) => !!s.playerId && !!s.game?.shift);
 
@@ -120,7 +120,7 @@ test('customers walk in, sit at the bar, order, and leave at last call', async (
 
 test('a perfect pour, carried to a waiting customer, is paid for and tipped', async ({ browser }) => {
   // fast=20: Setup 6 s, then customers arrive at the start of Open.
-  const { host, room } = await createRoom(browser, undefined, '&fast=20');
+  const { host, room } = await createRoom(browser, undefined, '&fast=20&customers=bar');
   const player = await openTab(browser, `${room.link}&gpu=webgl2&novoice&name=Rook`, 'player');
   await waitFor(player, 'player joined', (s) => !!s.playerId && !!s.game?.money);
 

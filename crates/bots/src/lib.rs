@@ -67,8 +67,8 @@ struct DragPlan(Option<[(f32, f32); 2]>);
 /// From the main room to the front of the beer tap, between two stools.
 pub const ROUTE_TO_TAP: &[(f32, f32)] = &[(4.0, -1.5), (4.0, -3.0)];
 
-/// From the main room, through the office door, to the safe.
-pub const ROUTE_TO_SAFE: &[(f32, f32)] = &[(8.2, -1.0), (8.2, -3.0), (9.4, -5.55)];
+/// From the main room, past the roulette table, through the office door, to the safe.
+pub const ROUTE_TO_SAFE: &[(f32, f32)] = &[(8.2, 3.0), (8.2, -1.0), (8.2, -3.0), (9.4, -5.55)];
 
 #[derive(Resource, Default)]
 struct BotClock(u64);

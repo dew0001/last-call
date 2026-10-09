@@ -80,12 +80,14 @@ const CROUPIER: &[Step] = &[
 ];
 
 const SPILLER: &[Step] = &[
+    Step::Walk(2.0, -1.5),
     Step::Walk(4.6, -1.5),
     Step::Walk(4.6, -3.0),
     Step::Hold { buttons: 0, yaw: 0.0, pitch: 0.3, ticks: 8 },
     Step::Hold { buttons: buttons::INTERACT, yaw: 0.0, pitch: 0.3, ticks: 120 },
     Step::Hold { buttons: 0, yaw: 0.0, pitch: 0.0, ticks: 8 },
-    Step::Walk(4.6, 2.0),
+    Step::Walk(7.5, -1.0),
+    Step::Walk(7.5, 2.0),
     Step::Hold { buttons: buttons::THROW, yaw: 1.0, pitch: 0.0, ticks: 20 },
     Step::Hold { buttons: 0, yaw: 1.0, pitch: 0.0, ticks: 900 },
 ];

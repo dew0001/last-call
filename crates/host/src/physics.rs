@@ -35,7 +35,7 @@ pub struct HostPhysicsPlugin;
 impl Plugin for HostPhysicsPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(PhysicsPlugins::default());
-        app.add_systems(Startup, (spawn_room, spawn_props));
+        app.add_systems(Startup, (spawn_room, spawn_props).chain().in_set(SpawnRoom));
         app.add_observer(add_player_body);
         app.add_systems(
             FixedUpdate,
@@ -44,6 +44,12 @@ impl Plugin for HostPhysicsPlugin {
         app.add_systems(FixedPostUpdate, publish_poses.after(PhysicsSystems::Writeback));
     }
 }
+
+/// The Startup systems that build the room and its props. Other Startup
+/// spawns order themselves after it: entity ids feed the replay hash, and an
+/// unordered pair of systems may run in a different order in another build.
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct SpawnRoom;
 
 /// The pick-up, carry, throw and drop system.
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]

@@ -92,8 +92,9 @@ export async function walkTo(page: Page, points: [number, number][], timeoutMs =
   await setInput(page, { mx: 0, my: 0, yaw: 0, pitch: 0, buttons: 0 });
 }
 
-/** From the main room, through the office door, to the office safe. */
+/** From the main room, past the roulette table, through the office door, to the office safe. */
 export const ROUTE_TO_SAFE: [number, number][] = [
+  [8.2, 3.0],
   [8.2, -1.0],
   [8.2, -3.0],
   [9.4, -5.55],

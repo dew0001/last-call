@@ -52,6 +52,42 @@ Prop pose, copied from the host's physics each tick. Interpolated on clients.
 
 The player (by [`Player::id`]) holding this prop, if any.
 
+### `ChipValue` (struct)
+
+Money on a chip prop: a payout waiting on the felt (or dropped on the floor). Whoever picks it up gets it.
+
+## Casino tables (host to clients)
+
+### `HIDDEN_CARD` (const)
+
+A hidden card (the dealer's hole card) in a view.
+
+### `HandView` (struct)
+
+
+### `SeatView` (struct)
+
+
+### `BjPhase` (enum)
+
+Where a blackjack round stands, for drawing.
+- `Betting`: Between rounds: bets go down, the dealer deals.
+- `Insurance`
+- `Players`
+- `Dealer`
+
+### `BlackjackView` (struct)
+
+The blackjack table as every client sees it.
+
+### `RouletteView` (struct)
+
+The roulette table as every client sees it.
+
+### `SlotView` (struct)
+
+One slot machine as every client sees it.
+
 ## Room state (host to clients)
 
 ### `RoomState` (struct)
@@ -95,6 +131,10 @@ First message from a client. `player_uuid` comes from `localStorage`, so a refre
 Host reply to [`Join`].
 - `Welcome`
 - `Refused`
+
+### `TableRequest` (struct)
+
+A player asks a table to do something. The host checks everything: where the player stands, the rules, the player's money and drunk tier.
 
 ### `Control` (struct)
 

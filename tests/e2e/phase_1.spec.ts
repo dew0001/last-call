@@ -50,7 +50,7 @@ const THROW = 1 << 4;
 
 test('a player picks up a bottle and throws it; the host sees it land', async ({ browser }) => {
   const { host, room } = await createRoom(browser);
-  // Slot 1 spawns at x = -5, in front of bottles on the counter.
+  // Slot 1 spawns at x = -3, in front of bottles on the counter.
   const player = await openTab(browser, `${room.link}&gpu=webgl2&name=Thrower`, 'player');
   await waitFor(player, 'player sees all props', (s) => s.propsSeen === 130 && !!s.ownPos);
   const before = (await waitFor(host, 'host sees all props', (s) => s.propsSeen === 130)).propsOnFloor ?? 0;

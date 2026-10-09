@@ -76,8 +76,28 @@ pub const BLOCKS: [Block; 9] = [
     block(SLOTS[1].0, SLOTS[1].1, SLOT_HALF.0, SLOT_HALF.1, SLOT_HEIGHT, BlockKind::SlotMachine),
 ];
 
+/// Spawn x for each slot, along the front of the room. Every lane straight
+/// ahead (-Z) is clear of the casino tables, so a player who walks forward
+/// reaches the counter (or the back wall).
+const SPAWN_X: [f32; 8] = [-7.0, -3.0, -2.0, -1.0, 1.0, 2.0, 7.0, 8.0];
+
 /// Spawn points for up to 8 players, spread along the front of the room.
 pub fn spawn_point(slot: usize) -> [f32; 3] {
-    let i = (slot % 8) as f32;
-    [-7.0 + i * 2.0, 0.0, 4.0]
+    [SPAWN_X[slot % 8], 0.0, 4.0]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn spawn_lanes_are_clear_of_the_tables() {
+        for slot in 0..8 {
+            let [x, _, z] = spawn_point(slot);
+            for b in BLOCKS.iter().filter(|b| b.kind == BlockKind::Table) {
+                assert!((x - b.cx).abs() > b.hx + PLAYER_RADIUS, "slot {slot} walks into the table at {}", b.cx);
+                assert!(z - b.cz > b.hz + PLAYER_RADIUS, "slot {slot} spawns on a table");
+            }
+        }
+    }
 }
