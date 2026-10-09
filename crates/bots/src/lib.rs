@@ -62,7 +62,7 @@ struct CasinoPlan(Vec<(f32, f32)>);
 
 /// A dragger's approach to a body, once one is seen.
 #[derive(Resource, Default)]
-struct DragPlan(Option<[(f32, f32); 2]>);
+struct DragPlan(Option<[(f32, f32); 3]>);
 
 /// From the main room to the front of the beer tap, between two stools.
 pub const ROUTE_TO_TAP: &[(f32, f32)] = &[(4.0, -1.5), (4.0, -3.0)];
@@ -143,7 +143,8 @@ fn drive(
                 && let Some((_, body, _)) =
                     others.iter().find(|(p, _, d)| Some(p.id) != session.player_id && d.passed_out)
             {
-                plan.0 = Some([(body.0.x, body.0.z + 2.0), (body.0.x, body.0.z + 1.4)]);
+                // Through the aisle between the tables (x = 2), clear of the roulette table.
+                plan.0 = Some([(2.0, body.0.z + 2.0), (body.0.x, body.0.z + 2.0), (body.0.x, body.0.z + 1.4)]);
                 step.0 = 0;
             }
             match plan.0 {

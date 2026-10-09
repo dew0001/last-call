@@ -232,6 +232,12 @@ test('customers gamble at every game, and the audit log replays in the browser',
     await host.waitForTimeout(300);
   }
   test.info().annotations.push({ type: 'customers', description: `${[...where]}; ${c.blackjack.rounds} rounds` });
+  // Host tick cost with every table busy (budget: 6 ms).
+  const ticks = await host.evaluate(() => (window as any).__hostTicks.slice(-20));
+  const avg = ticks.reduce((n: number, t: any) => n + t.tickAvgMs, 0) / ticks.length;
+  const max = Math.max(...ticks.map((t: any) => t.tickMaxMs));
+  test.info().annotations.push({ type: 'host-tick', description: `avg ${avg.toFixed(2)} ms, worst ${max.toFixed(2)} ms` });
+  expect(avg).toBeLessThan(6);
 
   // Give the Worker a second to hand over its last chunk, then export.
   await host.waitForTimeout(1500);
@@ -268,7 +274,11 @@ test('table keys: T takes the deal, digits bet', async ({ browser }) => {
     return b?.mySeat != null && b.seats[b.mySeat].bet === 20;
   }, 10_000);
   await host.keyboard.press('Enter');
-  await waitFor(player, 'Enter dealt', (s) => (s.game?.casino?.blackjack?.seats ?? []).some((x: any) => x.hands.length > 0), 10_000);
+  // A natural blackjack settles at once, so a finished round counts too.
+  await waitFor(player, 'Enter dealt', (s) => {
+    const b = s.game?.casino?.blackjack;
+    return (b?.rounds ?? 0) > 0 || (b?.seats ?? []).some((x: any) => x.hands.length > 0);
+  }, 10_000);
   await tap(player, 0);
   await player.context().close();
   await host.context().close();

@@ -435,11 +435,11 @@ Each phase ends with a demo build at a URL and a checklist. Do not start the nex
 - [x] Drunk meter and all four drunk tiers including pass-out ragdoll and drag.
 
 ### Phase 3: Casino core (weeks 5 to 7)
-- [ ] Blackjack full rules, server shoe, dealer role, customer bots with mistake rate, chip physics.
-- [ ] Roulette full bet grid, spin, rake sweep, payouts.
-- [ ] Slots with paytable and lever.
-- [ ] RNG audit log (IndexedDB in the browser, JSONL natively). Replay tool in `crates/tools` that re-derives every outcome from the log.
-- [ ] House edge test: 100,000 simulated hands or spins per game in a unit test. Blackjack edge between 0.4% and 0.9% against a perfect basic-strategy bot. Roulette edge 2.7%. Slots RTP 91% to 93%. Also report (do not gate on) the blackjack edge against the 15%-mistake customer bot.
+- [x] Blackjack full rules, server shoe, dealer role, customer bots with mistake rate, chip physics.
+- [x] Roulette full bet grid, spin, rake sweep, payouts.
+- [x] Slots with paytable and lever.
+- [x] RNG audit log (IndexedDB in the browser, JSONL natively). Replay tool in `crates/tools` that re-derives every outcome from the log.
+- [x] House edge test: 100,000 simulated hands or spins per game in a unit test. Blackjack edge between 0.4% and 0.9% against a perfect basic-strategy bot. Roulette edge 2.7%. Slots RTP 91% to 93%. Also report (do not gate on) the blackjack edge against the 15%-mistake customer bot.
 
 ### Phase 4: Chaos and upgrades (week 8)
 - [ ] All eight chaos events with counters and consequences.

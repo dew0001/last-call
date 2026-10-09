@@ -74,7 +74,12 @@ test('the last payment wins, and a new run starts', async ({ browser }) => {
   expect(won.game.money.last).toEqual(['paid', 40_000]);
 
   // Then a new run at new game plus 1, with no money carried over.
-  const next = await waitFor(player, 'new run', (s) => s.game?.money?.outcome === 'playing' && s.game.money.ng === 1);
+  // The ledger and the clock reset in consecutive ticks; wait for both.
+  const next = await waitFor(
+    player,
+    'new run',
+    (s) => s.game?.money?.outcome === 'playing' && s.game.money.ng === 1 && s.game.shift?.week === 1,
+  );
   expect(next.game.money.debt).toBe(150_000);
   expect(next.game.money.house).toBe(0);
   expect(next.game.pocket).toBe(0);
