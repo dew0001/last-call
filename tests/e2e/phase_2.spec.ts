@@ -143,24 +143,7 @@ test('a perfect pour, carried to a waiting customer, is paid for and tipped', as
   // round trip between reading the gauge and letting go can take longer than
   // the green zone on a loaded machine. A player reacts to the drawn gauge.
   await setInput(player, { mx: 0, my: 0, yaw: 0, pitch: -0.4, buttons: INTERACT });
-  const releasedAt = await player.evaluate(
-    () =>
-      new Promise<number>((resolve, reject) => {
-        const w = window as any;
-        const deadline = Date.now() + 10_000;
-        const id = setInterval(() => {
-          const fill = w.__lastCall?.game?.pour?.[0] ?? 0;
-          if (fill >= 90) {
-            w.__lcInput = { mx: 0, my: 0, yaw: 0, pitch: -0.4, buttons: 0 };
-            clearInterval(id);
-            resolve(fill);
-          } else if (Date.now() > deadline) {
-            clearInterval(id);
-            reject(new Error(`the gauge never reached 90 (at ${fill})`));
-          }
-        }, 2);
-      }),
-  );
+  const releasedAt = await releaseAt90(player);
   test.info().annotations.push({ type: 'released-at', description: `${releasedAt}%` });
   const poured = await waitFor(player, 'a beer in hand', (s) => !!s.game?.beer);
   // On a miss, say which way: under 85 means the host saw the press late,
@@ -201,9 +184,34 @@ const USE = 1 << 8;
 /** Pour a beer at the tap (the player stands there) and wait until it is in hand. */
 async function pourBeer(page: Page) {
   await setInput(page, { mx: 0, my: 0, yaw: 0, pitch: -0.4, buttons: INTERACT });
-  await page.waitForFunction(() => ((window as any).__lastCall?.game?.pour?.[0] ?? 0) >= 90, null, { polling: 20, timeout: 10_000 });
-  await setInput(page, { mx: 0, my: 0, yaw: 0, pitch: -0.4, buttons: 0 });
+  await releaseAt90(page);
   return waitFor(page, 'a beer in hand', (s) => !!s.game?.beer);
+}
+
+/**
+ * Let go of E from inside the page as soon as the gauge shows 90%: a
+ * Playwright round trip between reading the gauge and letting go can take
+ * longer than the green zone on a loaded machine. Returns the gauge reading.
+ */
+function releaseAt90(page: Page) {
+  return page.evaluate(
+    () =>
+      new Promise<number>((resolve, reject) => {
+        const w = window as any;
+        const deadline = Date.now() + 10_000;
+        const id = setInterval(() => {
+          const fill = w.__lastCall?.game?.pour?.[0] ?? 0;
+          if (fill >= 90) {
+            w.__lcInput = { mx: 0, my: 0, yaw: 0, pitch: -0.4, buttons: 0 };
+            clearInterval(id);
+            resolve(fill);
+          } else if (Date.now() > deadline) {
+            clearInterval(id);
+            reject(new Error(`the gauge never reached 90 (at ${fill})`));
+          }
+        }, 2);
+      }),
+  );
 }
 
 test('drinking a beer costs $5 and fills the drunk meter', async ({ browser }) => {
@@ -216,7 +224,11 @@ test('drinking a beer costs $5 and fills the drunk meter', async ({ browser }) =
   await tap(player, USE);
   const drunk = await waitFor(player, 'the beer is drunk', (s) => !s.game?.beer && (s.game?.drunk?.level ?? 0) >= 19);
   expect(drunk.game.pocket).toBe(295);
-  expect(drunk.game.drunk.tier).toBe('courage');
+  // +20 makes Courage, but the meter decays a point every 2 s: if a decay
+  // lands before this read, the meter shows 19 and the tier is sober again.
+  const level = drunk.game.drunk.level;
+  expect(level).toBeLessThanOrEqual(20);
+  expect(drunk.game.drunk.tier).toBe(level >= 20 ? 'courage' : 'sober');
   await player.context().close();
   await host.context().close();
 });
