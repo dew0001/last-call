@@ -71,7 +71,7 @@ export const DROP = 1 << 5;
  * Walk the player through (x, z) waypoints with scripted input, steering from
  * its predicted position. Slows down near each point so it does not overshoot.
  */
-export async function walkTo(page: Page, points: [number, number][], timeoutMs = 60_000) {
+export async function walkTo(page: Page, points: [number, number][], timeoutMs = 60_000, tolerance = 0.25) {
   const deadline = Date.now() + timeoutMs;
   for (const [x, z] of points) {
     for (;;) {
@@ -83,9 +83,10 @@ export async function walkTo(page: Page, points: [number, number][], timeoutMs =
       }
       const [dx, dz] = [x - p[0], z - p[2]];
       const d = Math.hypot(dx, dz);
-      if (d < 0.25) break;
-      // Forward is (-sin yaw, -cos yaw).
-      await setInput(page, { mx: 0, my: Math.min(1, Math.max(0.25, d / 1.5)), yaw: Math.atan2(-dx, -dz), pitch: 0, buttons: 0 });
+      if (d < tolerance) break;
+      // Forward is (-sin yaw, -cos yaw). Slow down near the point: a tab
+      // that draws few frames a second would otherwise step past it.
+      await setInput(page, { mx: 0, my: Math.min(1, Math.max(0.15, d / 2)), yaw: Math.atan2(-dx, -dz), pitch: 0, buttons: 0 });
       await page.waitForTimeout(50);
     }
   }
@@ -123,7 +124,7 @@ export async function tap(page: Page, buttons: number, ms = 150) {
 export async function walkToOnHost(page: Page, points: [number, number][], tries = 3, near = 0.5) {
   const [x, z] = points[points.length - 1];
   for (let i = 0; i < tries; i++) {
-    await walkTo(page, points);
+    await walkTo(page, points, 60_000, Math.max(0.25, near / 2));
     await page.waitForTimeout(1500);
     const s = await status(page);
     const at = await page.evaluate(
