@@ -118,7 +118,7 @@ fn passing_out_dragging_and_waking_up() {
     room.host.world_mut().get_mut::<Drunk>(e).unwrap().level = 85;
 
     let mut out = false;
-    for _ in 0..(10 * shared::TICK_HZ) {
+    for _ in 0..(14 * shared::TICK_HZ) {
         room.step();
         std::thread::sleep(shared::TICK);
         if room.host.world_mut().get::<Drunk>(e).unwrap().passed_out {

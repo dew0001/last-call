@@ -116,7 +116,9 @@ fn drive(
                 let hold = u64::from(hold);
                 let b = if (8..8 + hold).contains(&t) {
                     INTERACT
-                } else if drink && (8 + hold + 32..8 + hold + 40).contains(&t) {
+                } else if drink && (8 + hold + 32..8 + hold + 160).contains(&t) && (t / 4).is_multiple_of(2) {
+                    // Tap R for two seconds: a stall on a loaded machine can
+                    // swallow one press, and R with empty hands does nothing.
                     USE
                 } else {
                     0
