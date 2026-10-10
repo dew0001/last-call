@@ -40,6 +40,12 @@ bevy = { workspace = true, features = [
     "default_font",
     "bevy_post_process",
     "ktx2",
+    "jpeg",
+    "png",
+    "bevy_gltf",
+    "bevy_world_serialization",
+    # glTF scenes spawn through reflection: every component type must be registered.
+    "reflect_auto_register",
 ] }
 lightyear.workspace = true
 serde.workspace = true

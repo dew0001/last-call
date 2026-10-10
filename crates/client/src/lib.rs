@@ -14,6 +14,7 @@ pub mod art;
 pub mod casino;
 pub mod chaos;
 pub mod games;
+pub mod look;
 pub mod online;
 #[cfg(target_arch = "wasm32")]
 mod web;

@@ -35,9 +35,19 @@ bindgen() { # <wasm file> <out name>
   fi
 }
 
+# The client ships gzipped as `.wasmz` (web/boot.js unpacks it with
+# DecompressionStream): the raw module is close to Cloudflare Pages' 25 MiB
+# file limit, the gzipped one about a third of it. Not `.wasm.gz`: a server
+# could then label it Content-Encoding: gzip and the browser unpack it first.
+pack() { # <out name>
+  gzip -9 -n -c "$DIST/pkg/$1_bg.wasm" > "$DIST/pkg/$1_bg.wasmz"
+  rm "$DIST/pkg/$1_bg.wasm"
+}
+
 echo "== client (webgl2)"
 cargo build --profile "$PROFILE" --target "$TARGET" -p last_call_client --lib
 bindgen "target/$TARGET/$OUT/client.wasm" client_webgl2
+pack client_webgl2
 
 if [ "${SKIP_WEBGPU:-}" = 1 ]; then
   # Fast local iteration only; pages must then use ?gpu=webgl2.
@@ -47,6 +57,7 @@ else
   # Separate target dir: switching the feature would otherwise rebuild Bevy every time.
   cargo build --profile "$PROFILE" --target "$TARGET" -p last_call_client --lib --features webgpu --target-dir target/webgpu
   bindgen "target/webgpu/$TARGET/$OUT/client.wasm" client_webgpu
+  pack client_webgpu
 fi
 
 echo "== host"

@@ -1,7 +1,7 @@
 // Report raw and Brotli sizes of every file in a build directory.
 // With --enforce, fail when a budget from section 9 of the plan is missed:
 //   any single file >= 25 MiB raw (Cloudflare Pages limit)
-//   each client wasm > 12 MB Brotli
+//   each client wasm > 12 MB as shipped (gzipped `.wasmz`)
 //   first load (one client variant + host + everything else) > 40 MB Brotli
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -32,7 +32,7 @@ for (const r of rows) {
 const errors = [];
 for (const r of rows) {
   if (r.raw >= 25 * MiB) errors.push(`${r.file} is ${r.raw} bytes, over the 25 MiB Pages file limit`);
-  if (/client_web(gl2|gpu)_bg\.wasm$/.test(r.file) && r.br > 12 * MB) errors.push(`${r.file} is ${r.br} bytes Brotli, over 12 MB`);
+  if (/client_web(gl2|gpu)_bg\.wasmz$/.test(r.file) && r.raw > 12 * MB) errors.push(`${r.file} is ${r.raw} bytes, over 12 MB`);
 }
 const other = rows.filter((r) => !/client_webgpu/.test(r.file)).reduce((s, r) => s + r.br, 0);
 console.log(`first load (webgl2 variant, Brotli): ${(other / MB).toFixed(2)} MB`);

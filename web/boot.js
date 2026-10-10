@@ -230,7 +230,13 @@ async function loadClient() {
   if (variant === 'webgpu' && !params.has('gpu')) watchWebgpu();
   watchStartFailure();
   const mod = await import(`./pkg/client_${variant}.js`);
-  await mod.default();
+  // The module ships gzipped (scripts/build-web.sh): unpack it while it downloads.
+  const res = await fetch(new URL(`./pkg/client_${variant}_bg.wasmz`, import.meta.url));
+  if (!res.ok) throw new Error(`client download failed: ${res.status}`);
+  const wasm = new Response(res.body.pipeThrough(new DecompressionStream('gzip')), {
+    headers: { 'Content-Type': 'application/wasm' },
+  });
+  await mod.default({ module_or_path: wasm });
   return mod;
 }
 

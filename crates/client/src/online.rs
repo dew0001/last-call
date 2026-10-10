@@ -635,27 +635,46 @@ fn setup_bar(
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     use crate::art;
+    use crate::look::{self, Surface};
     use shared::world::{AREAS, Room};
-    // Vertex colors carry the paint; one white material per surface kind.
+    // Vertex colors carry the paint of untextured parts; one white material
+    // per surface kind.
     let paint = materials.add(StandardMaterial { base_color: Color::WHITE, perceptual_roughness: 0.85, ..default() });
     let gloss = materials.add(StandardMaterial { base_color: Color::WHITE, perceptual_roughness: 0.3, ..default() });
-    // Floors, with each room's baked lightmap (tools bake_lighting).
-    let floor_mat = materials.add(StandardMaterial {
+    // Test tabs that do not draw skip the textures and models.
+    let assets = assets.filter(|_| nodraw.is_none());
+    let flat_floor = materials.add(StandardMaterial {
         base_color: Color::WHITE,
         perceptual_roughness: 0.9,
         lightmap_exposure: 9_000.0,
         ..default()
     });
-    for a in AREAS.iter().filter(|a| a.room != Room::Office) {
+    // Floors, with each room's baked lightmap (tools bake_lighting). The
+    // office sits inside the bar's rectangle: its parquet lies just above.
+    for a in AREAS.iter() {
         let (w, d) = (a.x1 - a.x0, a.z1 - a.z0);
+        let office = a.room == Room::Office;
+        let lift = if office { 0.004 } else { 0.0 };
+        let center = Transform::from_xyz(a.x0 + w / 2.0, lift, a.z0 + d / 2.0);
+        let Some(assets) = &assets else {
+            if !office {
+                commands.spawn((
+                    Mesh3d(meshes.add(art::floor(w, d, art::palette(a.room).0))),
+                    MeshMaterial3d(flat_floor.clone()),
+                    center,
+                ));
+            }
+            continue;
+        };
+        let surface = Surface::floor(a.room);
+        let mut mesh = art::floor(w, d, Color::WHITE).transformed_by(center);
+        look::world_uv(&mut mesh, surface.tile());
         let mut e = commands.spawn((
-            Mesh3d(meshes.add(art::floor(w, d, art::palette(a.room).0))),
-            MeshMaterial3d(floor_mat.clone()),
-            Transform::from_xyz(a.x0 + w / 2.0, 0.0, a.z0 + d / 2.0),
+            Mesh3d(meshes.add(mesh)),
+            MeshMaterial3d(materials.add(look::material(assets, surface, !office))),
+            Transform::default(),
         ));
-        if nodraw.is_none()
-            && let Some(assets) = &assets
-        {
+        if !office {
             let name = format!("{:?}", a.room).to_lowercase();
             e.insert(bevy::pbr::Lightmap {
                 image: assets.load(format!("lightmaps/{name}.ktx2")),
@@ -665,13 +684,31 @@ fn setup_bar(
         }
     }
     // Walls and the bar's furniture: static, so they merge into one mesh per
-    // material (two draw calls instead of about a hundred).
+    // material (a draw call per surface instead of about a hundred).
     let mut matte: Vec<Mesh> = Vec::new();
     let mut shiny: Vec<Mesh> = Vec::new();
+    let mut surfaces: std::collections::BTreeMap<Surface, Vec<Mesh>> = default();
     let place = |m: Mesh, b: &bar::Block| m.transformed_by(Transform::from_xyz(b.cx, b.height / 2.0, b.cz));
+    let mut textured = |surface: Surface, mut m: Mesh| {
+        look::world_uv(&mut m, surface.tile());
+        surfaces.entry(surface).or_default().push(m);
+    };
     for b in shared::world::walls() {
-        let outside = shared::world::room_at(b.cx, b.cz).is_none_or(|r| r.outdoors());
-        let color = if b.height < bar::WALL_HEIGHT {
+        let room = shared::world::room_at(b.cx, b.cz);
+        let outside = room.is_none_or(|r| r.outdoors());
+        let low = b.height < bar::WALL_HEIGHT;
+        if assets.is_some() {
+            let surface = if low {
+                Surface::LowWall
+            } else if outside {
+                Surface::OutsideWall
+            } else {
+                Surface::wall(room)
+            };
+            textured(surface, place(art::block(b, Color::WHITE), b));
+            continue;
+        }
+        let color = if low {
             Color::srgb(0.25, 0.26, 0.3)
         } else if outside {
             Color::srgb(0.3, 0.32, 0.38)
@@ -681,16 +718,38 @@ fn setup_bar(
         matte.push(place(art::block(b, color), b));
     }
     for b in &bar::BLOCKS {
+        let has_tex = assets.is_some();
         match b.kind {
+            bar::BlockKind::Counter if has_tex => textured(Surface::Wood, place(art::counter(b), b)),
             bar::BlockKind::Counter => shiny.push(place(art::counter(b), b)),
+            bar::BlockKind::Wall if has_tex => textured(Surface::OfficeWall, place(art::block(b, Color::WHITE), b)),
             bar::BlockKind::Wall => matte.push(place(art::block(b, Color::srgb(0.5, 0.38, 0.27)), b)),
+            bar::BlockKind::Safe if has_tex => {
+                textured(Surface::Metal, place(art::block(b, Color::srgb(0.45, 0.47, 0.5)), b))
+            }
             bar::BlockKind::Safe => shiny.push(place(art::block(b, Color::srgb(0.2, 0.22, 0.25)), b)),
             bar::BlockKind::Table => matte.push(place(art::table(b), b)),
             bar::BlockKind::SlotMachine => shiny.push(place(art::slot_machine(b), b)),
         }
     }
     for (parts, mat) in [(matte, &paint), (shiny, &gloss)] {
-        commands.spawn((Mesh3d(meshes.add(art::combine(parts))), MeshMaterial3d(mat.clone()), Transform::default()));
+        if !parts.is_empty() {
+            commands.spawn((
+                Mesh3d(meshes.add(art::combine(parts))),
+                MeshMaterial3d(mat.clone()),
+                Transform::default(),
+            ));
+        }
+    }
+    if let Some(assets) = &assets {
+        for (surface, parts) in surfaces {
+            commands.spawn((
+                Mesh3d(meshes.add(art::combine(parts))),
+                MeshMaterial3d(materials.add(look::material(assets, surface, false))),
+                Transform::default(),
+            ));
+        }
+        look::spawn_decor(&mut commands, assets);
     }
     // The harbor around the pier.
     let pier = shared::world::area_of(Room::Pier);
