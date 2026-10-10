@@ -514,7 +514,7 @@ async function runTitle() {
     const code = parseRoomCode(document.getElementById('join-code').value);
     if (code) location.search = `?room=${code}`;
   });
-  runClient(mod, { online: false });
+  runClient(mod, { online: false, cube: params.has('cube'), nodraw: params.has('nodraw') });
 }
 
 // In a room, clicking the game locks the mouse to it for mouse look

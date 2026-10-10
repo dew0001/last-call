@@ -636,7 +636,7 @@ fn update_hud(
     }
 }
 
-fn setup_bar(
+pub(crate) fn setup_bar(
     mut commands: Commands,
     assets: Option<Res<AssetServer>>,
     nodraw: Option<Res<NoDraw>>,
@@ -1269,7 +1269,7 @@ fn post_effects(
 
 /// The Low preset: no shadows, no bloom, and (with no bloom to feed) no HDR
 /// target or post passes; the screen blur and grain are CSS either way.
-fn graphics_preset(
+pub(crate) fn graphics_preset(
     mut commands: Commands,
     settings: Res<Settings>,
     cams: Query<Entity, With<Camera3d>>,

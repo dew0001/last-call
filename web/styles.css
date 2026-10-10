@@ -1,9 +1,14 @@
+/* Fonts (SIL Open Font License, see docs/CREDITS.md): Monoton for the
+   neon logo, Rubik for the interface. Latin subsets, self-hosted. */
+@font-face { font-family: 'Monoton'; src: url('./assets/fonts/monoton.woff2') format('woff2'); font-display: swap; }
+@font-face { font-family: 'Rubik'; src: url('./assets/fonts/rubik.woff2') format('woff2'); font-weight: 300 900; font-display: swap; }
+
 html, body {
   margin: 0;
   height: 100%;
   background: #140d08;
   color: #f5d9b0;
-  font-family: system-ui, sans-serif;
+  font-family: 'Rubik', system-ui, sans-serif;
   overflow: hidden;
 }
 canvas#bevy {
@@ -52,32 +57,58 @@ canvas#bevy {
 }
 #lobby {
   position: fixed;
-  left: 1rem;
-  bottom: 1rem;
+  inset: 0 auto 0 0;
+  width: min(26rem, 100%);
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  padding: 1rem;
-  border-radius: 0.6rem;
-  background: rgba(20, 13, 8, 0.85);
+  justify-content: center;
+  gap: 0.7rem;
+  padding: 2rem 2.25rem;
+  background: linear-gradient(90deg, rgba(10, 5, 3, 0.94) 0%, rgba(10, 5, 3, 0.8) 70%, rgba(10, 5, 3, 0) 100%);
+  font-family: 'Rubik', system-ui, sans-serif;
 }
 #lobby h1 {
-  margin: 0;
-  color: #ff3d9a;
-  letter-spacing: 0.1em;
-  font-size: 1.4rem;
+  margin: 0 0 0.2rem;
+  font-family: 'Monoton', 'Rubik', system-ui, sans-serif;
+  font-weight: 400;
+  font-size: clamp(2.4rem, 7vw, 3.6rem);
+  line-height: 1;
+  color: #ff5fb0;
+  letter-spacing: 0.06em;
+  text-shadow: 0 0 6px #ff2d95, 0 0 18px #ff2d95, 0 0 42px rgba(255, 45, 149, 0.6);
+  animation: flicker 6s infinite;
 }
-#lobby button, #lobby input {
+@keyframes flicker {
+  0%, 92%, 100% { opacity: 1; }
+  93% { opacity: 0.55; }
+  94% { opacity: 1; }
+  96% { opacity: 0.7; }
+}
+#lobby .tagline { margin: 0 0 0.8rem; font-size: 0.95rem; line-height: 1.4; color: #e9cfaa; opacity: 0.85; }
+#lobby button, #lobby input, #lobby select {
   font: inherit;
-  padding: 0.45rem 0.7rem;
-  border-radius: 0.35rem;
-  border: 1px solid #5a3a22;
-  background: #2a1a10;
+  padding: 0.75rem 1rem;
+  border-radius: 0.45rem;
+  border: 1px solid #6a4128;
+  background: rgba(42, 24, 14, 0.92);
   color: #f5d9b0;
 }
-#lobby button { cursor: pointer; }
-#join-form-wrap { display: flex; gap: 0.4rem; }
-#join-code { width: 7rem; text-transform: uppercase; }
+#lobby button {
+  cursor: pointer;
+  text-align: left;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s;
+}
+#lobby button:hover { border-color: #ff5fb0; background: rgba(74, 26, 51, 0.95); transform: translateX(3px); }
+#lobby #create { background: linear-gradient(90deg, #a3195f, #6e1240); border-color: #ff5fb0; color: #fff; font-size: 1.1rem; }
+#lobby #resume { border-color: #33e0ff; }
+#lobby label#hats { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; font-size: 0.9rem; }
+#lobby select { padding: 0.4rem 0.6rem; }
+#join-form-wrap { display: flex; gap: 0.5rem; margin-top: 0.4rem; }
+#join-code { flex: 1; min-width: 0; text-transform: uppercase; letter-spacing: 0.2em; }
+#join { text-align: center !important; }
 [hidden] { display: none !important; }
 
 /* Film grain at 0.05 (plan section 7), over the canvas. */
@@ -215,7 +246,7 @@ body.locked #settings-open, body.locked #audit-export { display: none; }
 }
 
 /* ---------- in-game HUD (web/hud.js) ---------- */
-#hud { position: fixed; inset: 0; pointer-events: none; z-index: 3; font-family: 'Trebuchet MS', system-ui, sans-serif; }
+#hud { position: fixed; inset: 0; pointer-events: none; z-index: 3; font-family: 'Rubik', system-ui, sans-serif; }
 .hud-card {
   position: absolute;
   padding: 0.55rem 0.8rem;

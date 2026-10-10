@@ -36,11 +36,22 @@ pub struct RenderStatus {
 #[derive(Component)]
 struct Spinner;
 
-/// Build the client app. `online` joins a room; `None` shows the title backdrop.
-pub fn build_app(online: Option<online::OnlineConfig>) -> App {
+/// What the client shows.
+pub enum Mode {
+    /// Join a room.
+    Online(online::OnlineConfig),
+    /// The title screen: the bar, empty, with a slow camera drift.
+    Title,
+    /// A spinning cube: the renderer check (tests, `?cube`).
+    Cube,
+}
+
+/// Build the client app.
+pub fn build_app(mode: Mode) -> App {
     let mut app = App::new();
     app.insert_resource(ClearColor(CLEAR_COLOR))
         .init_resource::<RenderStatus>()
+        .init_resource::<online::Settings>()
         .add_plugins(
             DefaultPlugins
                 .set(bevy::asset::AssetPlugin {
@@ -66,11 +77,14 @@ pub fn build_app(online: Option<online::OnlineConfig>) -> App {
                 .run_if(online::every_third_frame)
                 .after(bevy::camera::visibility::VisibilitySystems::CheckVisibility),
         );
-    match online {
-        Some(cfg) => {
+    match mode {
+        Mode::Online(cfg) => {
             online::add(&mut app, cfg);
         }
-        None => {
+        Mode::Title => {
+            app.add_systems(Startup, online::setup_bar).add_systems(Update, (title_camera, online::graphics_preset));
+        }
+        Mode::Cube => {
             app.add_systems(Startup, setup_backdrop).add_systems(Update, spin);
         }
     }
@@ -101,6 +115,14 @@ fn setup_backdrop(
         Tonemapping::Reinhard,
         Transform::from_xyz(0.0, 1.5, 4.5).looking_at(Vec3::ZERO, Vec3::Y),
     ));
+}
+
+/// The title screen's camera drifts slowly along the bar.
+fn title_camera(time: Res<Time>, mut cam: Query<&mut Transform, With<Camera3d>>) {
+    let Ok(mut t) = cam.single_mut() else { return };
+    let s = time.elapsed_secs() * 0.06;
+    let eye = Vec3::new(6.5 * s.sin(), 1.9 + 0.2 * (s * 1.7).sin(), 3.2 + 1.2 * s.cos());
+    *t = Transform::from_translation(eye).looking_at(Vec3::new(0.8 * s.sin(), 1.3, -4.5), Vec3::Y);
 }
 
 fn spin(time: Res<Time>, mut q: Query<&mut Transform, With<Spinner>>) {

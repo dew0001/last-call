@@ -43,6 +43,9 @@ struct StartConfig {
     /// The hat to wear (0 none), from the page's unlocks.
     #[serde(default)]
     cosmetic: u16,
+    /// Title screen only: the renderer-check cube instead of the bar (tests).
+    #[serde(default)]
+    cube: bool,
 }
 
 fn parse_uuid(hex: &str) -> [u8; 16] {
@@ -69,6 +72,7 @@ pub fn client_start(config: JsValue) -> Result<(), JsValue> {
         set_error(format!("panic: {info}"));
     }));
     let cfg: StartConfig = serde_wasm_bindgen::from_value(config)?;
+    let cube = cfg.cube || cfg.nodraw;
     let online = cfg.online.then(|| OnlineConfig {
         identity: Identity {
             code: cfg.code,
@@ -78,7 +82,12 @@ pub fn client_start(config: JsValue) -> Result<(), JsValue> {
         },
         nodraw: cfg.nodraw,
     });
-    let mut app = crate::build_app(online);
+    let mode = match online {
+        Some(cfg) => crate::Mode::Online(cfg),
+        None if cube => crate::Mode::Cube,
+        None => crate::Mode::Title,
+    };
+    let mut app = crate::build_app(mode);
     if let Some(bridge) = app.world().get_resource::<NetBridge>() {
         INBOX.with(|i| *i.borrow_mut() = Some(bridge.0.clone()));
         app.add_systems(
@@ -86,6 +95,8 @@ pub fn client_start(config: JsValue) -> Result<(), JsValue> {
             (read_scripted_input, read_table_requests, read_fixture_requests, read_game_requests, read_settings),
         );
         app.add_systems(Last, send_outgoing);
+    } else {
+        app.add_systems(PreUpdate, read_settings);
     }
     app.add_systems(Last, publish_status);
     app.run();

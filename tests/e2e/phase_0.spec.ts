@@ -84,7 +84,7 @@ async function plainWebGPUDeviceSurvives(page: Page): Promise<string> {
 }
 
 test('WebGL2 fallback renders a cube', async ({ page }) => {
-  await page.goto('/?gpu=webgl2');
+  await page.goto('/?gpu=webgl2&cube');
   await waitForFrames(page);
   const status = await page.evaluate(() => (window as any).__lastCall);
   expect(status.backend).toBe('gl');
@@ -105,7 +105,7 @@ test('WebGPU path boots and renders where the browser allows it', async ({ page 
   test.info().annotations.push({ type: 'plain-webgpu-device', description: plain });
   test.skip(plain !== 'ok', 'the browser loses even a plain WebGPU device here; see docs/DECISIONS.md');
 
-  await page.goto('/?gpu=webgpu');
+  await page.goto('/?gpu=webgpu&cube');
   // The WebGPU bundle loads and wgpu gets a browser WebGPU device.
   await expect
     .poll(async () => page.evaluate(() => (window as any).__lastCall?.backend ?? ''), { timeout: 150_000 })
@@ -123,7 +123,7 @@ test('WebGPU path boots and renders where the browser allows it', async ({ page 
 });
 
 test('auto-detect ends on a renderer that draws', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?cube');
   // On a dead WebGPU device the page reloads itself on WebGL2 after 20 s.
   await waitForFrames(page);
   const variant = await page.evaluate(() => (window as any).__lastCallVariant);
