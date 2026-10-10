@@ -23,6 +23,7 @@ pub fn add(app: &mut App) {
         Update,
         (
             fixture_keys,
+            jukebox_glow,
             dress_chaos_npcs,
             tint_chaos_customers,
             place_chaos_npcs,
@@ -139,35 +140,96 @@ impl Phase4Queries<'_, '_> {
 
 // ---------- Fixtures ----------
 
-/// Gray-box posts where the fixtures stand.
+/// The fixtures: furniture from Poly Haven where it fits, built in code
+/// where nothing does (the jukebox, the keys, the kitchen pass). Test tabs
+/// that do not draw get nothing.
 fn setup_fixtures(
     mut commands: Commands,
     nodraw: Option<Res<NoDraw>>,
+    assets: Option<Res<AssetServer>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    if nodraw.is_some() {
-        return;
-    }
-    let post = meshes.add(Cuboid::new(0.5, 1.2, 0.5));
-    for f in Fixture::all() {
-        let color = match f {
-            Fixture::ZeenDrawer => Color::srgb(0.2, 0.8, 0.9),
-            Fixture::KitchenPass => Color::srgb(0.9, 0.6, 0.2),
-            Fixture::Shop => Color::srgb(0.3, 0.9, 0.4),
-            Fixture::CharmShelf => Color::srgb(0.9, 0.85, 0.2),
-            Fixture::Jukebox => Color::srgb(0.8, 0.3, 0.9),
-            Fixture::Breaker => Color::srgb(0.9, 0.2, 0.2),
-            Fixture::ServiceKey(_) => Color::srgb(0.7, 0.7, 0.75),
-        };
-        let mat = materials.add(StandardMaterial { base_color: color, emissive: color.to_linear() * 0.6, ..default() });
-        let (x, z) = f.position();
-        let h = if matches!(f, Fixture::ServiceKey(_)) { 0.3 } else { 1.0 };
+    use std::f32::consts::{FRAC_PI_2, PI};
+    let (Some(assets), None) = (assets, nodraw) else { return };
+    let model = |commands: &mut Commands, name: &str, at: Vec3, yaw: f32| {
+        let scene = assets.load(GltfAssetLabel::Scene(0).from_asset(format!("models/{name}/{name}.gltf")));
         commands.spawn((
-            Mesh3d(post.clone()),
-            MeshMaterial3d(mat),
-            Transform::from_xyz(x, h / 2.0, z).with_scale(Vec3::new(1.0, h / 1.2, 1.0)),
+            bevy::world_serialization::WorldAssetRoot(scene),
+            Transform::from_translation(at).with_rotation(Quat::from_rotation_y(yaw)),
         ));
+    };
+    let paint = materials.add(StandardMaterial { base_color: Color::WHITE, perceptual_roughness: 0.5, ..default() });
+    let steel = materials.add(StandardMaterial {
+        base_color: Color::WHITE,
+        metallic: 0.8,
+        perceptual_roughness: 0.3,
+        ..default()
+    });
+    let glow = |materials: &mut Assets<StandardMaterial>, c: Color, k: f32| {
+        let l = c.to_linear();
+        materials.add(StandardMaterial {
+            base_color: c,
+            emissive: LinearRgba::rgb(l.red * k, l.green * k, l.blue * k),
+            ..default()
+        })
+    };
+    for f in Fixture::all() {
+        let (x, z) = f.position();
+        match f {
+            Fixture::ZeenDrawer => model(&mut commands, "vintage_wooden_drawer_01", Vec3::new(x, 0.11, z), FRAC_PI_2),
+            Fixture::Shop => {
+                model(&mut commands, "side_table_01", Vec3::new(x, 0.0, z), FRAC_PI_2);
+                model(&mut commands, "classic_laptop", Vec3::new(x, 0.55, z), FRAC_PI_2);
+            }
+            Fixture::CharmShelf => model(&mut commands, "wooden_display_shelves_01", Vec3::new(x, 0.0, z), FRAC_PI_2),
+            Fixture::Breaker => model(&mut commands, "power_box_01", Vec3::new(x, 1.4, z + 0.32), PI),
+            Fixture::Jukebox => {
+                let (body, bands) = crate::art::jukebox();
+                let at = Transform::from_xyz(x, 0.0, z).with_rotation(Quat::from_rotation_y(FRAC_PI_2));
+                commands.spawn((Mesh3d(meshes.add(body)), MeshMaterial3d(paint.clone()), at));
+                commands.spawn((
+                    Mesh3d(meshes.add(bands)),
+                    MeshMaterial3d(glow(&mut materials, Color::srgb(1.0, 0.45, 0.15), 6.0)),
+                    at,
+                    JukeboxGlow,
+                ));
+            }
+            Fixture::KitchenPass => {
+                let (body, lamp) = crate::art::kitchen_pass();
+                let at = Transform::from_xyz(x, 0.0, z);
+                commands.spawn((Mesh3d(meshes.add(body)), MeshMaterial3d(steel.clone()), at));
+                commands.spawn((
+                    Mesh3d(meshes.add(lamp)),
+                    MeshMaterial3d(glow(&mut materials, Color::srgb(1.0, 0.45, 0.1), 5.0)),
+                    at,
+                ));
+            }
+            Fixture::ServiceKey(_) => {
+                commands.spawn((
+                    Mesh3d(meshes.add(crate::art::key())),
+                    MeshMaterial3d(glow(&mut materials, Color::srgb(0.9, 0.7, 0.3), 0.6)),
+                    Transform::from_xyz(x, 0.02, z),
+                ));
+            }
+        }
+    }
+}
+
+/// The jukebox's bands cycle through colours.
+#[derive(Component)]
+struct JukeboxGlow;
+
+fn jukebox_glow(
+    time: Res<Time>,
+    glows: Query<&MeshMaterial3d<StandardMaterial>, With<JukeboxGlow>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    for handle in &glows {
+        if let Some(mut m) = materials.get_mut(&handle.0) {
+            let c = Color::hsl((time.elapsed_secs() * 40.0) % 360.0, 0.9, 0.55).to_linear();
+            m.emissive = LinearRgba::rgb(c.red * 6.0, c.green * 6.0, c.blue * 6.0);
+        }
     }
 }
 
@@ -454,11 +516,13 @@ fn tint_chaos_customers(
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     for (e, c, mat) in &npcs {
-        if let Some(mut m) = materials.get_mut(&mat.0) {
+        // Customers share one material: the tinted one gets its own copy.
+        if let Some(mut m) = materials.get(&mat.0).cloned() {
             m.base_color = chaos_color(c.kind);
             if c.outlined {
                 m.emissive = LinearRgba::rgb(2.0, 0.1, 0.1);
             }
+            commands.entity(e).insert(MeshMaterial3d(materials.add(m)));
         }
         commands.entity(e).insert(DressedChaos);
     }

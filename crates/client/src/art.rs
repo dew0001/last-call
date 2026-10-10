@@ -194,6 +194,71 @@ pub fn hat(style: u16) -> Mesh {
     ])
 }
 
+// ---------- Fixtures ----------
+
+/// A jukebox: a wooden cabinet with a rounded top, a glass dome and glowing
+/// bands (the bands are a separate mesh: they take the light material).
+pub fn jukebox() -> (Mesh, Mesh) {
+    let wood = Color::srgb(0.35, 0.16, 0.08);
+    let chrome = Color::srgb(0.85, 0.85, 0.9);
+    let body = combine(vec![
+        part(boxy(0.9, 1.1, 0.55), at(0.0, 0.55, 0.0), wood),
+        part(
+            tube(0.45, 0.55, 16).rotated_by(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2)),
+            at(0.0, 1.1, 0.0),
+            wood,
+        ),
+        part(boxy(0.6, 0.35, 0.02), at(0.0, 0.85, -0.28), Color::srgb(0.05, 0.05, 0.06)),
+        part(boxy(0.94, 0.05, 0.58), at(0.0, 0.03, 0.0), chrome),
+        part(boxy(0.5, 0.18, 0.04), at(0.0, 0.35, -0.28), chrome),
+    ]);
+    let bands = combine(vec![
+        part(boxy(0.06, 1.0, 0.04), at(-0.38, 0.6, -0.28), Color::WHITE),
+        part(boxy(0.06, 1.0, 0.04), at(0.38, 0.6, -0.28), Color::WHITE),
+        part(
+            Torus::new(0.33, 0.37)
+                .mesh()
+                .minor_resolution(6)
+                .major_resolution(24)
+                .build()
+                .rotated_by(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2)),
+            at(0.0, 1.1, -0.28),
+            Color::WHITE,
+        ),
+    ]);
+    (body, bands)
+}
+
+/// A brass key on a ring, lying flat.
+pub fn key() -> Mesh {
+    let brass = Color::srgb(0.85, 0.65, 0.25);
+    combine(vec![
+        part(
+            Torus::new(0.025, 0.045).mesh().minor_resolution(6).major_resolution(12).build(),
+            at(0.0, 0.0, 0.0),
+            brass,
+        ),
+        part(boxy(0.13, 0.015, 0.02), at(0.11, 0.0, 0.0), brass),
+        part(boxy(0.02, 0.015, 0.04), at(0.15, 0.0, 0.025), brass),
+        part(boxy(0.02, 0.015, 0.03), at(0.12, 0.0, 0.02), brass),
+    ])
+}
+
+/// The kitchen pass: a steel counter in the hatch with a heat lamp over it
+/// (the lamp bar is a separate mesh for the glow material).
+pub fn kitchen_pass() -> (Mesh, Mesh) {
+    let steel = Color::srgb(0.72, 0.74, 0.78);
+    let body = combine(vec![
+        part(boxy(1.3, 0.9, 0.55), at(0.0, 0.45, 0.0), steel),
+        part(boxy(1.36, 0.04, 0.6), at(0.0, 0.92, 0.0), steel),
+        part(tube(0.015, 0.7, 6), at(-0.55, 1.3, 0.0), steel),
+        part(tube(0.015, 0.7, 6), at(0.55, 1.3, 0.0), steel),
+        part(boxy(1.2, 0.08, 0.2), at(0.0, 1.66, 0.0), steel),
+    ]);
+    let lamp = part(boxy(1.1, 0.03, 0.12), at(0.0, 1.61, 0.0), Color::WHITE);
+    (body, lamp)
+}
+
 // ---------- Neon ----------
 
 /// Strokes of the neon letters, in a 0.6 by 1 box (x right, y up): each

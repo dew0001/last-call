@@ -79,6 +79,12 @@ MODELS = [
     "wooden_picnic_table",
     "exterior_aircon_unit",
     "fire_hydrant",
+    # Fixtures (crates/client/src/chaos.rs).
+    "vintage_wooden_drawer_01",
+    "classic_laptop",
+    "side_table_01",
+    "wooden_display_shelves_01",
+    "power_box_01",
 ]
 
 
@@ -166,6 +172,70 @@ def fetch_model(mid, force):
     print(f"model {mid}")
 
 
+# Triangle budgets: scanned models are film quality (a potted plant has
+# 176k triangles); gltfpack (meshoptimizer) simplifies each to its budget,
+# keeping texture coordinates. Plan section 9 allows 250k on screen.
+TRIANGLES = {
+    "bar_chair_round_01": 1200,
+    "wine_bottles_01": 700,
+    "potted_plant_01": 3000,
+    "fire_hydrant": 1500,
+    "street_lamp_01": 2000,
+    "power_box_01": 1200,
+    "exterior_aircon_unit": 1500,
+    "cardboard_box_01": 500,
+    "classic_laptop": 1500,
+    "metal_trash_can": 1500,
+    "electric_stove": 2500,
+    "lifebuoy": 800,
+    "wooden_picnic_table": 1500,
+    "CashRegister_01": 2000,
+    "hanging_industrial_lamp": 1500,
+    "covered_car": 4000,
+    "dartboard": 1500,
+}
+DEFAULT_TRIANGLES = 3000
+GLTFPACK = ["npx", "--yes", "gltfpack@1.3.0"]
+
+
+def triangles(gltf):
+    n = 0
+    for m in gltf["meshes"]:
+        for p in m["primitives"]:
+            acc = p.get("indices", p["attributes"]["POSITION"])
+            n += gltf["accessors"][acc]["count"] // 3
+    return n
+
+
+def simplify(mid):
+    import subprocess
+
+    out = os.path.join(OUT_MODELS, mid)
+    path = os.path.join(out, f"{mid}.gltf")
+    gltf = json.load(open(path))
+    tris = triangles(gltf)
+    budget = TRIANGLES.get(mid, DEFAULT_TRIANGLES)
+    if tris <= budget * 1.1:
+        return
+    old_bins = {b["uri"] for b in gltf.get("buffers", []) if "uri" in b}
+    tmp = os.path.join(out, "_simple.gltf")
+    ratio = f"{budget / tris:.4f}"
+    subprocess.run(GLTFPACK + ["-i", path, "-o", tmp, "-si", ratio, "-sa", "-noq", "-tr"], check=True, capture_output=True)
+    simple = json.load(open(tmp))
+    # One .bin, named after the model.
+    for b in simple.get("buffers", []):
+        if b.get("uri") == "_simple.bin":
+            os.replace(os.path.join(out, "_simple.bin"), os.path.join(out, f"{mid}.bin"))
+            b["uri"] = f"{mid}.bin"
+    for uri in old_bins - {f"{mid}.bin"}:
+        if os.path.exists(os.path.join(out, uri)):
+            os.remove(os.path.join(out, uri))
+    with open(path, "w") as f:
+        json.dump(simple, f, separators=(",", ":"))
+    os.remove(tmp)
+    print(f"simplified {mid}: {tris} -> {triangles(simple)} triangles")
+
+
 def main():
     force = "--force" in sys.argv
     os.makedirs(OUT_TEX, exist_ok=True)
@@ -174,6 +244,7 @@ def main():
         fetch_texture(tid, force)
     for mid in MODELS:
         fetch_model(mid, force)
+        simplify(mid)
 
 
 if __name__ == "__main__":

@@ -197,10 +197,10 @@ pub const DECOR: &[Decor] = &[
     d("hanging_industrial_lamp", 3.0, 3.2, -4.0, 0.0),
     d("dartboard", 9.95, 1.73, 3.0, -QUARTER),
     d("hanging_picture_frame_01", -9.95, 2.0, -3.0, QUARTER),
-    d("hanging_picture_frame_01", 9.95, 2.0, 5.5, -QUARTER),
+    d("hanging_picture_frame_01", 9.95, 2.0, 0.5, -QUARTER),
     d("wall_clock", 0.0, 2.65, -6.95, 0.0),
     d("potted_plant_01", -9.4, 0.0, 6.4, 0.0),
-    d("potted_plant_01", 9.4, 0.0, 6.4, 1.0),
+    d("potted_plant_01", 6.5, 0.0, 6.4, 1.0),
     d("WetFloorSign_01", -6.5, 0.0, -6.4, 0.6),
     // Office: the desk against the side wall.
     ds("metal_office_desk", 8.0, 0.0, -2.6, HALF, 0.8),
