@@ -31,7 +31,15 @@ pub fn add(app: &mut App) {
     app.add_systems(Startup, setup_stations);
     app.add_systems(
         Update,
-        (game_keys, fill_view_ticks, draw_ball, draw_tacklers, draw_tracers, draw_bobbers, update_panel)
+        (
+            game_keys,
+            fill_view_ticks,
+            draw_ball,
+            draw_tacklers,
+            draw_tracers,
+            draw_bobbers,
+            update_panel.run_if(resource_changed::<NetStatus>),
+        )
             .chain()
             .after(crate::online::OnlineSet),
     );

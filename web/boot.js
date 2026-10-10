@@ -16,10 +16,12 @@ import { startTutorial } from './tutorial.js';
 
 const params = new URLSearchParams(location.search);
 
-// Main-thread CPU time per frame (plan section 9's proxy for frame time on a
-// machine with no GPU): time spent inside each animation-frame callback,
-// where the client runs its frame. `window.__frameCpu` keeps the last 600.
+// Wall time inside each animation-frame callback, where the client runs its
+// frame (`window.__frameCpu` keeps the last 600; `__frames` counts them).
+// With no GPU this includes waits on the software rasterizer; the budget
+// test measures CPU time with Chrome's profiler instead.
 window.__frameCpu = [];
+window.__frames = 0;
 {
   const raf = window.requestAnimationFrame.bind(window);
   window.requestAnimationFrame = (cb) =>
@@ -29,6 +31,7 @@ window.__frameCpu = [];
         cb(t);
       } finally {
         const f = window.__frameCpu;
+        window.__frames += 1;
         f.push(performance.now() - start);
         if (f.length > 600) f.shift();
       }

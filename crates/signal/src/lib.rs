@@ -60,7 +60,8 @@ async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
             let key = report::key(Date::now().as_millis(), &uuid::Uuid::new_v4().to_string());
             let json = serde_json::to_string(&r).map_err(|e| Error::RustError(e.to_string()))?;
             kv.put(&key, json)?.execute().await?;
-            let keys: Vec<String> = kv.list().prefix("r:".into()).execute().await?.keys.into_iter().map(|k| k.name).collect();
+            let keys: Vec<String> =
+                kv.list().prefix("r:".into()).execute().await?.keys.into_iter().map(|k| k.name).collect();
             for old in report::to_drop(keys, report::MAX_REPORTS) {
                 kv.delete(&old).await?;
             }

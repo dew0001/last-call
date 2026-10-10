@@ -6,12 +6,29 @@
 const KEY = 'lastcall-settings';
 const DEFAULTS = { sensitivity: 1, volume: 1, voice: 'open', graphics: 'high' };
 
-export function loadSettings() {
+/** A software rasterizer (no GPU): SwiftShader, llvmpipe and the like. */
+function softwareRenderer() {
   try {
-    return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) ?? '{}') };
+    const gl = document.createElement('canvas').getContext('webgl2');
+    const info = gl?.getExtension('WEBGL_debug_renderer_info');
+    const name = String(info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl?.getParameter(gl.RENDERER) ?? '');
+    gl?.getExtension('WEBGL_lose_context')?.loseContext();
+    return /swiftshader|llvmpipe|software|softpipe/i.test(name);
   } catch {
-    return { ...DEFAULTS };
+    return false;
   }
+}
+
+export function loadSettings() {
+  let saved = {};
+  try {
+    saved = JSON.parse(localStorage.getItem(KEY) ?? '{}');
+  } catch {
+    // Private mode or junk: defaults.
+  }
+  // With no GPU, bloom and shadows cost a quarter second a frame: default to Low.
+  const graphics = saved.graphics ?? (softwareRenderer() ? 'low' : DEFAULTS.graphics);
+  return { ...DEFAULTS, ...saved, graphics };
 }
 
 function save(s) {

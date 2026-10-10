@@ -404,6 +404,62 @@ A cast, shot or kick is one reliable request carrying its charge and aim (`GameR
 
 The host keeps half a second of every player's position, by lightyear tick. A shot carries the tick of the shooter's interpolation timeline; the host rewinds the other fighters to that tick, clamped to 200 ms, and casts the ray against a cylinder body and a sphere head. Tests cover a hit on a target who has since moved, and a miss when the claimed tick is older than 200 ms.
 
+## Phase 6
+
+### Art made in code
+
+There is no artist and no asset store in this pipeline, so the art pass builds every model in code (`crates/client/src/art.rs`): primitives painted with vertex colors and merged into one mesh per model. Toy figures stand 1.5 heads tall with big hands and boots; hats are part of the same mesh. Props stay under 300 triangles (a unit test checks), and props of a kind share one mesh and material so Bevy batches them. Each room has a floor color and a neon accent strip that blooms. Not built: blend-shape faces, an 11-body character ragdoll (the pass-out ragdoll is still one capsule), rain particles, and the diegetic house-pool sign and bar clock (the screen HUD stays).
+
+### Baked lighting and KTX2
+
+`tools bake_lighting` bakes one lightmap per room floor: the room's lamps (shadowed by walls, the counter and tables, using the same blocks the walk code collides with), the moon outdoors, ambient light and wall occlusion. It writes uncompressed RGBA8 sRGB KTX2 (four texels per meter, well under the 2048 atlas). No zstd supercompression: the zstd KTX2 path failed to decode in WebKit in Phase 0. A test re-bakes and compares with the committed files, so a geometry change without a re-bake fails `cargo test`. Walls and furniture are lit in real time (up to eight point lights per room, shadows only from the moon).
+
+### Post stack
+
+HDR with bloom (neon), a vignette, and chromatic aberration that grows with the drunk meter; the vignette closes in when Buzzed and during The Spins. Screen blur stays a CSS filter (Bevy turns off depth of field on WebGL2) and film grain is a CSS overlay at 0.05 opacity. The tonemapper stays Reinhard (the LUT tonemappers ship zstd KTX2).
+
+### Wasm threads: not kept
+
+Bevy 0.19 builds its task pool single-threaded on wasm32 whatever the features: `bevy_tasks` enables its multi-threaded executor only for `not(target_arch = "wasm32")` (`bevy_tasks-0.19.1/src/lib.rs`). A threaded wasm build (nightly, `build-std`, COOP/COEP) would therefore run the client frame on one thread anyway, so it cannot improve frame time; the host simulation already runs in its own Worker. The plan's rule ("keep only if frame time improves") gives the answer without the nightly toolchain, so threads are off. The COOP/COEP headers stay in `web/_headers`, as section 12 asks.
+
+### No GPU: the Low preset by default
+
+On a software rasterizer (SwiftShader, llvmpipe) bloom and the moon's shadow cascades take about a quarter second a frame. The page checks the WebGL renderer's name; when it is a software one and the player has not chosen a preset, it starts in Low. Test tabs with `?nodraw` (game-state checks only) spawn no camera at all. Static walls and furniture merge into two meshes, and the camera uses 256 light clusters instead of Bevy's default 4,096 (WebGL2 clusters on the CPU).
+
+### Status at 20 Hz
+
+The page's status object (`window.__lastCall`) and the screen text are rebuilt every third frame instead of every frame: building them cost a large share of the frame.
+
+### Budget proxies
+
+The browser test (`tests/e2e/phase_6.spec.ts`) walks through the rooms in a drawing tab at 720p and reads: meshes drawn per frame (an upper bound on draw calls, before batching), triangles on screen, and main-thread CPU time per frame (time inside each animation-frame callback, measured by the page). It enforces the plan's 400 draw calls and 250k triangles in every browser and the 8 ms frame CPU in Chromium.
+
+## Phase 7
+
+### Settings, gamepad
+
+A settings panel (Esc, or the gear) keeps sensitivity, volume, voice mode (open mic, push to talk on Left Alt, off) and the graphics preset in localStorage. Low removes bloom and the moon's shadows. Gamepads work in the browser (left stick walks, right stick looks; A interact, B drop, X use, right trigger throw, left stick click sprint); native gamepad support would need libudev, which the CI and cloud machines lack, and the native client is only a test target.
+
+### Achievements and hats
+
+Achievements are tracked by the page from the game status and kept in localStorage with the player's UUID: three from the plan (21 three times in a shift, passing out on the roof, catching the boot) and three more (landing a shark, scoring in the gauntlet, winning a fight pit round). Each unlocks a hat; the lobby picks one and the host shows it on the player (`Player.cosmetic`). Lighters, voice lines and chip skins are not built (hats are the visible cosmetic in the gray-box art).
+
+### New game plus
+
+Each level adds 25% to the debt and every payment (Phase 2), one more chaos event per shift (Phase 4), and now makes customers 10% less patient (down to 60%).
+
+### Tutorial
+
+`?create&tutorial` (the lobby's Tutorial button) opens a room with no chaos and every customer at the bar, and shows prompts that wait for the game to show each step done: walk, pour, serve, bank at the safe, try a table, and how the loan shark collects.
+
+### Crash reports
+
+A wasm panic in the client (or an error in the host Worker) is posted once to the signaling Worker's `POST /report`. The Worker trims it and keeps it in Workers KV under a time-sorted key, deleting the oldest past 200. The deploy job creates the KV namespace on its first run and writes the id into `wrangler.toml`; locally the binding needs no real id.
+
+### Load and soak
+
+The load test opens 50 rooms of 8 against `wrangler dev` at once and completes every join and an offer and answer per player through the relay (the WebRTC media itself is between browsers and is covered by the Phase 1 tests). The soak runs the replay's scripted players plus two more (eight) for an hour of plan-length shifts with customers, tables and chaos, timing every host tick: `tools soak 3600` natively, and `host_soak` in headless Chromium (`SOAK_SECS=3600`; CI runs two minutes).
+
 ## User decisions
 
 ### No debt-tier unlocks (2026-10-09)

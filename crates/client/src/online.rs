@@ -241,14 +241,21 @@ pub fn add(app: &mut App, cfg: OnlineConfig) {
             follow_camera.in_set(CameraSet),
             post_effects,
             graphics_preset,
-            update_status,
-            update_hud,
-            update_pour_gauge,
-            update_drunk_text,
+            update_status.run_if(every_third_frame),
+            update_hud.run_if(resource_changed::<NetStatus>),
+            update_pour_gauge.run_if(resource_changed::<NetStatus>),
+            update_drunk_text.run_if(resource_changed::<NetStatus>),
         )
             .chain()
             .in_set(OnlineSet),
     );
+}
+
+/// Status and screen text refresh at 20 Hz (every third frame at 60 fps):
+/// building them every frame cost more than the rest of the frame.
+pub fn every_third_frame(mut frame: Local<u32>) -> bool {
+    *frame = frame.wrapping_add(1);
+    frame.is_multiple_of(3)
 }
 
 /// The online drawing and status systems.
@@ -523,7 +530,11 @@ fn setup_bar(
             });
         }
     }
-    // Walls: warm plaster inside, cold brick outside.
+    // Walls and the bar's furniture: static, so they merge into one mesh per
+    // material (two draw calls instead of about a hundred).
+    let mut matte: Vec<Mesh> = Vec::new();
+    let mut shiny: Vec<Mesh> = Vec::new();
+    let place = |m: Mesh, b: &bar::Block| m.transformed_by(Transform::from_xyz(b.cx, b.height / 2.0, b.cz));
     for b in shared::world::walls() {
         let outside = shared::world::room_at(b.cx, b.cz).is_none_or(|r| r.outdoors());
         let color = if b.height < bar::WALL_HEIGHT {
@@ -533,11 +544,19 @@ fn setup_bar(
         } else {
             Color::srgb(0.55, 0.42, 0.3)
         };
-        commands.spawn((
-            Mesh3d(meshes.add(art::block(b, color))),
-            MeshMaterial3d(paint.clone()),
-            Transform::from_xyz(b.cx, b.height / 2.0, b.cz),
-        ));
+        matte.push(place(art::block(b, color), b));
+    }
+    for b in &bar::BLOCKS {
+        match b.kind {
+            bar::BlockKind::Counter => shiny.push(place(art::counter(b), b)),
+            bar::BlockKind::Wall => matte.push(place(art::block(b, Color::srgb(0.5, 0.38, 0.27)), b)),
+            bar::BlockKind::Safe => shiny.push(place(art::block(b, Color::srgb(0.2, 0.22, 0.25)), b)),
+            bar::BlockKind::Table => matte.push(place(art::table(b), b)),
+            bar::BlockKind::SlotMachine => shiny.push(place(art::slot_machine(b), b)),
+        }
+    }
+    for (parts, mat) in [(matte, &paint), (shiny, &gloss)] {
+        commands.spawn((Mesh3d(meshes.add(art::combine(parts))), MeshMaterial3d(mat.clone()), Transform::default()));
     }
     // The harbor around the pier.
     let pier = shared::world::area_of(Room::Pier);
@@ -550,21 +569,6 @@ fn setup_bar(
         })),
         Transform::from_xyz(0.0, -0.6, (pier.z0 + pier.z1) / 2.0 + 5.0),
     ));
-    // The bar's furniture.
-    for b in &bar::BLOCKS {
-        let (mesh, mat) = match b.kind {
-            bar::BlockKind::Counter => (art::counter(b), &gloss),
-            bar::BlockKind::Wall => (art::block(b, Color::srgb(0.5, 0.38, 0.27)), &paint),
-            bar::BlockKind::Safe => (art::block(b, Color::srgb(0.2, 0.22, 0.25)), &gloss),
-            bar::BlockKind::Table => (art::table(b), &paint),
-            bar::BlockKind::SlotMachine => (art::slot_machine(b), &gloss),
-        };
-        commands.spawn((
-            Mesh3d(meshes.add(mesh)),
-            MeshMaterial3d(mat.clone()),
-            Transform::from_xyz(b.cx, b.height / 2.0, b.cz),
-        ));
-    }
     // A neon strip per room in its accent color (bloom makes them glow).
     for a in AREAS.iter() {
         let accent = art::palette(a.room).1;
@@ -599,6 +603,8 @@ fn setup_bar(
             Transform::from_xyz(x, shared::world::LAMP_Y, z),
         ));
     }
+    // Two cascades out to 40 m at 1024 px: the moon only shades the outdoors.
+    commands.insert_resource(bevy::light::DirectionalLightShadowMap { size: 1024 });
     commands.spawn((
         DirectionalLight {
             illuminance: 1_500.0,
@@ -606,8 +612,13 @@ fn setup_bar(
             shadow_maps_enabled: true,
             ..default()
         },
+        bevy::light::CascadeShadowConfigBuilder { num_cascades: 2, maximum_distance: 40.0, ..default() }.build(),
         Transform::from_xyz(5.0, 20.0, 30.0).looking_at(Vec3::new(0.0, 0.0, 20.0), Vec3::Y),
     ));
+    // A test tab with `?nodraw` checks game state only: no camera, no rendering.
+    if nodraw.is_some() {
+        return;
+    }
     commands.spawn((
         Camera3d::default(),
         // No lookup-table tonemapper: the LUT ships as zstd KTX2 and failed to
@@ -617,6 +628,14 @@ fn setup_bar(
         bevy::post_process::bloom::Bloom::NATURAL,
         bevy::post_process::effect_stack::Vignette { intensity: 0.25, radius: 0.9, ..default() },
         bevy::post_process::effect_stack::ChromaticAberration { intensity: 0.0, ..default() },
+        // Coarse light clusters: at most eight lamps light a room, and CPU
+        // clustering (WebGL2) costs per cluster.
+        bevy::light::cluster::ClusterConfig::FixedZ {
+            total: 256,
+            z_slices: 8,
+            z_config: default(),
+            dynamic_resizing: true,
+        },
         Transform::from_xyz(0.0, 6.0, 12.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
 }
@@ -754,7 +773,7 @@ fn dress_players(
             continue;
         }
         let hue = (player.id % 360) as f32;
-        let mut body = crate::art::figure(Color::hsl(hue, 0.65, 0.5), Color::srgb(0.95, 0.75, 0.6));
+        let mut body = crate::art::figure(Color::hsl(hue, 0.65, 0.5), Color::srgb(0.98, 0.7, 0.5));
         if player.cosmetic > 0 {
             body.merge(&crate::art::hat(player.cosmetic - 1)).expect("same attributes");
         }
@@ -1012,25 +1031,29 @@ fn post_effects(
     }
 }
 
-/// The Low preset: no shadows, no bloom.
+/// The Low preset: no shadows, no bloom, and (with no bloom to feed) no HDR
+/// target or post passes; the screen blur and grain are CSS either way.
 fn graphics_preset(
     mut commands: Commands,
     settings: Res<Settings>,
-    cams: Query<(Entity, Has<bevy::post_process::bloom::Bloom>), With<Camera3d>>,
+    cams: Query<Entity, With<Camera3d>>,
     mut suns: Query<&mut DirectionalLight>,
 ) {
+    use bevy::post_process::bloom::Bloom;
+    use bevy::post_process::effect_stack::{ChromaticAberration, Vignette};
     if !settings.is_changed() {
         return;
     }
-    for (cam, has_bloom) in &cams {
-        match (settings.low_graphics, has_bloom) {
-            (true, true) => {
-                commands.entity(cam).remove::<bevy::post_process::bloom::Bloom>();
-            }
-            (false, false) => {
-                commands.entity(cam).insert(bevy::post_process::bloom::Bloom::NATURAL);
-            }
-            _ => {}
+    for cam in &cams {
+        if settings.low_graphics {
+            commands.entity(cam).remove::<(Bloom, bevy::camera::Hdr, Vignette, ChromaticAberration)>();
+        } else {
+            commands.entity(cam).insert((
+                bevy::camera::Hdr,
+                Bloom::NATURAL,
+                Vignette { intensity: 0.25, radius: 0.9, ..default() },
+                ChromaticAberration { intensity: 0.0, ..default() },
+            ));
         }
     }
     for mut sun in &mut suns {

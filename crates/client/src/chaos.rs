@@ -27,9 +27,9 @@ pub fn add(app: &mut App) {
             tint_chaos_customers,
             place_chaos_npcs,
             dress_fires,
-            lights,
+            lights.run_if(resource_changed::<NetStatus>),
             count_cards,
-            update_panels,
+            update_panels.run_if(resource_changed::<NetStatus>),
         )
             .chain()
             .after(crate::online::OnlineSet),

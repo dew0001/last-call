@@ -25,7 +25,7 @@ const STEPS = [
     done: (s) => !!s.game?.casino?.near,
   },
   {
-    text: 'At Payment the loan shark takes the week\\'s due from the house pool. Pay off $120,000 to buy the bar. Good luck!',
+    text: "At Payment the loan shark takes the week's due from the house pool. Pay off $120,000 to buy the bar. Good luck!",
     done: () => false,
   },
 ];

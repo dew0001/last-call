@@ -21,7 +21,10 @@ use crate::online::{NetStatus, NoDraw};
 pub fn add(app: &mut App) {
     app.init_resource::<RouletteChoice>();
     app.add_systems(Startup, (setup_tables, setup_panel));
-    app.add_systems(Update, (table_keys, draw_cards, spin_wheel, spin_reels, update_panel).chain());
+    app.add_systems(
+        Update,
+        (table_keys, draw_cards, spin_wheel, spin_reels, update_panel.run_if(resource_changed::<NetStatus>)).chain(),
+    );
 }
 
 // ---------- Status for the page and tests ----------

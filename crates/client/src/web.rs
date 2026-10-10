@@ -193,7 +193,12 @@ fn read_settings(mut settings: ResMut<crate::online::Settings>) {
     }
 }
 
-fn publish_status(status: Res<RenderStatus>, net: Option<Res<NetStatus>>) {
+fn publish_status(status: Res<RenderStatus>, net: Option<Res<NetStatus>>, mut frame: Local<u32>) {
+    // Building the JS objects is not free: publish every third frame (20 Hz at 60 fps).
+    *frame = frame.wrapping_add(1);
+    if !frame.is_multiple_of(3) {
+        return;
+    }
     let Some(window) = web_sys::window() else { return };
     let obj = Object::new();
     let set = |k: &str, v: JsValue| {

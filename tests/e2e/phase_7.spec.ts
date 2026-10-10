@@ -103,10 +103,9 @@ test('an achievement unlocks a hat that the next room shows', async ({ browser }
   const uuid = await page.evaluate(() => localStorage.getItem('lastcall.uuid'));
   await page.evaluate(async () => {
     const a = await import(/* @vite-ignore */ '/achievements.js');
-    (window as any).__lastCall = {
-      playerId: 'me',
-      game: { games: { fishing: [{ last: ['me', 'boot'] }] } },
-    };
+    // The title screen's client republishes __lastCall; pin a fake one.
+    const fake = { playerId: 'me', game: { games: { fishing: [{ last: ['me', 'boot'] }] } } };
+    Object.defineProperty(window, '__lastCall', { get: () => fake, set: () => {}, configurable: true });
     a.watchAchievements(localStorage.getItem('lastcall.uuid'));
   });
   await expect(page.locator('.toast')).toContainText('Catch the boot');
@@ -153,6 +152,8 @@ test('soak: the wasm host runs eight players with no tick over 10 ms', async ({ 
     return JSON.parse(mod.host_soak(s));
   }, secs);
   test.info().annotations.push({ type: 'soak', description: JSON.stringify(result) });
+  console.log('soak', JSON.stringify(result));
   expect(result.ticks).toBe(secs * 64);
+  // After the first second (start-up and wasm tier-up), no tick over 10 ms.
   expect(result.worst_ms).toBeLessThanOrEqual(10);
 });

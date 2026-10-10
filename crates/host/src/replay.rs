@@ -308,17 +308,24 @@ fn run_table(world: &mut World, table: shared::casino::TableId, tick: u64, out: 
 #[derive(Clone, Debug, PartialEq, serde::Serialize)]
 pub struct SoakResult {
     pub ticks: u64,
+    /// The slowest tick in the first second (room start-up, wasm warm-up).
+    pub warmup_worst_ms: f64,
+    /// The slowest tick after the first second.
     pub worst_ms: f64,
     pub p99_ms: f64,
     pub mean_ms: f64,
     /// Ticks over the 10 ms soak budget.
     pub over_10ms: u64,
+    /// The five slowest ticks: (tick, ms).
+    pub slowest: Vec<(u64, f64)>,
     pub house: i64,
 }
 
 /// The soak test (plan section 10, Phase 7): the replay's six scripted
 /// players plus two walkers (eight in all) play `ticks` ticks of plan-length
-/// shifts, with customers, tables and chaos, and every tick is timed.
+/// shifts, with customers, tables and chaos, and every tick is timed. The
+/// first second (room start-up and, in the browser, wasm tier-up) is
+/// reported apart from the rest.
 pub fn soak(ticks: u64) -> SoakResult {
     use bevy::platform::time::Instant;
     let mut sim = HostSim::with_config(HostConfig { seed: SEED, ..Default::default() });
@@ -354,18 +361,28 @@ pub fn soak(ticks: u64) -> SoakResult {
         times.push(t.elapsed().as_secs_f32() * 1000.0);
         sim.drain_audit();
     }
+    let warm = (shared::TICK_HZ as usize).min(times.len());
+    let warmup_worst = times[..warm].iter().copied().fold(0.0f32, f32::max);
+    let times: Vec<f32> = times[warm..].to_vec();
+    let mut times = times;
     let n = times.len().max(1);
     let mean = times.iter().map(|t| f64::from(*t)).sum::<f64>() / n as f64;
     let over = times.iter().filter(|t| **t > 10.0).count() as u64;
+    let mut ranked: Vec<(u64, f64)> =
+        times.iter().enumerate().map(|(i, t)| ((i + warm) as u64, f64::from(*t))).collect();
+    ranked.sort_by(|a, b| b.1.total_cmp(&a.1));
+    ranked.truncate(5);
     times.sort_by(f32::total_cmp);
     let world = sim.world_mut();
     let house = world.query::<&RunLedger>().iter(world).next().map_or(0, |r| r.ledger.house);
     SoakResult {
         ticks,
+        warmup_worst_ms: f64::from(warmup_worst),
         worst_ms: f64::from(times.last().copied().unwrap_or(0.0)),
         p99_ms: f64::from(times.get(n * 99 / 100).copied().unwrap_or(0.0)),
         mean_ms: mean,
         over_10ms: over,
+        slowest: ranked,
         house,
     }
 }

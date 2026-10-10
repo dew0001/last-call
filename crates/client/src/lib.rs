@@ -40,18 +40,31 @@ pub fn build_app(online: Option<online::OnlineConfig>) -> App {
     let mut app = App::new();
     app.insert_resource(ClearColor(CLEAR_COLOR))
         .init_resource::<RenderStatus>()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                title: "LAST CALL".into(),
-                canvas: Some("#bevy".into()),
-                fit_canvas_to_parent: true,
-                prevent_default_event_handling: true,
-                ..default()
-            }),
-            ..default()
-        }))
+        .add_plugins(
+            DefaultPlugins
+                .set(bevy::asset::AssetPlugin {
+                    // No `.meta` files ship; do not ask the server for them.
+                    meta_check: bevy::asset::AssetMetaCheck::Never,
+                    ..default()
+                })
+                .set(WindowPlugin {
+                    primary_window: Some(Window {
+                        title: "LAST CALL".into(),
+                        canvas: Some("#bevy".into()),
+                        fit_canvas_to_parent: true,
+                        prevent_default_event_handling: true,
+                        ..default()
+                    }),
+                    ..default()
+                }),
+        )
         .add_systems(Update, track_status)
-        .add_systems(PostUpdate, count_visible.after(bevy::camera::visibility::VisibilitySystems::CheckVisibility));
+        .add_systems(
+            PostUpdate,
+            count_visible
+                .run_if(online::every_third_frame)
+                .after(bevy::camera::visibility::VisibilitySystems::CheckVisibility),
+        );
     match online {
         Some(cfg) => {
             online::add(&mut app, cfg);
