@@ -218,6 +218,15 @@ pub fn host_worker_start(fast: u32, seed: &[u8], preset: &str, customers: &str, 
 
 /// Run the determinism replay (`replay::run`) for `ticks` ticks and return
 /// the state hash as 16 hex digits. Tests compare it with the native result.
+/// The soak run (Phase 7): eight scripted players for `seconds` of play,
+/// every tick timed. Returns the result as JSON.
+#[wasm_bindgen]
+pub fn host_soak(seconds: u32) -> String {
+    console_error_panic_hook::set_once();
+    let r = crate::replay::soak(u64::from(seconds) * u64::from(shared::TICK_HZ));
+    serde_json::to_string(&r).unwrap_or_default()
+}
+
 #[wasm_bindgen]
 pub fn host_replay(ticks: u32) -> String {
     console_error_panic_hook::set_once();

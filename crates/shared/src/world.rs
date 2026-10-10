@@ -153,6 +153,19 @@ fn cut(vertical: bool, at: f32, a: f32, b: f32) -> Vec<(f32, f32)> {
     pieces
 }
 
+/// Lamp height under the ceiling.
+pub const LAMP_Y: f32 = 2.9;
+
+/// The indoor lamps: three over the bar, one in the middle of each other
+/// indoor room. The client lights them and the light baker bakes them.
+pub fn lamps() -> Vec<(Room, f32, f32)> {
+    let mut out = vec![(Room::Bar, -6.0, 0.0), (Room::Bar, 0.0, 0.0), (Room::Bar, 6.0, 0.0)];
+    for a in AREAS.iter().filter(|a| !a.room.outdoors() && a.room != Room::Bar) {
+        out.push((a.room, (a.x0 + a.x1) / 2.0, (a.z0 + a.z1) / 2.0));
+    }
+    out
+}
+
 /// Every wall segment, as blocks. Shared edges appear once per room; the
 /// overlap is harmless.
 pub fn walls() -> &'static [Block] {

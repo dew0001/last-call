@@ -196,7 +196,7 @@ impl HostSim {
         self.app
             .world_mut()
             .spawn((
-                shared::protocol::Player { id, name: name.into(), slot },
+                shared::protocol::Player { id, name: name.into(), slot, cosmetic: 0 },
                 shared::protocol::PlayerPos(Vec3::from_array(spawn)),
                 shared::protocol::PlayerYaw(0.0),
                 lightyear::prelude::input::native::ActionState::<shared::protocol::PlayerInput>::default(),

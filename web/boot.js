@@ -8,11 +8,50 @@
 // Bevy's WebGPU build cannot fall back to WebGL2, so there are two client
 // bundles. `?gpu=webgl2` or `?gpu=webgpu` forces one; otherwise WebGPU is used
 // when the browser gives us an adapter.
-import { hostRoom, joinRoom, newRoomCode, parseRoomCode } from './net.js';
+import { hostRoom, joinRoom, newRoomCode, parseRoomCode, signalUrl } from './net.js';
 import { startVoice } from './voice.js';
+import { mountSettings } from './settings.js';
+import { ACHIEVEMENTS, chooseHat, chosenHat, unlockedHats, watchAchievements } from './achievements.js';
+import { startTutorial } from './tutorial.js';
 
 const params = new URLSearchParams(location.search);
+
+// Main-thread CPU time per frame (plan section 9's proxy for frame time on a
+// machine with no GPU): time spent inside each animation-frame callback,
+// where the client runs its frame. `window.__frameCpu` keeps the last 600.
+window.__frameCpu = [];
+{
+  const raf = window.requestAnimationFrame.bind(window);
+  window.requestAnimationFrame = (cb) =>
+    raf((t) => {
+      const start = performance.now();
+      try {
+        cb(t);
+      } finally {
+        const f = window.__frameCpu;
+        f.push(performance.now() - start);
+        if (f.length > 600) f.shift();
+      }
+    });
+}
+
 const lobby = document.getElementById('lobby');
+mountSettings();
+
+// The lobby's hat picker: every hat this player has unlocked.
+function mountHats() {
+  const wrap = document.getElementById('hats');
+  if (!wrap) return;
+  const uuid = playerUuid();
+  const names = ['No hat', 'Top hat', 'Fedora', 'Cap'];
+  const earned = ACHIEVEMENTS.filter((a) => unlockedHats(uuid).includes(a.hat)).length;
+  const select = document.createElement('select');
+  select.id = 'hat';
+  select.title = `${earned} achievements unlock hats`;
+  for (const h of unlockedHats(uuid)) select.append(new Option(names[h], String(h), false, h === chosenHat(uuid)));
+  select.addEventListener('change', () => chooseHat(uuid, Number(select.value)));
+  wrap.replaceChildren('Hat: ', select);
+}
 const banner = document.getElementById('banner');
 
 function show(el, text) {
@@ -48,6 +87,13 @@ function playerUuid() {
     storageSet('lastcall.uuid', id);
   }
   return id;
+}
+
+/** The hat to wear: the lobby's choice among unlocked hats (`?hat=` for tests). */
+function hat() {
+  const h = params.has('hat') ? Number(params.get('hat')) || 0 : chosenHat(playerUuid());
+  window.__lcCosmetic = h;
+  return h;
 }
 
 function displayName() {
@@ -218,6 +264,33 @@ function startVoiceWhenJoined(code) {
   }, 250);
 }
 
+// ---------- crash reports ----------
+
+// A wasm panic (client or host Worker) is posted once to the signaling
+// Worker's /report endpoint (kept in Workers KV, capped).
+const reported = new Set();
+export function reportCrash(message, stack = '') {
+  const key = String(message).slice(0, 200);
+  if (reported.has(key) || reported.size >= 3) return;
+  reported.add(key);
+  const url = signalUrl().replace(/^ws/, 'http') + '/report';
+  fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message: String(message).slice(0, 3000),
+      stack: String(stack).slice(0, 3000),
+      build: document.documentElement.dataset.build ?? '',
+      agent: navigator.userAgent,
+    }),
+  }).catch(() => {});
+}
+window.__reportCrash = reportCrash;
+setInterval(() => {
+  const e = window.__lastCallError;
+  if (e && String(e).startsWith('panic')) reportCrash(e);
+}, 1000);
+
 // ---------- drunk screen blur ----------
 
 // The game reports a blur strength (0 to 1) from the drunk meter. Bevy turns
@@ -245,13 +318,21 @@ function startHostWorker() {
   // `?fast=N` runs shifts N times faster; `?preset=` picks a test start;
   // `?customers=bar` keeps every customer at the bar; `?chaos=off` stops chaos events.
   for (const key of ['fast', 'preset', 'customers', 'chaos']) if (params.get(key)) url.searchParams.set(key, params.get(key));
+  // The tutorial shift: no chaos, every customer at the bar.
+  if (params.has('tutorial')) {
+    url.searchParams.set('chaos', 'off');
+    url.searchParams.set('customers', 'bar');
+  }
   // `?resume`: continue the saved run (web/saves.js).
   if (params.has('resume')) url.searchParams.set('resume', '');
   const worker = new Worker(url, { type: 'module' });
   worker.addEventListener('message', (e) => {
     if (e.data?.t === 'tick') window.__hostTicks.push(e.data);
     if (e.data?.t === 'audit') exposeAudit(e.data.run);
-    if (e.data?.t === 'error') console.error('host worker stack', e.data.message, e.data.stack);
+    if (e.data?.t === 'error') {
+      console.error('host worker stack', e.data.message, e.data.stack);
+      reportCrash(`host: ${e.data.message}`, e.data.stack);
+    }
   });
   worker.onerror = (e) => console.error('host worker error', e.message);
   // Tests start a chaos event on the host: `__forceChaos('Outage')`.
@@ -339,7 +420,9 @@ async function runHost() {
     return code;
   };
   const code = start(params.get('code') ?? newRoomCode());
-  runClient(mod, { online: true, code, uuid: playerUuid(), name: displayName(), nodraw: params.has('nodraw') });
+  runClient(mod, { online: true, code, uuid: playerUuid(), name: displayName(), nodraw: params.has('nodraw'), cosmetic: hat() });
+  watchAchievements(playerUuid());
+  if (params.has('tutorial')) startTutorial();
   startVoiceWhenJoined(code);
 }
 
@@ -353,7 +436,9 @@ async function runPlayer(code) {
       show(banner, `Room ${code}`);
       if (!started) {
         started = true;
-        runClient(mod, { online: true, code, uuid: playerUuid(), name: displayName(), nodraw: params.has('nodraw') });
+        runClient(mod, { online: true, code, uuid: playerUuid(), name: displayName(), nodraw: params.has('nodraw'), cosmetic: hat() });
+  watchAchievements(playerUuid());
+  if (params.has('tutorial')) startTutorial();
         startVoiceWhenJoined(code);
       }
     },
@@ -390,8 +475,12 @@ async function offerSavedRun() {
 async function runTitle() {
   const mod = await loadClient();
   show(lobby);
+  mountHats();
   document.getElementById('create')?.addEventListener('click', () => {
     location.search = '?create';
+  });
+  document.getElementById('tutorial-start')?.addEventListener('click', () => {
+    location.search = '?create&tutorial';
   });
   offerSavedRun();
   document.getElementById('join-form')?.addEventListener('submit', (e) => {

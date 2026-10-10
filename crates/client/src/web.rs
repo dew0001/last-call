@@ -40,6 +40,9 @@ struct StartConfig {
     name: String,
     #[serde(default)]
     nodraw: bool,
+    /// The hat to wear (0 none), from the page's unlocks.
+    #[serde(default)]
+    cosmetic: u16,
 }
 
 fn parse_uuid(hex: &str) -> [u8; 16] {
@@ -71,7 +74,7 @@ pub fn client_start(config: JsValue) -> Result<(), JsValue> {
             code: cfg.code,
             player_uuid: parse_uuid(&cfg.uuid),
             display_name: cfg.name,
-            cosmetic_id: 0,
+            cosmetic_id: cfg.cosmetic,
         },
         nodraw: cfg.nodraw,
     });
@@ -80,7 +83,7 @@ pub fn client_start(config: JsValue) -> Result<(), JsValue> {
         INBOX.with(|i| *i.borrow_mut() = Some(bridge.0.clone()));
         app.add_systems(
             PreUpdate,
-            (read_scripted_input, read_table_requests, read_fixture_requests, read_game_requests),
+            (read_scripted_input, read_table_requests, read_fixture_requests, read_game_requests, read_settings),
         );
         app.add_systems(Last, send_outgoing);
     }
@@ -175,6 +178,21 @@ fn read_game_requests(mut out: ResMut<shared::client::OutgoingGame>) {
     let _ = Reflect::set(&window, &"__lcGame".into(), &Array::new());
 }
 
+/// `window.__lcSettings` (the page's settings panel) into [`crate::online::Settings`].
+fn read_settings(mut settings: ResMut<crate::online::Settings>) {
+    let Some(window) = web_sys::window() else { return };
+    let Ok(v) = Reflect::get(&window, &"__lcSettings".into()) else { return };
+    if v.is_undefined() || v.is_null() {
+        return;
+    }
+    let sens = Reflect::get(&v, &"sensitivity".into()).ok().and_then(|x| x.as_f64()).unwrap_or(1.0) as f32;
+    let low = Reflect::get(&v, &"graphics".into()).ok().and_then(|x| x.as_string()).is_some_and(|g| g == "low");
+    let next = crate::online::Settings { sensitivity: sens.clamp(0.1, 5.0), low_graphics: low };
+    if *settings != next {
+        *settings = next;
+    }
+}
+
 fn publish_status(status: Res<RenderStatus>, net: Option<Res<NetStatus>>) {
     let Some(window) = web_sys::window() else { return };
     let obj = Object::new();
@@ -183,6 +201,8 @@ fn publish_status(status: Res<RenderStatus>, net: Option<Res<NetStatus>>) {
     };
     set("frames", JsValue::from_f64(status.frames as f64));
     set("backend", JsValue::from_str(&status.backend));
+    set("visibleMeshes", JsValue::from_f64(f64::from(status.visible_meshes)));
+    set("triangles", JsValue::from_f64(f64::from(status.triangles)));
     if let Some(net) = net {
         set("connected", JsValue::from_bool(net.connected));
         set("playerId", net.player_id.map(|id| JsValue::from_str(&format!("{id:016x}"))).unwrap_or(JsValue::NULL));

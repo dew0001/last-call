@@ -10,6 +10,7 @@ use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::prelude::*;
 use bevy::render::renderer::RenderAdapterInfo;
 
+pub mod art;
 pub mod casino;
 pub mod chaos;
 pub mod games;
@@ -25,6 +26,10 @@ pub const CLEAR_COLOR: Color = Color::srgb(0.08, 0.05, 0.03);
 pub struct RenderStatus {
     pub frames: u64,
     pub backend: String,
+    /// Budget proxies (plan section 9): meshes drawn this frame (an upper
+    /// bound on draw calls, before batching) and their triangles.
+    pub visible_meshes: u32,
+    pub triangles: u32,
 }
 
 #[derive(Component)]
@@ -45,7 +50,8 @@ pub fn build_app(online: Option<online::OnlineConfig>) -> App {
             }),
             ..default()
         }))
-        .add_systems(Update, track_status);
+        .add_systems(Update, track_status)
+        .add_systems(PostUpdate, count_visible.after(bevy::camera::visibility::VisibilitySystems::CheckVisibility));
     match online {
         Some(cfg) => {
             online::add(&mut app, cfg);
@@ -88,6 +94,25 @@ fn spin(time: Res<Time>, mut q: Query<&mut Transform, With<Spinner>>) {
         t.rotate_y(time.delta_secs() * 0.8);
         t.rotate_x(time.delta_secs() * 0.3);
     }
+}
+
+/// Count what the camera draws: visible meshes and their triangles.
+fn count_visible(
+    mut status: ResMut<RenderStatus>,
+    meshes: Res<Assets<Mesh>>,
+    visible: Query<(&Mesh3d, &ViewVisibility)>,
+    mut cache: Local<std::collections::HashMap<AssetId<Mesh>, u32>>,
+) {
+    let (mut n, mut tris) = (0, 0);
+    for (m, v) in &visible {
+        if !v.get() {
+            continue;
+        }
+        n += 1;
+        tris += *cache.entry(m.0.id()).or_insert_with(|| meshes.get(&m.0).map_or(0, |m| art::triangles(m) as u32));
+    }
+    status.visible_meshes = n;
+    status.triangles = tris;
 }
 
 fn track_status(mut status: ResMut<RenderStatus>, adapter: Option<Res<RenderAdapterInfo>>) {

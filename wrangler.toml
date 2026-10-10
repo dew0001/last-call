@@ -16,3 +16,9 @@ new_sqlite_classes = ["Room"]
 
 [dev]
 port = 8787
+
+# Crash reports (POST /report), capped at 200. The deploy job creates the
+# namespace on first deploy and writes its id here; locally any id works.
+[[kv_namespaces]]
+binding = "REPORTS"
+id = "REPORTS_NAMESPACE_ID"

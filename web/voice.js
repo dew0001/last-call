@@ -41,7 +41,9 @@ export async function startVoice({ code, playerId, positions }) {
   addEventListener('keydown', resume);
 
   let local = null;
+  const settings = () => window.__lcSettings ?? { volume: 1, voice: 'open' };
   try {
+    if (settings().voice === 'off') throw Object.assign(new Error('voice off in settings'), { name: 'Off' });
     local = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
     });
@@ -139,11 +141,15 @@ export async function startVoice({ code, playerId, positions }) {
   // Proximity: set each remote voice's volume from 3D distance.
   const timer = setInterval(() => {
     const { me, others, pitch } = positions();
+    // Settings: master volume, and the microphone by voice mode.
+    const { volume = 1, voice = 'open' } = settings();
+    const talking = voice === 'open' || (voice === 'push' && window.__lcPushToTalk);
+    for (const t of local?.getAudioTracks() ?? []) if (t.enabled !== talking) t.enabled = talking;
     for (const [id, p] of peers) {
       if (!p.gain) continue;
       const them = others.get(id);
       const d = me && them ? Math.hypot(me[0] - them[0], me[1] - them[1], me[2] - them[2]) : Infinity;
-      p.gain.gain.setTargetAtTime(distanceGain(d), ctx.currentTime, 0.05);
+      p.gain.gain.setTargetAtTime(distanceGain(d) * volume, ctx.currentTime, 0.05);
       p.shift?.parameters.get('pitch').setValueAtTime(pitch?.get(id) ?? 1, ctx.currentTime);
     }
   }, UPDATE_MS);

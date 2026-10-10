@@ -12,7 +12,7 @@ use lightyear::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// Protocol version. Bump on any breaking change. Sent in [`Join`].
-pub const PROTOCOL_VERSION: u16 = 11;
+pub const PROTOCOL_VERSION: u16 = 12;
 
 // ---------- Components (host to clients) ----------
 
@@ -22,6 +22,8 @@ pub struct Player {
     pub id: u64,
     pub name: String,
     pub slot: u8,
+    /// The hat this player wears (0 none; unlocked by achievements).
+    pub cosmetic: u16,
 }
 
 /// Player feet position. Predicted for the owner, interpolated for others.

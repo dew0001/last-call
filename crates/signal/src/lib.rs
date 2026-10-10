@@ -8,8 +8,10 @@
 //! - `GET /health`
 //! - `GET /room/CODE?role=host|player` (WebSocket upgrade, game signaling)
 //! - `GET /room/CODE?role=voice&peer=PLAYER_ID` (WebSocket upgrade, voice mesh)
+//! - `POST /report` (a crash report, JSON; kept in Workers KV, capped)
 
 mod relay;
+mod report;
 mod voice;
 
 use std::time::Duration;
@@ -46,6 +48,23 @@ async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
     Router::new()
         .get("/health", |_, _| {
             cors(Response::from_json(&Health { ok: true, service: SERVICE, version: env!("CARGO_PKG_VERSION") })?)
+        })
+        .post_async("/report", |mut req, ctx| async move {
+            let body = req.bytes().await?;
+            let r = match report::parse(&body) {
+                Ok(r) => r,
+                Err(e) => return cors(Response::error(e, 400)?),
+            };
+            // Without the KV binding (a local dev Worker), accept and drop.
+            let Ok(kv) = ctx.env.kv("REPORTS") else { return cors(Response::empty()?.with_status(204)) };
+            let key = report::key(Date::now().as_millis(), &uuid::Uuid::new_v4().to_string());
+            let json = serde_json::to_string(&r).map_err(|e| Error::RustError(e.to_string()))?;
+            kv.put(&key, json)?.execute().await?;
+            let keys: Vec<String> = kv.list().prefix("r:".into()).execute().await?.keys.into_iter().map(|k| k.name).collect();
+            for old in report::to_drop(keys, report::MAX_REPORTS) {
+                kv.delete(&old).await?;
+            }
+            cors(Response::empty()?.with_status(204))
         })
         .get_async("/room/:code", |req, ctx| async move {
             let Some(code) = ctx.param("code").and_then(|c| shared::room::parse_code(c)) else {

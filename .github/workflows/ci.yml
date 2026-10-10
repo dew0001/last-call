@@ -192,6 +192,14 @@ jobs:
         id: worker
         if: steps.secrets.outputs.ready == 'true'
         run: |
+          # The crash-report KV namespace: create it once, then use its id.
+          title="last-call-signal-REPORTS"
+          id=$(npx wrangler kv namespace list | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const n=JSON.parse(s).find(x=>x.title==='$title');console.log(n?n.id:'')})")
+          if [ -z "$id" ]; then
+            npx wrangler kv namespace create REPORTS
+            id=$(npx wrangler kv namespace list | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const n=JSON.parse(s).find(x=>x.title==='$title');console.log(n?n.id:'')})")
+          fi
+          sed -i "s/REPORTS_NAMESPACE_ID/$id/" wrangler.toml
           npx wrangler deploy | tee worker.log
           url=$(grep -oE 'https://[a-z0-9.-]+\.workers\.dev' worker.log | head -1)
           echo "url=$url" >> "$GITHUB_OUTPUT"

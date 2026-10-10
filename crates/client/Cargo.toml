@@ -32,11 +32,14 @@ bevy = { workspace = true, features = [
     "bevy_log",
     "keyboard",
     "mouse",
+    "gamepad",
     "bevy_state",
     "bevy_ui",
     "bevy_ui_render",
     "bevy_text",
     "default_font",
+    "bevy_post_process",
+    "ktx2",
 ] }
 lightyear.workspace = true
 serde.workspace = true
@@ -45,7 +48,8 @@ serde.workspace = true
 bevy = { workspace = true, features = ["x11", "multi_threaded"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-bevy = { workspace = true, features = ["web", "webgl2"] }
+# Gamepads through the browser's Gamepad API (natively gilrs needs libudev).
+bevy = { workspace = true, features = ["web", "webgl2", "bevy_gilrs"] }
 wasm-bindgen.workspace = true
 js-sys.workspace = true
 web-sys = { workspace = true, features = ["Window"] }

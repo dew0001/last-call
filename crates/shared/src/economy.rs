@@ -33,6 +33,11 @@ pub fn scale_for_ng(amount: i64, ng: u8) -> i64 {
     amount * (100 + 25 * i64::from(ng)) / 100
 }
 
+/// Customers' patience in new game plus: 10% less per level, at least 60%.
+pub fn ng_patience_percent(ng: u8) -> u32 {
+    100u32.saturating_sub(10 * u32::from(ng)).max(60)
+}
+
 /// Debt tier for an amount paid so far, scaled for new game plus.
 pub fn tier(paid: i64, ng: u8) -> u8 {
     TIER_THRESHOLDS.iter().rposition(|&t| paid >= scale_for_ng(t, ng)).unwrap_or(0) as u8
@@ -148,6 +153,14 @@ pub fn deposit(pocket: &mut i64, ledger: &mut Ledger) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn new_game_plus_makes_customers_less_patient() {
+        assert_eq!(ng_patience_percent(0), 100);
+        assert_eq!(ng_patience_percent(2), 80);
+        assert_eq!(ng_patience_percent(9), 60, "never under 60%");
+        assert_eq!(scale_for_ng(100, 2), 150, "debts grow 25% a level");
+    }
     use proptest::prelude::*;
 
     #[test]

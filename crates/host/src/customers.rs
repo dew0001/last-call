@@ -315,9 +315,10 @@ pub fn leave(mesh: &NavMesh, c: &mut Customer, npc: &mut Npc, pose: &NpcPose) {
 fn walk(
     mut commands: Commands,
     owned: Res<crate::fixtures::Owned>,
+    ng: Res<crate::fixtures::RunNg>,
     mut npcs: Query<(Entity, &mut Customer, &mut Npc, &mut NpcPose)>,
 ) {
-    let pct = owned.0.patience_percent();
+    let pct = ng.patience(&owned);
     let step = WALK_SPEED * shared::TICK.as_secs_f32();
     for (e, mut c, mut npc, mut pose) in &mut npcs {
         if npc.path.is_empty() {
@@ -371,6 +372,7 @@ fn walk(
 fn seated(
     mesh: Res<BarNavMesh>,
     owned: Res<crate::fixtures::Owned>,
+    ng: Res<crate::fixtures::RunNg>,
     stools: Query<(&Position, &Rotation, &HeldBy)>,
     mut npcs: Query<(&mut Customer, &mut Npc, &NpcPose)>,
 ) {
@@ -392,7 +394,7 @@ fn seated(
         if c.mood == Mood::Drinking && npc.ticks == 0 {
             if npc.cash >= customers::BEER_PRICE {
                 c.mood = Mood::Waiting;
-                npc.ticks = ticks(PATIENCE_SECS) * owned.0.patience_percent() / 100;
+                npc.ticks = ticks(PATIENCE_SECS) * ng.patience(&owned) / 100;
             } else {
                 leave(&mesh.0, &mut c, &mut npc, pose);
                 continue;

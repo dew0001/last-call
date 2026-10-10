@@ -32,11 +32,30 @@ pub struct FixtureUsed {
 #[derive(Resource, Default, Debug, Clone, Copy)]
 pub struct Owned(pub shared::upgrades::Upgrades);
 
-fn sync_upgrades(mut owned: ResMut<Owned>, room: Query<&RoomUpgrades, With<RoomState>>) {
-    if let Ok(u) = room.single()
-        && owned.0 != u.0
-    {
-        owned.0 = u.0;
+/// The run's new game plus level, copied like [`Owned`].
+#[derive(Resource, Default, Debug, Clone, Copy)]
+pub struct RunNg(pub u8);
+
+impl RunNg {
+    /// Customer patience, percent, with the jukebox's bonus.
+    pub fn patience(&self, owned: &Owned) -> u32 {
+        owned.0.patience_percent() * shared::economy::ng_patience_percent(self.0) / 100
+    }
+}
+
+fn sync_upgrades(
+    mut owned: ResMut<Owned>,
+    mut ng: ResMut<RunNg>,
+    room: Query<(&RoomUpgrades, Option<&RunLedger>), With<RoomState>>,
+) {
+    if let Ok((u, run)) = room.single() {
+        if owned.0 != u.0 {
+            owned.0 = u.0;
+        }
+        let level = run.map_or(0, |r| r.ledger.ng);
+        if ng.0 != level {
+            ng.0 = level;
+        }
     }
 }
 
@@ -48,7 +67,10 @@ pub struct FixturesPlugin;
 
 impl Plugin for FixturesPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<FixtureQueue>().init_resource::<Owned>().add_message::<FixtureUsed>();
+        app.init_resource::<FixtureQueue>()
+            .init_resource::<Owned>()
+            .init_resource::<RunNg>()
+            .add_message::<FixtureUsed>();
         app.add_systems(FixedPreUpdate, sync_upgrades);
         app.add_systems(
             FixedUpdate,

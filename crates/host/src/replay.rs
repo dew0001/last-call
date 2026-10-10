@@ -304,6 +304,72 @@ fn run_table(world: &mut World, table: shared::casino::TableId, tick: u64, out: 
 }
 
 /// Run the scripted shift for `ticks` ticks and hash the final state.
+/// What a soak run measured: host tick times over the run.
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
+pub struct SoakResult {
+    pub ticks: u64,
+    pub worst_ms: f64,
+    pub p99_ms: f64,
+    pub mean_ms: f64,
+    /// Ticks over the 10 ms soak budget.
+    pub over_10ms: u64,
+    pub house: i64,
+}
+
+/// The soak test (plan section 10, Phase 7): the replay's six scripted
+/// players plus two walkers (eight in all) play `ticks` ticks of plan-length
+/// shifts, with customers, tables and chaos, and every tick is timed.
+pub fn soak(ticks: u64) -> SoakResult {
+    use bevy::platform::time::Instant;
+    let mut sim = HostSim::with_config(HostConfig { seed: SEED, ..Default::default() });
+    let mut bots = [
+        Bot::new(BARTENDER),
+        Bot::new(WALKER),
+        Bot::new(THROWER),
+        Bot::new(SPILLER),
+        Bot::new(DEALER),
+        Bot::new(CROUPIER),
+        Bot::new(WALKER),
+        Bot::new(WALKER),
+    ];
+    let players: Vec<Entity> =
+        (0..bots.len()).map(|i| sim.add_local_player(0x50a6_0000 + i as u64, "soak", i as u8)).collect();
+    let mut times: Vec<f32> = Vec::with_capacity(ticks as usize);
+    for _ in 0..ticks {
+        for (bot, &player) in bots.iter_mut().zip(&players) {
+            let pos = sim.world().get::<PlayerPos>(player).map_or(Vec3::ZERO, |p| p.0);
+            let input = bot.input(pos);
+            sim.set_input(player, input);
+            if let Some(table) = bot.running() {
+                let mut actions = Vec::new();
+                let tick = sim.tick_count();
+                run_table(sim.world_mut(), table, tick, &mut actions);
+                for action in actions {
+                    sim.table_request(player, TableRequest { table, action });
+                }
+            }
+        }
+        let t = Instant::now();
+        sim.tick();
+        times.push(t.elapsed().as_secs_f32() * 1000.0);
+        sim.drain_audit();
+    }
+    let n = times.len().max(1);
+    let mean = times.iter().map(|t| f64::from(*t)).sum::<f64>() / n as f64;
+    let over = times.iter().filter(|t| **t > 10.0).count() as u64;
+    times.sort_by(f32::total_cmp);
+    let world = sim.world_mut();
+    let house = world.query::<&RunLedger>().iter(world).next().map_or(0, |r| r.ledger.house);
+    SoakResult {
+        ticks,
+        worst_ms: f64::from(times.last().copied().unwrap_or(0.0)),
+        p99_ms: f64::from(times.get(n * 99 / 100).copied().unwrap_or(0.0)),
+        mean_ms: mean,
+        over_10ms: over,
+        house,
+    }
+}
+
 pub fn run(ticks: u64) -> ReplayResult {
     run_with(ticks, |_| {})
 }

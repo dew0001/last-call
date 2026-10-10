@@ -41,6 +41,20 @@ pub struct Look {
 #[derive(Resource, Default, Debug, Clone, Copy)]
 pub struct ScriptedInput(pub Option<PlayerInput>);
 
+/// Player settings (the page's settings panel, `web/settings.js`).
+#[derive(Resource, Debug, Clone, Copy, PartialEq)]
+pub struct Settings {
+    pub sensitivity: f32,
+    /// Low: no shadows, no bloom.
+    pub low_graphics: bool,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self { sensitivity: 1.0, low_graphics: false }
+    }
+}
+
 /// What the page shows and tests read.
 #[derive(Resource, Default, Debug, Clone)]
 pub struct NetStatus {
@@ -189,7 +203,10 @@ pub fn add(app: &mut App, cfg: OnlineConfig) {
     if cfg.nodraw {
         app.insert_resource(NoDraw);
     }
-    app.init_resource::<Look>().init_resource::<ScriptedInput>().init_resource::<NetStatus>();
+    app.init_resource::<Look>()
+        .init_resource::<ScriptedInput>()
+        .init_resource::<NetStatus>()
+        .init_resource::<Settings>();
 
     let (io, end) = PipeIo::new();
     app.insert_resource(NetBridge(end));
@@ -222,6 +239,8 @@ pub fn add(app: &mut App, cfg: OnlineConfig) {
             place_customers,
             dress_puddles,
             follow_camera.in_set(CameraSet),
+            post_effects,
+            graphics_preset,
             update_status,
             update_hud,
             update_pour_gauge,
@@ -469,90 +488,135 @@ fn update_hud(
 
 fn setup_bar(
     mut commands: Commands,
+    assets: Option<Res<AssetServer>>,
+    nodraw: Option<Res<NoDraw>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    let gray = |v: f32| Color::srgb(v, v * 0.92, v * 0.85);
-    let mut solid = |commands: &mut Commands, size: Vec3, at: Vec3, color: Color| {
-        commands.spawn((
-            Mesh3d(meshes.add(Cuboid::from_size(size))),
-            MeshMaterial3d(materials.add(StandardMaterial {
-                base_color: color,
-                perceptual_roughness: 0.9,
-                ..default()
-            })),
-            Transform::from_translation(at),
-        ));
-    };
+    use crate::art;
     use shared::world::{AREAS, Room};
-    // A floor per room, walls along their edges (door gaps open).
+    // Vertex colors carry the paint; one white material per surface kind.
+    let paint = materials.add(StandardMaterial { base_color: Color::WHITE, perceptual_roughness: 0.85, ..default() });
+    let gloss = materials.add(StandardMaterial { base_color: Color::WHITE, perceptual_roughness: 0.3, ..default() });
+    // Floors, with each room's baked lightmap (tools bake_lighting).
+    let floor_mat = materials.add(StandardMaterial {
+        base_color: Color::WHITE,
+        perceptual_roughness: 0.9,
+        lightmap_exposure: 9_000.0,
+        ..default()
+    });
     for a in AREAS.iter().filter(|a| a.room != Room::Office) {
-        let color = match a.room {
-            Room::ParkingLot => Color::srgb(0.12, 0.12, 0.14),
-            Room::Pier => Color::srgb(0.32, 0.22, 0.13),
-            Room::Roof => Color::srgb(0.18, 0.17, 0.17),
-            Room::Basement | Room::Stairwell => Color::srgb(0.25, 0.24, 0.22),
-            Room::Kitchen => Color::srgb(0.55, 0.55, 0.5),
-            _ => gray(0.35),
-        };
         let (w, d) = (a.x1 - a.x0, a.z1 - a.z0);
-        solid(&mut commands, Vec3::new(w, 0.1, d), Vec3::new(a.x0 + w / 2.0, -0.05, a.z0 + d / 2.0), color);
+        let mut e = commands.spawn((
+            Mesh3d(meshes.add(art::floor(w, d, art::palette(a.room).0))),
+            MeshMaterial3d(floor_mat.clone()),
+            Transform::from_xyz(a.x0 + w / 2.0, 0.0, a.z0 + d / 2.0),
+        ));
+        if nodraw.is_none()
+            && let Some(assets) = &assets
+        {
+            let name = format!("{:?}", a.room).to_lowercase();
+            e.insert(bevy::pbr::Lightmap {
+                image: assets.load(format!("lightmaps/{name}.ktx2")),
+                uv_rect: Rect::new(0.0, 0.0, 1.0, 1.0),
+                bicubic_sampling: false,
+            });
+        }
     }
+    // Walls: warm plaster inside, cold brick outside.
     for b in shared::world::walls() {
-        let color = if b.height < bar::WALL_HEIGHT { gray(0.3) } else { gray(0.45) };
-        solid(&mut commands, Vec3::new(b.hx * 2.0, b.height, b.hz * 2.0), Vec3::new(b.cx, b.height / 2.0, b.cz), color);
+        let outside = shared::world::room_at(b.cx, b.cz).is_none_or(|r| r.outdoors());
+        let color = if b.height < bar::WALL_HEIGHT {
+            Color::srgb(0.25, 0.26, 0.3)
+        } else if outside {
+            Color::srgb(0.3, 0.32, 0.38)
+        } else {
+            Color::srgb(0.55, 0.42, 0.3)
+        };
+        commands.spawn((
+            Mesh3d(meshes.add(art::block(b, color))),
+            MeshMaterial3d(paint.clone()),
+            Transform::from_xyz(b.cx, b.height / 2.0, b.cz),
+        ));
     }
     // The harbor around the pier.
     let pier = shared::world::area_of(Room::Pier);
-    solid(
-        &mut commands,
-        Vec3::new(60.0, 0.05, pier.z1 - pier.z0 + 10.0),
-        Vec3::new(0.0, -0.6, (pier.z0 + pier.z1) / 2.0 + 5.0),
-        Color::srgb(0.05, 0.15, 0.3),
-    );
-    let hz = bar::HALF_Z;
-    // Counter, office walls, safe.
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::new(60.0, 0.05, pier.z1 - pier.z0 + 10.0))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: Color::srgb(0.03, 0.1, 0.22),
+            perceptual_roughness: 0.15,
+            ..default()
+        })),
+        Transform::from_xyz(0.0, -0.6, (pier.z0 + pier.z1) / 2.0 + 5.0),
+    ));
+    // The bar's furniture.
     for b in &bar::BLOCKS {
-        let color = match b.kind {
-            bar::BlockKind::Counter => Color::srgb(0.45, 0.28, 0.15),
-            bar::BlockKind::Wall => gray(0.42),
-            bar::BlockKind::Safe => Color::srgb(0.2, 0.22, 0.25),
-            bar::BlockKind::Table => Color::srgb(0.3, 0.18, 0.1),
-            bar::BlockKind::SlotMachine => Color::srgb(0.55, 0.1, 0.45),
+        let (mesh, mat) = match b.kind {
+            bar::BlockKind::Counter => (art::counter(b), &gloss),
+            bar::BlockKind::Wall => (art::block(b, Color::srgb(0.5, 0.38, 0.27)), &paint),
+            bar::BlockKind::Safe => (art::block(b, Color::srgb(0.2, 0.22, 0.25)), &gloss),
+            bar::BlockKind::Table => (art::table(b), &paint),
+            bar::BlockKind::SlotMachine => (art::slot_machine(b), &gloss),
         };
-        solid(&mut commands, Vec3::new(b.hx * 2.0, b.height, b.hz * 2.0), Vec3::new(b.cx, b.height / 2.0, b.cz), color);
+        commands.spawn((
+            Mesh3d(meshes.add(mesh)),
+            MeshMaterial3d(mat.clone()),
+            Transform::from_xyz(b.cx, b.height / 2.0, b.cz),
+        ));
     }
-    // Neon sign over the counter (pink accent).
+    // A neon strip per room in its accent color (bloom makes them glow).
+    for a in AREAS.iter() {
+        let accent = art::palette(a.room).1;
+        let lum = accent.to_linear();
+        let neon = materials.add(StandardMaterial {
+            base_color: accent,
+            emissive: LinearRgba::rgb(lum.red * 6.0, lum.green * 6.0, lum.blue * 6.0),
+            ..default()
+        });
+        let len = ((a.x1 - a.x0) * 0.5).min(4.0);
+        commands.spawn((
+            Mesh3d(meshes.add(Cuboid::new(len, 0.12, 0.06))),
+            MeshMaterial3d(neon),
+            Transform::from_xyz((a.x0 + a.x1) / 2.0, 2.5, a.z0 + 0.12),
+        ));
+    }
+    // The bar's sign over the counter.
     commands.spawn((
         Mesh3d(meshes.add(Cuboid::new(3.0, 0.6, 0.1))),
         MeshMaterial3d(materials.add(StandardMaterial {
             base_color: Color::srgb(1.0, 0.2, 0.6),
-            emissive: LinearRgba::rgb(2.0, 0.2, 1.0),
+            emissive: LinearRgba::rgb(4.0, 0.4, 2.0),
             ..default()
         })),
-        Transform::from_xyz(0.0, 2.4, -hz + 0.05),
+        Transform::from_xyz(0.0, 2.4, -bar::HALF_Z + 0.05),
     ));
-    // Warm lights in the bar, one in each other indoor room; a cold moon outside.
-    let mut lamps: Vec<(f32, f32)> = vec![(-6.0, 0.0), (0.0, 0.0), (6.0, 0.0)];
-    for a in AREAS.iter().filter(|a| !a.room.outdoors() && a.room != Room::Bar) {
-        lamps.push(((a.x0 + a.x1) / 2.0, (a.z0 + a.z1) / 2.0));
-    }
-    for (x, z) in lamps {
+    // Warm lamps inside (at most 8 per room); a cold moon outside, the only shadow caster.
+    for (_, x, z) in shared::world::lamps() {
         commands.spawn((
             RoomLamp,
-            PointLight { intensity: 400_000.0, range: 14.0, color: Color::srgb(1.0, 0.8, 0.55), ..default() },
-            Transform::from_xyz(x, 2.9, z),
+            PointLight { intensity: 300_000.0, range: 14.0, color: Color::srgb(1.0, 0.78, 0.5), ..default() },
+            Transform::from_xyz(x, shared::world::LAMP_Y, z),
         ));
     }
     commands.spawn((
-        DirectionalLight { illuminance: 1_500.0, color: Color::srgb(0.6, 0.7, 1.0), ..default() },
+        DirectionalLight {
+            illuminance: 1_500.0,
+            color: Color::srgb(0.6, 0.7, 1.0),
+            shadow_maps_enabled: true,
+            ..default()
+        },
         Transform::from_xyz(5.0, 20.0, 30.0).looking_at(Vec3::new(0.0, 0.0, 20.0), Vec3::Y),
     ));
     commands.spawn((
         Camera3d::default(),
         // No lookup-table tonemapper: the LUT ships as zstd KTX2 and failed to
-        // decompress in WebKit. Post-processing returns in Phase 6.
+        // decompress in WebKit.
         Tonemapping::Reinhard,
+        bevy::camera::Hdr,
+        bevy::post_process::bloom::Bloom::NATURAL,
+        bevy::post_process::effect_stack::Vignette { intensity: 0.25, radius: 0.9, ..default() },
+        bevy::post_process::effect_stack::ChromaticAberration { intensity: 0.0, ..default() },
         Transform::from_xyz(0.0, 6.0, 12.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
 }
@@ -561,10 +625,14 @@ fn setup_bar(
 #[derive(Component)]
 pub struct RoomLamp;
 
+#[allow(clippy::too_many_arguments)]
 fn read_input(
     keys: Res<ButtonInput<KeyCode>>,
     motion: Res<AccumulatedMouseMotion>,
     scripted: Res<ScriptedInput>,
+    settings: Res<Settings>,
+    time: Res<Time>,
+    pads: Query<&Gamepad>,
     mut look: ResMut<Look>,
     mut input: ResMut<LocalInput>,
 ) {
@@ -574,12 +642,40 @@ fn read_input(
         return;
     }
     const SENSITIVITY: f32 = 0.0025;
-    look.yaw -= motion.delta.x * SENSITIVITY;
-    look.pitch = (look.pitch - motion.delta.y * SENSITIVITY).clamp(-1.4, 1.4);
+    let sens = SENSITIVITY * settings.sensitivity;
+    look.yaw -= motion.delta.x * sens;
+    look.pitch = (look.pitch - motion.delta.y * sens).clamp(-1.4, 1.4);
     let axis =
         |pos: KeyCode, neg: KeyCode| f32::from(u8::from(keys.pressed(pos))) - f32::from(u8::from(keys.pressed(neg)));
-    let mv = Vec2::new(axis(KeyCode::KeyD, KeyCode::KeyA), axis(KeyCode::KeyW, KeyCode::KeyS));
-    let mut b = 0;
+    let mut mv = Vec2::new(axis(KeyCode::KeyD, KeyCode::KeyA), axis(KeyCode::KeyW, KeyCode::KeyS));
+    // A gamepad: left stick walks, right stick looks (2.5 rad/s at full tilt).
+    let mut pad_buttons = 0;
+    for pad in &pads {
+        let l = pad.left_stick();
+        if l.length() > 0.15 {
+            mv = l.clamp_length_max(1.0);
+        }
+        let r = pad.right_stick();
+        if r.length() > 0.15 {
+            let turn = 2.5 * time.delta_secs() * settings.sensitivity;
+            look.yaw -= r.x * turn;
+            look.pitch = (look.pitch + r.y * turn).clamp(-1.4, 1.4);
+        }
+        for (button, bit) in [
+            (GamepadButton::South, buttons::INTERACT),
+            (GamepadButton::East, buttons::DROP),
+            (GamepadButton::West, buttons::USE),
+            (GamepadButton::RightTrigger2, buttons::THROW),
+            (GamepadButton::LeftThumb, buttons::SPRINT),
+            (GamepadButton::North, buttons::JUMP),
+            (GamepadButton::RightThumb, buttons::CROUCH),
+        ] {
+            if pad.pressed(button) {
+                pad_buttons |= bit;
+            }
+        }
+    }
+    let mut b = pad_buttons;
     for (key, bit) in [
         (KeyCode::ShiftLeft, buttons::SPRINT),
         (KeyCode::Space, buttons::JUMP),
@@ -658,8 +754,13 @@ fn dress_players(
             continue;
         }
         let hue = (player.id % 360) as f32;
-        let mesh = meshes.add(Capsule3d::new(bar::PLAYER_RADIUS, bar::PLAYER_HEIGHT - 2.0 * bar::PLAYER_RADIUS));
-        let material = materials.add(StandardMaterial { base_color: Color::hsl(hue, 0.6, 0.55), ..default() });
+        let mut body = crate::art::figure(Color::hsl(hue, 0.65, 0.5), Color::srgb(0.95, 0.75, 0.6));
+        if player.cosmetic > 0 {
+            body.merge(&crate::art::hat(player.cosmetic - 1)).expect("same attributes");
+        }
+        let mesh = meshes.add(body);
+        let material =
+            materials.add(StandardMaterial { base_color: Color::WHITE, perceptual_roughness: 0.7, ..default() });
         commands.entity(entity).insert((Dressed, Mesh3d(mesh), MeshMaterial3d(material), Transform::default()));
     }
 }
@@ -693,23 +794,20 @@ fn dress_props(
         return;
     }
     let looks = cache.get_or_insert_with(|| {
-        let mut mat =
-            |c: Color| materials.add(StandardMaterial { base_color: c, perceptual_roughness: 0.6, ..default() });
-        let mop = (meshes.add(Cuboid::new(0.06, 1.3, 0.06)), mat(Color::srgb(0.55, 0.5, 0.42)));
+        let white =
+            materials.add(StandardMaterial { base_color: Color::WHITE, perceptual_roughness: 0.4, ..default() });
+        let glow = materials.add(StandardMaterial {
+            base_color: Color::WHITE,
+            emissive: LinearRgba::rgb(0.3, 0.18, 0.02),
+            perceptual_roughness: 0.2,
+            ..default()
+        });
         [
-            (meshes.add(Cylinder::new(0.04, 0.28)), mat(Color::srgb(0.2, 0.55, 0.25))),
-            (meshes.add(Cylinder::new(0.02, 0.012)), mat(Color::srgb(0.85, 0.15, 0.15))),
-            (meshes.add(Cuboid::new(0.4, 0.75, 0.4)), mat(Color::srgb(0.4, 0.25, 0.12))),
-            (
-                meshes.add(Cylinder::new(0.045, 0.15)),
-                materials.add(StandardMaterial {
-                    base_color: Color::srgb(0.95, 0.65, 0.15),
-                    emissive: LinearRgba::rgb(0.3, 0.18, 0.02),
-                    perceptual_roughness: 0.2,
-                    ..default()
-                }),
-            ),
-            mop,
+            (meshes.add(crate::art::bottle()), white.clone()),
+            (meshes.add(crate::art::chip()), white.clone()),
+            (meshes.add(crate::art::stool()), white.clone()),
+            (meshes.add(crate::art::glass()), glow),
+            (meshes.add(crate::art::mop()), white),
         ]
     });
     for (entity, kind) in &props {
@@ -807,7 +905,7 @@ fn dress_customers(
     let (body, marker, marker_mat) = cache
         .get_or_insert_with(|| {
             (
-                meshes.add(Capsule3d::new(0.3, bar::PLAYER_HEIGHT - 0.6)),
+                meshes.add(crate::art::figure(Color::srgb(0.45, 0.42, 0.4), Color::srgb(0.85, 0.68, 0.55))),
                 meshes.add(Sphere::new(0.12)),
                 materials.add(StandardMaterial {
                     base_color: Color::srgb(1.0, 0.85, 0.2),
@@ -818,8 +916,9 @@ fn dress_customers(
         })
         .clone();
     for (entity, c) in &customers {
-        let hue = (c.id * 47 % 360) as f32;
-        let mat = materials.add(StandardMaterial { base_color: Color::hsl(hue, 0.25, 0.45), ..default() });
+        // Muted tints, so players stand out; eight shades share materials.
+        let hue = (c.id % 8 * 45) as f32;
+        let mat = materials.add(StandardMaterial { base_color: Color::hsl(hue, 0.25, 0.8), ..default() });
         commands
             .entity(entity)
             .insert((DressedCustomer, Mesh3d(body.clone()), MeshMaterial3d(mat), Transform::default()))
@@ -882,6 +981,60 @@ fn follow_camera(
         let s = time.elapsed_secs();
         t.rotate_local_z((s * 0.9).sin() * sway);
         t.rotate_local_y((s * 0.6).cos() * sway * 0.5);
+    }
+}
+
+/// The post stack follows the meters (plan section 7): chromatic aberration
+/// grows with drink, the vignette closes in when Buzzed or spinning.
+fn post_effects(
+    status: Res<NetStatus>,
+    mut cam: Query<
+        (&mut bevy::post_process::effect_stack::ChromaticAberration, &mut bevy::post_process::effect_stack::Vignette),
+        With<Camera3d>,
+    >,
+) {
+    let Ok((mut ca, mut vig)) = cam.single_mut() else { return };
+    let drunk = status.game.drunk.as_ref().map_or(0, |d| d.level);
+    let p4 = &status.game.phase4;
+    let aberration = if drunk > 20 { f32::from(drunk - 20) / 80.0 * 0.04 } else { 0.0 };
+    let vignette = if p4.spinning {
+        0.9
+    } else if p4.focus > 60 {
+        0.5
+    } else {
+        0.25
+    };
+    if (ca.intensity - aberration).abs() > 1e-4 {
+        ca.intensity = aberration;
+    }
+    if (vig.intensity - vignette).abs() > 1e-4 {
+        vig.intensity = vignette;
+    }
+}
+
+/// The Low preset: no shadows, no bloom.
+fn graphics_preset(
+    mut commands: Commands,
+    settings: Res<Settings>,
+    cams: Query<(Entity, Has<bevy::post_process::bloom::Bloom>), With<Camera3d>>,
+    mut suns: Query<&mut DirectionalLight>,
+) {
+    if !settings.is_changed() {
+        return;
+    }
+    for (cam, has_bloom) in &cams {
+        match (settings.low_graphics, has_bloom) {
+            (true, true) => {
+                commands.entity(cam).remove::<bevy::post_process::bloom::Bloom>();
+            }
+            (false, false) => {
+                commands.entity(cam).insert(bevy::post_process::bloom::Bloom::NATURAL);
+            }
+            _ => {}
+        }
+    }
+    for mut sun in &mut suns {
+        sun.shadow_maps_enabled = !settings.low_graphics;
     }
 }
 

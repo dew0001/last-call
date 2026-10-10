@@ -8,6 +8,9 @@ use lightyear::prelude::server::*;
 use lightyear::prelude::*;
 use shared::protocol::*;
 
+/// The highest hat style (0 is none).
+const MAX_HAT: u16 = 3;
+
 /// Seconds a disconnected player waits for a reconnect before removal.
 pub const RECONNECT_GRACE_SECS: f32 = 30.0;
 
@@ -69,7 +72,7 @@ fn handle_joins(
                     let name = clean_name(&join.display_name);
                     let e = commands
                         .spawn((
-                            Player { id: player_id, name, slot },
+                            Player { id: player_id, name, slot, cosmetic: join.cosmetic_id.min(MAX_HAT) },
                             PlayerPos(Vec3::from_array(spawn)),
                             PlayerYaw(0.0),
                         ))
