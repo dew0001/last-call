@@ -148,3 +148,40 @@ fn beer_and_zeen_together_bring_on_the_spins() {
     let w = sim.world_mut();
     assert_eq!(w.query::<&Vomit>().iter(w).count(), 1, "a slippery mess on the floor");
 }
+
+#[test]
+fn a_fish_plate_pays_ten_and_its_luck_rerolls_a_losing_spin() {
+    let (mut sim, a) = setup_room();
+    let croupier = sim.add_local_player(0xc, "c", 1);
+    run(&mut sim, 2);
+    // No fish caught: no plate.
+    use_fixture(&mut sim, a, Fixture::KitchenPass, FixtureAction::Buy(Item::FishPlate));
+    assert!(!sim.world().get::<Inventory>(a).unwrap().lucky);
+    sim.world_mut().get_mut::<Inventory>(a).unwrap().fish = 1;
+    let before = pocket(&sim, a);
+    use_fixture(&mut sim, a, Fixture::KitchenPass, FixtureAction::Buy(Item::FishPlate));
+    let inv = *sim.world().get::<Inventory>(a).unwrap();
+    assert!(inv.lucky && inv.fish == 0);
+    assert_eq!(pocket(&sim, a), before + 10);
+
+    put(&mut sim, croupier, casino::role_spot(TableId::Roulette).unwrap());
+    put(&mut sim, a, casino::bettor_spots(TableId::Roulette)[2]);
+    sim.table_request(croupier, TableRequest { table: TableId::Roulette, action: TableAction::TakeRole });
+    run(&mut sim, 1);
+    sim.drain_audit();
+    sim.table_request(
+        a,
+        TableRequest { table: TableId::Roulette, action: TableAction::RouletteBet(RBet::Straight(0), 5) },
+    );
+    run(&mut sim, 1);
+    sim.table_request(croupier, TableRequest { table: TableId::Roulette, action: TableAction::Spin });
+    run(&mut sim, 1);
+    let spins = sim
+        .drain_audit()
+        .iter()
+        .filter(|e| matches!(e, shared::audit::Entry::Outcome { what: shared::audit::Derived::Spin { .. }, .. }))
+        .count();
+    // A straight bet on 0 almost always loses: the luck buys a second spin.
+    assert_eq!(spins, 2);
+    assert!(!sim.world().get::<Inventory>(a).unwrap().lucky, "used up");
+}

@@ -121,6 +121,15 @@ fn use_fixtures(
                 focus.level = b.focus;
                 inv.well_fed = b.well_fed;
             }
+            (Fixture::KitchenPass, FixtureAction::Buy(Item::FishPlate)) => {
+                // Cooked from a fish the player caught: +$10 on the sale, and luck.
+                if chaos.kitchen_offline || inv.fish == 0 {
+                    continue;
+                }
+                inv.fish -= 1;
+                pocket.0 += 10;
+                inv.lucky = true;
+            }
             (Fixture::Shop, FixtureAction::Upgrade(id)) => {
                 if timer.phase != ShiftPhase::Setup {
                     continue;

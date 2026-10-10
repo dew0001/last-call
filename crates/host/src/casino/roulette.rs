@@ -154,6 +154,38 @@ pub fn run(
                             |s| Some(shared::audit::Derived::Spin { result: s.result }),
                         ),
                     };
+                    // A lucky bettor (fish plate) who would lose everything gets one reroll.
+                    let mut lucky: Vec<Entity> = host
+                        .bets
+                        .iter()
+                        .map(|(e, _)| *e)
+                        .filter(|e| inventories.get(*e).is_ok_and(|i| i.lucky))
+                        .collect();
+                    lucky.dedup();
+                    let loses = |e: Entity, result: u8| {
+                        host.bets
+                            .iter()
+                            .filter(|(b, _)| *b == e)
+                            .all(|(_, bet)| roulette::payout(bet.selection, bet.amount, result) == 0)
+                    };
+                    let unlucky: Vec<Entity> = lucky.into_iter().filter(|e| loses(*e, spin.result)).collect();
+                    let spin = if unlucky.is_empty() {
+                        spin
+                    } else {
+                        for e in &unlucky {
+                            if let Ok(mut inv) = inventories.get_mut(*e) {
+                                inv.lucky = false;
+                            }
+                        }
+                        decide(
+                            &mut rngs,
+                            &mut audit,
+                            TABLE,
+                            tick,
+                            |d| Roulette::start(d, &()),
+                            |s| Some(shared::audit::Derived::Spin { result: s.result }),
+                        )
+                    };
                     host.spin = Some((spin, MIN_SPIN_SECS * shared::TICK_HZ));
                 }
             }

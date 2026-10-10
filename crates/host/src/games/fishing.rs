@@ -37,6 +37,7 @@ pub fn run(
     mut spots: Query<(&mut FishingHost, &mut FishingView)>,
     mut players: GamePlayers,
     mut room: Query<&mut RunLedger, With<RoomState>>,
+    mut inventories: Query<(&Player, &mut Inventory)>,
 ) {
     let mut sorted: Vec<_> = spots.iter_mut().collect();
     sorted.sort_by_key(|(h, _)| h.spot);
@@ -88,7 +89,7 @@ pub fn run(
             && let Some(line) = &mut host.line
         {
             line.phase = LinePhase::Done(Catch::Escaped);
-            finish(host, Catch::Escaped, &mut players, &mut room);
+            finish(host, Catch::Escaped, &mut players, &mut room, &mut inventories);
         }
 
         let mut ended = None;
@@ -101,7 +102,7 @@ pub fn run(
             }
         }
         if let Some(c) = ended {
-            finish(host, c, &mut players, &mut room);
+            finish(host, c, &mut players, &mut room, &mut inventories);
         }
 
         let line = host.line.filter(|l| !matches!(l.phase, LinePhase::Done(_)));
@@ -133,11 +134,18 @@ fn finish(
     c: Catch,
     players: &mut GamePlayers,
     room: &mut Query<&mut RunLedger, With<RoomState>>,
+    inventories: &mut Query<(&Player, &mut Inventory)>,
 ) {
     let Some((_, id)) = host.fisher else { return };
     host.last = Some((id, c));
     if let Catch::Landed(fish) = c {
         pay(players, id, fish.value());
+        // A real fish can go to the kitchen for a plate.
+        if fish != shared::fishing::Fish::Boot
+            && let Some((_, mut inv)) = inventories.iter_mut().find(|(p, _)| p.id == id)
+        {
+            inv.fish = inv.fish.saturating_add(1);
+        }
     }
     let bets: Vec<Bet<Side>> = host
         .bets

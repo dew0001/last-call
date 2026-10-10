@@ -68,6 +68,7 @@ impl FixtureAction {
     /// A menu line: what it is and what it costs (`upgrades` for the next rank).
     pub fn label(self, upgrades: &crate::upgrades::Upgrades) -> String {
         match self {
+            FixtureAction::Buy(Item::FishPlate) => "Fish plate from your catch (+$10, a lucky reroll)".into(),
             FixtureAction::Buy(i) => format!("{} ${}", i.label(), i.price()),
             FixtureAction::Upgrade(u) => match upgrades.next_cost(u) {
                 Some(c) => format!("{} (rank {}/{}) ${c}", u.label(), upgrades.rank(u) + 1, u.max_rank()),
@@ -136,7 +137,13 @@ impl Fixture {
     pub fn menu(self) -> Vec<FixtureAction> {
         match self {
             Fixture::ZeenDrawer => vec![FixtureAction::Buy(Item::Zeen)],
-            Fixture::KitchenPass => vec![FixtureAction::Buy(Item::Fries), FixtureAction::Buy(Item::Burger)],
+            Fixture::KitchenPass => {
+                vec![
+                    FixtureAction::Buy(Item::Fries),
+                    FixtureAction::Buy(Item::Burger),
+                    FixtureAction::Buy(Item::FishPlate),
+                ]
+            }
             Fixture::Shop => crate::upgrades::ALL.iter().map(|u| FixtureAction::Upgrade(*u)).collect(),
             Fixture::CharmShelf => {
                 [Charm::RiggedDie, Charm::MarkedDeck, Charm::ColdBrew].into_iter().map(FixtureAction::Charm).collect()
