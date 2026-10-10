@@ -316,6 +316,10 @@ pub struct SoakResult {
     pub mean_ms: f64,
     /// Ticks over the 10 ms soak budget.
     pub over_10ms: u64,
+    /// Which ticks were over 10 ms (the first 1000). The simulation is
+    /// deterministic, so a tick that is slow in its own right is slow in every
+    /// run; one the OS stalled is not.
+    pub over_10ms_ticks: Vec<u64>,
     /// The five slowest ticks: (tick, ms).
     pub slowest: Vec<(u64, f64)>,
     /// Natively: the slowest tick after the first second in thread CPU time.
@@ -393,6 +397,8 @@ pub fn soak(ticks: u64) -> SoakResult {
     let n = times.len().max(1);
     let mean = times.iter().map(|t| f64::from(*t)).sum::<f64>() / n as f64;
     let over = times.iter().filter(|t| **t > 10.0).count() as u64;
+    let over_ticks: Vec<u64> =
+        times.iter().enumerate().filter(|(_, t)| **t > 10.0).map(|(i, _)| (i + warm) as u64).take(1000).collect();
     let mut ranked: Vec<(u64, f64)> =
         times.iter().enumerate().map(|(i, t)| ((i + warm) as u64, f64::from(*t))).collect();
     ranked.sort_by(|a, b| b.1.total_cmp(&a.1));
@@ -407,6 +413,7 @@ pub fn soak(ticks: u64) -> SoakResult {
         p99_ms: f64::from(times.get(n * 99 / 100).copied().unwrap_or(0.0)),
         mean_ms: mean,
         over_10ms: over,
+        over_10ms_ticks: over_ticks,
         slowest: ranked,
         cpu_worst_ms: cpu_worst,
         house,
