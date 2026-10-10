@@ -104,6 +104,7 @@ export function mountSettings() {
         <h2>Paused</h2>
         <button type="button" data-act="resume" class="primary">Resume</button>
         <button type="button" data-act="start" hidden>Open the bar</button>
+        <button type="button" data-act="invite" hidden>Copy invite link</button>
         <button type="button" data-act="settings">Settings</button>
         <button type="button" data-act="save" hidden>Save game</button>
         <button type="button" data-act="quit">Quit to title</button>
@@ -235,6 +236,7 @@ export function mountSettings() {
     btn('save').hidden = !(inRoom() && isHost());
     btn('quit').hidden = !inRoom();
     btn('start').hidden = !(isHost() && shift?.waiting);
+    btn('invite').hidden = !(inRoom() && window.__lcRoom?.link);
     main.querySelector('h2').textContent = inRoom() ? 'Paused' : 'Menu';
     menu.querySelector('#menu-note').textContent =
       inRoom() && isHost() ? 'You are the host: the room closes if you quit.' : '';
@@ -258,6 +260,15 @@ export function mountSettings() {
   window.__lcMenu = { open, close, isOpen: () => !menu.hidden };
 
   btn('resume').addEventListener('click', resume);
+  btn('invite').addEventListener('click', async () => {
+    const link = window.__lcRoom?.link ?? '';
+    try {
+      await navigator.clipboard.writeText(link);
+      menu.querySelector('#menu-note').textContent = `Copied: ${link}`;
+    } catch {
+      menu.querySelector('#menu-note').textContent = link;
+    }
+  });
   btn('settings').addEventListener('click', () => {
     main.hidden = true;
     form.hidden = false;

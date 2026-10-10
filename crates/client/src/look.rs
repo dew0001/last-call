@@ -32,6 +32,7 @@ pub enum Surface {
     Wood,
     Metal,
     Leather,
+    Ceiling,
 }
 
 impl Surface {
@@ -56,6 +57,7 @@ impl Surface {
             Surface::Wood => "dark_planks",
             Surface::Metal => "metal_plate",
             Surface::Leather => "fabric_leather_02",
+            Surface::Ceiling => "wood_plank_wall",
         }
     }
 
@@ -126,7 +128,9 @@ pub fn material(assets: &AssetServer, surface: Surface, lightmapped: bool) -> St
         occlusion_texture: Some(assets.load_builder().with_settings(repeat(false)).load(format!("tex/{id}_a.jpg"))),
         perceptual_roughness: 1.0,
         metallic: if surface == Surface::Metal { 1.0 } else { 0.0 },
-        lightmap_exposure: if lightmapped { 9_000.0 } else { 1.0 },
+        // The bake is in the plain gray-box units: scaled down for the
+        // darker photo textures it would otherwise wash out.
+        lightmap_exposure: if lightmapped { 2_500.0 } else { 1.0 },
         ..default()
     }
 }

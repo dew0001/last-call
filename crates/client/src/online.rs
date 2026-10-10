@@ -438,27 +438,10 @@ fn setup_hud(mut commands: Commands, nodraw: Option<Res<NoDraw>>) {
         return;
     }
     let font = |size: f32| TextFont { font_size: bevy::text::FontSize::Px(size), ..default() };
-    commands.spawn((
-        ClockText,
-        Text::new(""),
-        font(18.0),
-        TextColor(Color::srgb(1.0, 0.85, 0.55)),
-        Node { position_type: PositionType::Absolute, bottom: px(30), left: px(10), ..default() },
-    ));
-    commands.spawn((
-        DrunkText,
-        Text::new(""),
-        font(16.0),
-        TextColor(Color::srgb(1.0, 0.7, 0.35)),
-        Node { position_type: PositionType::Absolute, bottom: px(52), left: px(10), ..default() },
-    ));
-    commands.spawn((
-        MoneyText,
-        Text::new(""),
-        font(16.0),
-        TextColor(Color::srgb(0.55, 1.0, 0.75)),
-        Node { position_type: PositionType::Absolute, bottom: px(8), left: px(10), ..default() },
-    ));
+    // In the browser the page draws the clock, money and drunk meter
+    // (web/hud.js); these texts stay for the native client.
+    #[cfg(not(target_arch = "wasm32"))]
+    spawn_text_hud(&mut commands);
     // Pour gauge, bottom center: fill (amber) over a track with the green
     // zone, and foam (white) under it.
     let bar =
@@ -521,6 +504,32 @@ fn setup_hud(mut commands: Commands, nodraw: Option<Res<NoDraw>>) {
             TextColor(Color::WHITE),
             TextLayout::justify(Justify::Center),
         ));
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn spawn_text_hud(commands: &mut Commands) {
+    let font = |size: f32| TextFont { font_size: bevy::text::FontSize::Px(size), ..default() };
+    commands.spawn((
+        ClockText,
+        Text::new(""),
+        font(18.0),
+        TextColor(Color::srgb(1.0, 0.85, 0.55)),
+        Node { position_type: PositionType::Absolute, bottom: px(30), left: px(10), ..default() },
+    ));
+    commands.spawn((
+        DrunkText,
+        Text::new(""),
+        font(16.0),
+        TextColor(Color::srgb(1.0, 0.7, 0.35)),
+        Node { position_type: PositionType::Absolute, bottom: px(52), left: px(10), ..default() },
+    ));
+    commands.spawn((
+        MoneyText,
+        Text::new(""),
+        font(16.0),
+        TextColor(Color::srgb(0.55, 1.0, 0.75)),
+        Node { position_type: PositionType::Absolute, bottom: px(8), left: px(10), ..default() },
+    ));
 }
 
 /// Dollars with thousands separators: 120000 -> "$120,000".
@@ -682,6 +691,23 @@ fn setup_bar(
                 bicubic_sampling: false,
             });
         }
+    }
+    // Ceilings over the indoor rooms (the office shares the bar's).
+    if let Some(assets) = &assets {
+        let mut parts = Vec::new();
+        for a in AREAS.iter().filter(|a| !a.room.outdoors() && a.room != Room::Office) {
+            let (w, d) = (a.x1 - a.x0, a.z1 - a.z0);
+            let slab = Plane3d::new(Vec3::NEG_Y, Vec2::new(w / 2.0, d / 2.0)).mesh().build();
+            let mut m =
+                art::part(slab, Transform::from_xyz(a.x0 + w / 2.0, bar::WALL_HEIGHT, a.z0 + d / 2.0), Color::WHITE);
+            look::world_uv(&mut m, Surface::Ceiling.tile());
+            parts.push(m);
+        }
+        commands.spawn((
+            Mesh3d(meshes.add(art::combine(parts))),
+            MeshMaterial3d(materials.add(look::material(assets, Surface::Ceiling, false))),
+            Transform::default(),
+        ));
     }
     // Walls and the bar's furniture: static, so they merge into one mesh per
     // material (a draw call per surface instead of about a hundred).
@@ -1010,10 +1036,17 @@ fn dress_props(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut cache: Local<Option<[(Handle<Mesh>, Handle<StandardMaterial>); 5]>>,
+    assets: Option<Res<AssetServer>>,
+    nodraw: Option<Res<NoDraw>>,
 ) {
     if props.is_empty() {
         return;
     }
+    // Stools draw as the scanned bar stool (its origin is on the floor; the
+    // physics body's centre is 0.38 m up).
+    let stool_model = assets
+        .filter(|_| nodraw.is_none())
+        .map(|a| a.load(GltfAssetLabel::Scene(0).from_asset("models/bar_chair_round_01/bar_chair_round_01.gltf")));
     let looks = cache.get_or_insert_with(|| {
         let white =
             materials.add(StandardMaterial { base_color: Color::WHITE, perceptual_roughness: 0.4, ..default() });
@@ -1032,6 +1065,13 @@ fn dress_props(
         ]
     });
     for (entity, kind) in &props {
+        if let (PropKind::Stool, Some(model)) = (kind, &stool_model) {
+            commands.entity(entity).insert((DressedProp, Transform::default(), Visibility::default())).with_child((
+                bevy::world_serialization::WorldAssetRoot(model.clone()),
+                Transform::from_xyz(0.0, -0.38, 0.0),
+            ));
+            continue;
+        }
         let (mesh, mat) = &looks[match kind {
             PropKind::Bottle => 0,
             PropKind::Chip => 1,

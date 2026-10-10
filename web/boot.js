@@ -11,6 +11,7 @@
 import { hostRoom, joinRoom, newRoomCode, parseRoomCode, signalUrl } from './net.js';
 import { startVoice } from './voice.js';
 import { mountSettings } from './settings.js';
+import { mountHud } from './hud.js';
 import { ACHIEVEMENTS, chooseHat, chosenHat, unlockedHats, watchAchievements } from './achievements.js';
 import { startTutorial } from './tutorial.js';
 
@@ -46,6 +47,7 @@ window.__frames = 0;
 
 const lobby = document.getElementById('lobby');
 mountSettings();
+mountHud();
 
 // The lobby's hat picker: every hat this player has unlocked.
 function mountHats() {
@@ -451,7 +453,7 @@ async function runHost() {
 
 async function runPlayer(code) {
   const mod = await loadClient();
-  window.__lcRoom = { code, role: 'player' };
+  window.__lcRoom = { code, link: `${location.origin}${location.pathname}?room=${code}`, role: 'player' };
   show(banner, `Joining room ${code}…`);
   let started = false;
   const net = joinRoom(code, {
