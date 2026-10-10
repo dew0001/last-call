@@ -330,14 +330,16 @@ fn grab_and_throw(frame: u64) -> PlayerInput {
 
 /// The [`Script::GrabAndDrop`] timeline: like [`grab_and_throw`], then a
 /// step away from the counter (clear of the stools, so the prop reaches the
-/// floor) and Q.
+/// floor) and Q. Q is tapped for two seconds (4 frames down, 4 up): a stall
+/// on a loaded machine can swallow a single press, and Q with empty hands
+/// does nothing.
 fn grab_and_drop(frame: u64) -> PlayerInput {
     use shared::movement::buttons::DROP;
     let half_turn = std::f32::consts::PI;
     match frame {
         0..524 => grab_and_throw(frame),
         524..556 => PlayerInput::new(Vec2::Y, half_turn, 0.0, 0),
-        556..566 => PlayerInput::new(Vec2::ZERO, half_turn, 0.0, DROP),
+        556..684 => PlayerInput::new(Vec2::ZERO, half_turn, 0.0, if (frame / 4).is_multiple_of(2) { DROP } else { 0 }),
         _ => PlayerInput::new(Vec2::ZERO, half_turn, 0.0, 0),
     }
 }

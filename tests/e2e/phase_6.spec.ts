@@ -69,7 +69,8 @@ test('every room draws within the budgets', async ({ browser, browserName }) => 
   ];
   const worst = { meshes: 0, triangles: 0, p50: 0, p95: 0, cpuMs: 0 };
   for (const [room, route] of stops) {
-    await walkToOnHost(host, route);
+    // Only the room matters here, not the exact spot.
+    await walkToOnHost(host, route, 5, 1.0);
     const s: any = await frameStats(host);
     if (browserName === 'chromium') Object.assign(s, await cpuPerFrame(host));
     console.log(room, JSON.stringify(s));

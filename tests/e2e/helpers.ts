@@ -120,7 +120,7 @@ export async function tap(page: Page, buttons: number, ms = 150) {
  * disagrees. In WebKit the host sometimes never received a walk's inputs:
  * the client predicted the walk, then snapped back to the host's position.
  */
-export async function walkToOnHost(page: Page, points: [number, number][], tries = 3) {
+export async function walkToOnHost(page: Page, points: [number, number][], tries = 3, near = 0.5) {
   const [x, z] = points[points.length - 1];
   for (let i = 0; i < tries; i++) {
     await walkTo(page, points);
@@ -130,7 +130,7 @@ export async function walkToOnHost(page: Page, points: [number, number][], tries
       (id) => (window as any).__hostTicks?.at(-1)?.players?.find((p: any) => p[0] === id),
       s.playerId,
     );
-    if (at && Math.hypot(at[1] - x, at[3] - z) < 0.5) return;
+    if (at && Math.hypot(at[1] - x, at[3] - z) < near) return;
   }
   throw new Error(`walkToOnHost: the host never saw the player reach ${x},${z}`);
 }
