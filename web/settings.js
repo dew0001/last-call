@@ -27,7 +27,16 @@ export const ACTIONS = [
   ['talk', 'Push to talk', 'AltLeft'],
 ];
 const DEFAULT_KEYS = Object.fromEntries(ACTIONS.map(([a, , k]) => [a, k]));
-const DEFAULTS = { sensitivity: 1, invertY: false, volume: 1, voice: 'open', graphics: 'high', keys: DEFAULT_KEYS };
+const DEFAULTS = {
+  sensitivity: 1,
+  invertY: false,
+  volume: 1,
+  sfx: 0.9,
+  music: 0.5,
+  voice: 'open',
+  graphics: 'high',
+  keys: DEFAULT_KEYS,
+};
 
 /** A software rasterizer (no GPU): SwiftShader, llvmpipe and the like. */
 function softwareRenderer() {
@@ -126,7 +135,9 @@ export function mountSettings() {
           </label>
         </div>
         <div data-pane="audio" hidden>
-          <label>Volume <input name="volume" type="range" min="0" max="1" step="0.05"></label>
+          <label>Master volume <input name="volume" type="range" min="0" max="1" step="0.05"></label>
+          <label>Effects <input name="sfx" type="range" min="0" max="1" step="0.05"></label>
+          <label>Music <input name="music" type="range" min="0" max="1" step="0.05"></label>
           <label>Voice chat
             <select name="voice">
               <option value="open">Open mic</option>
@@ -153,6 +164,8 @@ export function mountSettings() {
   form.onsubmit = () => false;
   form.elements.graphics.value = s.graphics;
   form.elements.volume.value = s.volume;
+  form.elements.sfx.value = s.sfx;
+  form.elements.music.value = s.music;
   form.elements.voice.value = s.voice;
   form.elements.sensitivity.value = s.sensitivity;
   form.elements.invertY.checked = !!s.invertY;
@@ -165,6 +178,8 @@ export function mountSettings() {
     update({
       graphics: form.elements.graphics.value,
       volume: Number(form.elements.volume.value),
+      sfx: Number(form.elements.sfx.value),
+      music: Number(form.elements.music.value),
       voice: form.elements.voice.value,
       sensitivity: Number(form.elements.sensitivity.value),
       invertY: form.elements.invertY.checked,

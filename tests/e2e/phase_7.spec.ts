@@ -205,3 +205,19 @@ test('soak: the wasm host runs eight players with no tick over 10 ms', async ({ 
   console.log('soak ticks over 10 ms in both runs:', JSON.stringify(slow));
   expect(slow).toEqual([]);
 });
+
+test('sound: effects, ambience and the jukebox start on the first key and play without errors', async ({ browser }) => {
+  const { host } = await createRoom(browser, undefined, '&chaos=off');
+  const errors: string[] = [];
+  host.on('pageerror', (e) => errors.push(e.message));
+  await host.keyboard.press('KeyW');
+  const played = await host.evaluate(async () => {
+    const sfx = (window as any).__lcSfx;
+    for (const name of Object.keys(sfx)) sfx[name]();
+    await new Promise((r) => setTimeout(r, 500));
+    return Object.keys(sfx).length;
+  });
+  expect(played).toBeGreaterThan(10);
+  expect(errors).toEqual([]);
+  await host.context().close();
+});

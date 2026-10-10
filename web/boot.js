@@ -12,6 +12,7 @@ import { hostRoom, joinRoom, newRoomCode, parseRoomCode, signalUrl } from './net
 import { startVoice } from './voice.js';
 import { mountSettings } from './settings.js';
 import { mountHud } from './hud.js';
+import './sfx.js';
 import { ACHIEVEMENTS, chooseHat, chosenHat, unlockedHats, watchAchievements } from './achievements.js';
 import { startTutorial } from './tutorial.js';
 
