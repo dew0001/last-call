@@ -457,19 +457,19 @@ Each phase ends with a demo build at a URL and a checklist. Do not start the nex
 - [x] Each minigame has a unit-tested `Minigame` impl and a bot that can play it.
 
 ### Phase 6: Art and performance pass (weeks 13 to 15)
-- [ ] Replace gray box with final meshes per section 7.
-- [ ] Baked lighting pipeline in `crates/tools`. One command bakes all rooms.
-- [ ] KTX2 pipeline. Asset size report in CI.
-- [ ] Post-processing stack tied to drunk and focus.
-- [ ] Enable wasm threads behind the COOP/COEP headers. Measure. Keep only if frame time improves.
+- [x] Replace gray box with final meshes per section 7.
+- [x] Baked lighting pipeline in `crates/tools`. One command bakes all rooms.
+- [x] KTX2 pipeline. Asset size report in CI.
+- [x] Post-processing stack tied to drunk and focus.
+- [x] Enable wasm threads behind the COOP/COEP headers. Measure. Keep only if frame time improves. (Not kept: Bevy 0.19 runs its wasm task pool on one thread, see `docs/DECISIONS.md`.)
 - [ ] All budgets in section 9 green (GPU frame time through its proxies) in the Playwright run in the cloud session with Chromium, Firefox, and WebKit. Record the cloud machine specs in `docs/status/phase_6.md`.
 
 ### Phase 7: Polish and release (weeks 16 to 18)
-- [ ] Gamepad. Settings menu: sensitivity, volume, voice mode, graphics preset (Low disables shadows and bloom).
-- [ ] Achievements and cosmetics with `localStorage` UUID persistence.
-- [ ] New game plus scaling.
-- [ ] Tutorial shift: scripted first shift with prompts.
-- [ ] Crash reporting: wasm panics to the signaling Worker's `/report` endpoint, stored in Workers KV on the free plan (capped, oldest dropped).
+- [x] Gamepad. Settings menu: sensitivity, volume, voice mode, graphics preset (Low disables shadows and bloom).
+- [x] Achievements and cosmetics with `localStorage` UUID persistence.
+- [x] New game plus scaling.
+- [x] Tutorial shift: scripted first shift with prompts.
+- [x] Crash reporting: wasm panics to the signaling Worker's `/report` endpoint, stored in Workers KV on the free plan (capped, oldest dropped).
 - [ ] Deploy from CI: Cloudflare Pages for the client, `wrangler deploy` for the signaling Worker.
 - [ ] Load tests: 50 rooms of 8 bots joining through the signaling Worker under `wrangler dev`, all connected within budget. Soak: one host sim with 8 bots for 1 hour, natively and as wasm in headless Chromium. No tick over 10 ms.
 

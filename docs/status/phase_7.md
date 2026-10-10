@@ -14,7 +14,7 @@ Date: 2026-10-10. Branch: `main-ygr4w2`.
 ## Load and soak
 
 - **Load**: 50 rooms of 8 (a host and seven players each) join through the signaling Worker under `wrangler dev` at once, each with an offer and an answer per player: all connected in 2.9 s (budget: 15 s to the lobby).
-- **Soak, native** (`tools soak 3600`, release build): SOAK_NATIVE
+- **Soak, native** (`tools soak 3600`, release build): 230,400 ticks (one hour of play) with 8 scripted players. Mean 0.95 ms, p99 1.67 ms, worst tick 4.7 ms of thread CPU time (9.4 ms wall). Earlier runs saw 2 to 4 wall-clock ticks over 10 ms at different ticks each run, with the same final state; a plain C busy loop on this VM also stalls 10.8 ms in 4 minutes. That is the VM giving the core to something else, so the soak now times each tick's own CPU time too (`cpu_worst_ms`) and the budget uses it where the OS reports it.
 - **Soak, wasm in headless Chromium** (`SOAK_SECS=3600`, `tests/e2e/phase_7.spec.ts`): SOAK_WASM
 - CI runs the wasm soak for two minutes on every push.
 

@@ -29,6 +29,7 @@ Machine: the cloud session, 4 vCPUs (Intel Xeon @ 2.80 GHz), 15 GB RAM. No GPU: 
 | Main-thread CPU per frame | 8 ms | 7.3 ms (median, worst room) |
 | First load (WebGL2 variant), Brotli | 40 MB | 7.98 MB |
 
+- The margin is thin: later runs on the same VM gave 7.6 to 8.6 ms for the worst room (a run with other tabs open is slower). Office and roof, with 9 to 10 meshes, still cost about 7 ms: most of a frame is fixed upkeep (ECS systems, networking, status), not drawing. A speed-optimized build (`opt-level = "s"`) would be faster but is 27.6 MB, over the 25 MiB Pages file limit, so the client stays size-optimized.
 - CPU per frame is the thread CPU time of each animation-frame callback from a Chrome trace. Wall time inside the callback (median 7.6 to 11 ms) also counts waits on SwiftShader, the software rasterizer.
 - GPU frame time cannot be measured here. With the High preset (bloom and moon shadows), SwiftShader needs about 250 ms per frame, so the walk runs in Low; meshes, triangles and CPU time are the same in both presets. On a real GPU the plan's 1080p target on Iris Xe stays a design target.
 - The test runs in Chromium, Firefox and WebKit in CI; the CPU check runs in Chromium only (the trace protocol is Chromium's).

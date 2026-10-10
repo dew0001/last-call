@@ -22,10 +22,16 @@ const params = new URLSearchParams(location.search);
 // test measures CPU time with Chrome's profiler instead.
 window.__frameCpu = [];
 window.__frames = 0;
+// `?fps=N` caps the frame rate (tests only): eight test tabs share one
+// machine with the host, where real players each have their own.
 {
   const raf = window.requestAnimationFrame.bind(window);
+  const minGap = 1000 / (Number(new URLSearchParams(location.search).get('fps')) || 1000);
+  let last = 0;
   window.requestAnimationFrame = (cb) =>
-    raf((t) => {
+    raf(function frame(t) {
+      if (t - last < minGap - 2) return raf(frame);
+      last = t;
       const start = performance.now();
       try {
         cb(t);

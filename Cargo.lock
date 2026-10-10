@@ -4058,6 +4058,7 @@ dependencies = [
  "console_error_panic_hook",
  "js-sys",
  "last_call_shared",
+ "libc",
  "lightyear",
  "serde",
  "serde_json",

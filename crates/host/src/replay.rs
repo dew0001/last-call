@@ -318,7 +318,25 @@ pub struct SoakResult {
     pub over_10ms: u64,
     /// The five slowest ticks: (tick, ms).
     pub slowest: Vec<(u64, f64)>,
+    /// Natively: the slowest tick after the first second in thread CPU time.
+    /// Wall time also counts the times the OS runs something else; on a
+    /// shared VM even an empty loop sees 10 ms stalls. None in wasm.
+    pub cpu_worst_ms: Option<f64>,
     pub house: i64,
+}
+
+/// This thread's CPU time in ms (Unix), for [`soak`].
+#[cfg(unix)]
+fn thread_cpu_ms() -> Option<f64> {
+    let mut t = libc::timespec { tv_sec: 0, tv_nsec: 0 };
+    // SAFETY: `t` is a valid timespec for clock_gettime to write.
+    let ok = unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut t) } == 0;
+    ok.then(|| t.tv_sec as f64 * 1e3 + t.tv_nsec as f64 / 1e6)
+}
+
+#[cfg(not(unix))]
+fn thread_cpu_ms() -> Option<f64> {
+    None
 }
 
 /// The soak test (plan section 10, Phase 7): the replay's six scripted
@@ -342,7 +360,8 @@ pub fn soak(ticks: u64) -> SoakResult {
     let players: Vec<Entity> =
         (0..bots.len()).map(|i| sim.add_local_player(0x50a6_0000 + i as u64, "soak", i as u8)).collect();
     let mut times: Vec<f32> = Vec::with_capacity(ticks as usize);
-    for _ in 0..ticks {
+    let mut cpu_worst: Option<f64> = None;
+    for i in 0..ticks {
         for (bot, &player) in bots.iter_mut().zip(&players) {
             let pos = sim.world().get::<PlayerPos>(player).map_or(Vec3::ZERO, |p| p.0);
             let input = bot.input(pos);
@@ -357,8 +376,14 @@ pub fn soak(ticks: u64) -> SoakResult {
             }
         }
         let t = Instant::now();
+        let cpu = thread_cpu_ms();
         sim.tick();
         times.push(t.elapsed().as_secs_f32() * 1000.0);
+        if let (Some(a), Some(b)) = (cpu, thread_cpu_ms())
+            && i >= u64::from(shared::TICK_HZ)
+        {
+            cpu_worst = Some(cpu_worst.unwrap_or(0.0).max(b - a));
+        }
         sim.drain_audit();
     }
     let warm = (shared::TICK_HZ as usize).min(times.len());
@@ -383,6 +408,7 @@ pub fn soak(ticks: u64) -> SoakResult {
         mean_ms: mean,
         over_10ms: over,
         slowest: ranked,
+        cpu_worst_ms: cpu_worst,
         house,
     }
 }

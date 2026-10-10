@@ -81,13 +81,15 @@ test('8 clients (host plus 7) walk around the gray-box bar', async ({ browser, b
   test.setTimeout(300_000);
   // Eight renderers share 4 cores with no GPU: keep them tiny.
   const tiny = { width: 160, height: 90 };
-  const { host, room } = await createRoom(browser, tiny);
+  // 20 frames a second: eight client tabs share this machine's 4 cores with
+  // the host Worker, where real players each bring their own machine.
+  const { host, room } = await createRoom(browser, tiny, '&fps=20');
   const tabs: Page[] = [host];
   // Open tabs one at a time and let each join before the next. Headed Firefox
   // only runs the frame loop of the window in front, and a page that never
   // draws a frame never joins.
   for (let i = 1; i < 8; i++) {
-    const tab = await openTab(browser, `${room.link}&gpu=webgl2&novoice&name=Bot${i}`, `bot${i}`, tiny);
+    const tab = await openTab(browser, `${room.link}&gpu=webgl2&novoice&fps=20&name=Bot${i}`, `bot${i}`, tiny);
     await waitFor(tab, `tab ${i} joined`, (s) => !!s.playerId && !!s.ownPos, 60_000);
     tabs.push(tab);
   }
@@ -114,6 +116,7 @@ test('8 clients (host plus 7) walk around the gray-box bar', async ({ browser, b
   const avg = Math.max(...reports.map((r) => r.tickAvgMs));
   const max = Math.max(...reports.map((r) => r.tickMaxMs));
   test.info().annotations.push({ type: 'host-tick-ms', description: `avg ${avg.toFixed(2)} max ${max.toFixed(2)}` });
+  console.log('host tick ms', avg.toFixed(2), max.toFixed(2));
   // The budget is checked in Chromium, the performance reference. In WebKit,
   // eight browser processes share the runner's 4 cores and the wall-clock
   // tick time mostly measures that contention; it is only recorded

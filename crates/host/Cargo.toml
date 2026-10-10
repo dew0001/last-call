@@ -23,6 +23,10 @@ vleue_navigator.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 
+[target.'cfg(unix)'.dependencies]
+# The soak's per-tick thread CPU clock (preemption on a shared VM is not tick cost).
+libc = "0.2"
+
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen.workspace = true
 js-sys.workspace = true

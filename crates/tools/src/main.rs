@@ -43,7 +43,8 @@ fn main() {
             let secs: u64 = args.get(1).and_then(|s| s.parse().ok()).unwrap_or(3600);
             let r = host::replay::soak(secs * u64::from(shared::TICK_HZ));
             println!("{r:?}");
-            std::process::exit(i32::from(r.worst_ms > 10.0));
+            // The budget is on the tick's own CPU time where the OS reports it.
+            std::process::exit(i32::from(r.cpu_worst_ms.unwrap_or(r.worst_ms) > 10.0));
         }
         Some("bake_lighting") => std::process::exit(bake::run(args.iter().any(|a| a == "--check"))),
         Some("replay") => std::process::exit(replay::run(&args[1..])),
