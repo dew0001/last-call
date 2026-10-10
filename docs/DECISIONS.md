@@ -340,6 +340,47 @@ The table spawns first ran unordered against the prop spawns. The native and was
 
 The plan makes the lever pull a physics interaction. In the gray box the pull is a table request (keys 1 to 3, by bet), and the reels show the stops. A grabbable lever needs the machine's mesh and a joint; it is deferred to the art pass (Phase 6).
 
+## Phase 4
+
+### The world map
+
+The bar grew into nine rooms laid out on one floor plane (`shared::world`): the bar, the office, the kitchen and the back room behind the counter wall, the basement stairwell and the basement to the west, the roof deck to the east, the parking lot out front and the pier beyond it. Height is not modeled: the "basement" and "roof" are areas at floor level reached through doors. Real floors need stairs, which the walk code (a 2D collider in the floor plane) does not have; the art pass can drop the basement floor and raise the roof once stairs exist. Walls come from each area's edges with door gaps cut out, so a room is reached only through its door. Customers still walk the bar's navmesh only.
+
+### Focus, The Spins and the mop
+
+Zeen raises Focus by 35 (`shared::buffs`); Focus loses a point a second. Buzzed (over 60): every 10 s a 20% chance of a gag that drops what the hands hold; the chance is drawn only when something is held, so idle players do not use the RNG stream. The Spins (drunk over 40 and Focus over 60): the camera rolls for 3 s, both meters clear, and a vomit puddle appears. Vomit has no age, so it stays until mopped: a mop prop starts in the kitchen; held within 1 m of a puddle for a second, it cleans it.
+
+### Kitchen food
+
+Fries clear 15 drunk and burgers 30 (a burger also marks the player well fed for the fight pit). Food money goes to the house pool. The fish plate needs fishing (Phase 5).
+
+### Upgrades
+
+All ten upgrades exist with the plan's costs. They are bought at the office terminal from the house pool, during Setup only, so the money for the week's payment cannot vanish mid-shift. Their effects: Felt doubles each table's max per rank and raises customers' cash by 50% per rank; Tap Wall speeds the pour by 25% per rank (fill and foam both, so the green zone timing scales and the client predicts the same speed); Security Camera outlines the card counter and pays 500 for catching him; Bouncer halves the brawl per rank; Jukebox makes customers 30% more patient and lets players pick a track; Lucky Charm Shelf sells the rigged die, marked deck and cold brew; Generator shortens the outage to 10 s; Extinguisher lets a player put out the fire (R next to it); Neon adds a customer per wave per rank; Back Door keeps chips in a player's hands during a raid. Extra beer types (stout, the Boot) are listed in `upgrades::BEERS` but not poured yet: a second tap belongs to the art pass with the tap wall mesh.
+
+### Charms
+
+The rigged die is a table request at roulette (V): the next spin lands in the chosen dozen. Its draw is logged as a `RiggedSpin` outcome, so the audit replay checks rigged spins too. The marked deck shows its holder the dealer's hole card during the round. The hole card travels in the holder's replicated `Inventory`, so a modified client of another player could read it; that is accepted for a party game.
+
+### Chaos events
+
+All eight run on the host (`host::chaos`), scheduled at the start of Open (`shared::chaos::schedule`) and drawn from their own RNG stream (50). Counters and consequences as built:
+
+- Raid: cops come in after 20 s and seize every chip stack in the bar. Chips in the office (the safe room) and outside are safe. With the Back Door, chips in a player's hands are kept. Tables pause while the cops are in. The plan's "stand customers away from tables" is not modeled.
+- Brawl: two brawlers walk in and fling a nearby prop every 40 ticks. A player grabs one with R and walks it out the front door; R again lets go. If both are out the brawl is countered; otherwise every customer leaves and three bottles or glasses break.
+- Outage: the lights and tables stop; the breaker in the stairwell ends it.
+- Slot jam: one machine pays ten times until its service key is turned; the house's extra loss stops at 2,000. "Hitting it with a stool makes it worse" is not modeled.
+- Inspector: walks the bar for 90 s. A loose beer or any indoor puddle (vomit included) when he leaves costs 1,500.
+- Loan shark: sits at blackjack (a seated customer gives up a seat if none is free) and tips the dealer 200 when his hand wins. If the dealer is Sloppy or worse (drunk 40 and up) while he sits, he breaks the table for the shift. The plan's "drunk" was read as Sloppy, since a Wasted player cannot deal at all.
+- Kitchen fire: one customer leaves every 6 s. A loose beer within 1.5 m puts it out (a thrown glass), as does the extinguisher. Otherwise the kitchen is closed next shift.
+- Card counter: a blackjack customer who wins every hand (his payout is raised to at least a win) until he is hauled out like a brawler. If he walks out with his money, that is the consequence.
+
+Event lengths are not scaled by `?fast`; a fast room's Last call ends any event still running. Rooms take `?chaos=off` (no scheduled events; tests force them with `__forceChaos`); the Phase 2 and 3 browser tests and the casino consistency bot test use it, since they test the tables, not chaos.
+
+### Gray-box fixture UI
+
+Fixtures are colored posts. A panel at the top right lists the nearest fixture's menu with number keys (U for the breaker and service keys, whose number keys belong to the slot machine beside them). A banner at the top shows running events with their counters. Focus shows a running Hi-Lo count in the blackjack panel, counted on the client from the cards it has seen since the last shuffle.
+
 ## User decisions
 
 ### No debt-tier unlocks (2026-10-09)

@@ -254,6 +254,8 @@ function startHostWorker() {
     if (e.data?.t === 'error') console.error('host worker stack', e.data.message, e.data.stack);
   });
   worker.onerror = (e) => console.error('host worker error', e.message);
+  // Tests start a chaos event on the host: `__forceChaos('Outage')`.
+  window.__forceChaos = (kind) => worker.postMessage({ t: 'chaos', kind });
   return worker;
 }
 window.startHostWorker = startHostWorker;

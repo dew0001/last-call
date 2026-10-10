@@ -6,11 +6,12 @@
 //   { t: 'pkt', peer, data }       bytes from a player (ArrayBuffer)
 //   { t: 'leave', peer }           a player left
 //   { t: 'local', port }           MessagePort for the host's own client (peer 0)
+//   { t: 'chaos', kind }           start a chaos event (tests), e.g. 'Outage'
 // Worker -> page messages:
 //   { t: 'tick', tick, tps }       once per second
 //   { t: 'out', items: [[peer, ArrayBuffer], ...] }  bytes for players
 //   { t: 'audit', run }            the RNG audit log's run id (IndexedDB)
-import init, { host_worker_start, host_connect, host_packet, host_leave } from './pkg/host.js';
+import init, { host_worker_start, host_connect, host_packet, host_leave, host_force_chaos } from './pkg/host.js';
 import { append, newRun, prune } from './audit.js';
 import { latest, store } from './saves.js';
 
@@ -68,6 +69,9 @@ function handle(msg) {
       break;
     case 'leave':
       host_leave(msg.peer);
+      break;
+    case 'chaos':
+      host_force_chaos(msg.kind);
       break;
     case 'local':
       localPort = msg.port;

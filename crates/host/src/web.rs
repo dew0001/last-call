@@ -117,6 +117,16 @@ pub fn host_packet(peer: u32, bytes: &[u8]) {
 }
 
 /// A player left or its channel failed.
+/// Start a chaos event (tests): `kind` is a [`shared::chaos::ChaosKind`] name, such as `Outage`.
+#[wasm_bindgen]
+pub fn host_force_chaos(kind: &str) {
+    let Some(k) = shared::chaos::ALL.into_iter().find(|k| format!("{k:?}") == kind) else {
+        web_sys::console::error_1(&format!("no chaos event {kind}").into());
+        return;
+    };
+    with_state(|s| s.sim.force_chaos(k));
+}
+
 #[wasm_bindgen]
 pub fn host_leave(peer: u32) {
     with_state(|s| {

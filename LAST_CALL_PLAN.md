@@ -443,10 +443,10 @@ Each phase ends with a demo build at a URL and a checklist. Do not start the nex
 - [x] House edge test: 100,000 simulated hands or spins per game in a unit test. Blackjack edge between 0.4% and 0.9% against a perfect basic-strategy bot. Roulette edge 2.7%. Slots RTP 91% to 93%. Also report (do not gate on) the blackjack edge against the 15%-mistake customer bot.
 
 ### Phase 4: Chaos and upgrades (week 8)
-- [ ] All eight chaos events with counters and consequences.
-- [ ] Upgrade shop in the office. All upgrades functional.
-- [ ] Zeen consumable with Focus tiers and The Spins.
-- [ ] Room doors. No tier gates: every room is open from the start (user decision, 2026-10-09).
+- [x] All eight chaos events with counters and consequences.
+- [x] Upgrade shop in the office. All upgrades functional.
+- [x] Zeen consumable with Focus tiers and The Spins.
+- [x] Room doors. No tier gates: every room is open from the start (user decision, 2026-10-09).
 
 ### Phase 5: Side minigames (weeks 9 to 12)
 - [ ] Fishing with bets.

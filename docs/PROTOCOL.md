@@ -27,6 +27,7 @@ Kind of physics prop.
 - `Chip`
 - `Stool`
 - `Glass`: A beer glass from the tap. Carries a [`Beer`].
+- `Mop`: The kitchen mop: held near vomit or a puddle, it cleans it up.
 
 ### `Beer` (struct)
 
@@ -39,6 +40,18 @@ A pour in progress at the tap, on the pouring player. Percent.
 ### `Drunk` (struct)
 
 A player's drunk meter, 0 to 100 (see [`crate::drunk`]). `passed_out` stays set for the whole pass-out, while the meter keeps decaying.
+
+### `Focus` (struct)
+
+A player's Focus meter, 0 to 100 (see [`crate::buffs`]). `spinning` is set while The Spins roll the camera.
+
+### `Inventory` (struct)
+
+A player's one-shift items and food effects.
+
+### `Vomit` (struct)
+
+Vomit on the floor (from The Spins). Also a [`Puddle`] (it is slippery); it stays until someone mops it.
 
 ### `Puddle` (struct)
 
@@ -87,6 +100,30 @@ The roulette table as every client sees it.
 ### `SlotView` (struct)
 
 One slot machine as every client sees it.
+
+### `RoomUpgrades` (struct)
+
+The upgrades the crew owns (on the room entity).
+
+### `JukeboxState` (struct)
+
+The jukebox (on the room entity): the playing track, if any.
+
+### `ActiveChaos` (struct)
+
+One chaos event in progress.
+
+### `ChaosState` (struct)
+
+Chaos on the room entity: what is running, how the last ones ended, and lasting consequences.
+
+### `ChaosNpc` (struct)
+
+A chaos NPC: a cop, a brawler, the inspector, the loan shark, the card counter (also carries [`Customer`]-like pose via [`NpcPose`]).
+
+### `Fire` (struct)
+
+The kitchen fire (a hazard area).
 
 ## Room state (host to clients)
 
@@ -139,6 +176,10 @@ A player asks a table to do something. The host checks everything: where the pla
 ### `TapEvent` (struct)
 
 The tick a player pressed (`down`) or let go of E at the beer tap, by the client's own prediction. Inputs from a client that stalls reach the host after it has simulated those ticks, and the host then reuses the last known input; this stamp lets the host end (or start) the pour at the right tick anyway. The host still computes the pour itself.
+
+### `FixtureRequest` (struct)
+
+A player uses a fixture (drawer, kitchen pass, shop, breaker...). The host checks where the player stands, the money and the rules.
 
 ### `Control` (struct)
 
