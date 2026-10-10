@@ -78,7 +78,8 @@ fn eight_bots_play_the_casino_and_every_client_agrees_with_the_host() {
     let _turn = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     use shared::casino::TableId;
     let timings = Timings { setup: 1, open: 600, last_call: 30, payment: 1, outcome: 1, wave: 5 };
-    let config = HostConfig { timings, preset: Preset::Casino, ..Default::default() };
+    // No chaos: this test is about the tables staying in sync (chaos has its own tests).
+    let config = HostConfig { timings, preset: Preset::Casino, manual_chaos: true, ..Default::default() };
     let mut room = LocalRoom::with_config(8, config, |i| match i {
         0 => Script::Casino { table: TableId::Blackjack, role: true, spot: 0 },
         1 => Script::Casino { table: TableId::Blackjack, role: false, spot: 1 },

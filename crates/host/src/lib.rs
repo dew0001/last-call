@@ -24,6 +24,7 @@ use shared::protocol::ProtocolPlugin;
 pub mod beer;
 pub mod buffs;
 pub mod casino;
+pub mod chaos;
 pub mod customers;
 pub mod drunk;
 pub mod economy;
@@ -61,6 +62,8 @@ pub struct HostConfig {
     /// Resume a saved run: its ledger, calendar and pockets replace the
     /// preset's.
     pub resume: Option<shared::save::RunSave>,
+    /// No scheduled chaos: only events started with [`HostSim::force_chaos`] (tests).
+    pub manual_chaos: bool,
 }
 
 /// Run every schedule on one thread, in its fixed topological order. The
@@ -127,6 +130,7 @@ impl HostSim {
             app.insert_resource(save::SavedPockets(save.pockets_by_id()));
         }
         app.insert_resource(start);
+        app.insert_resource(chaos::Chaos::new(config.manual_chaos));
         app.add_plugins((
             game::GamePlugin,
             physics::HostPhysicsPlugin,
@@ -139,6 +143,7 @@ impl HostSim {
             save::SavePlugin,
             buffs::BuffsPlugin,
             fixtures::FixturesPlugin,
+            chaos::ChaosPlugin,
         ));
 
         deterministic_schedules(&mut app);
@@ -228,6 +233,16 @@ impl HostSim {
     /// A fixture request from a local player (tests), as if it had come over the network.
     pub fn fixture_request(&mut self, player: Entity, request: shared::protocol::FixtureRequest) {
         self.app.world_mut().resource_mut::<fixtures::FixtureQueue>().0.push((player, request));
+    }
+
+    /// Start a chaos event on the next tick of Open (tests).
+    pub fn force_chaos(&mut self, kind: shared::chaos::ChaosKind) {
+        self.app.world_mut().resource_mut::<chaos::ForcedChaos>().0.push(kind);
+    }
+
+    /// How chaos events have ended so far, in order.
+    pub fn chaos_log(&self) -> Vec<(shared::chaos::ChaosKind, shared::chaos::Ending)> {
+        self.app.world().resource::<chaos::Chaos>().log.clone()
     }
 
     /// Take the newest run save, if one was written since the last call

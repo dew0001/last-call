@@ -48,6 +48,8 @@ pub enum Mood {
     Leaving,
     /// At a table or a slot machine.
     Gambling,
+    /// Making trouble (a brawler), or being hauled out by a player.
+    Trouble,
 }
 
 /// Is a stool at (x, z) with this up-vector Y component a usable bar seat?

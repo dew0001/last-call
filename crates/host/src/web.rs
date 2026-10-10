@@ -132,10 +132,11 @@ pub fn host_leave(peer: u32) {
 /// use `?fast=60` for a 14-second shift). `seed` is 32 random bytes. `preset`
 /// picks a test start (`lastweek`, `broke`) or is empty. `customers` is
 /// `bar` to send every customer to the bar (tests of the beer tap), or empty.
+/// `chaos` is `off` for no scheduled chaos events (tests force them), or empty.
 /// `resume` is a saved run as JSON ([`shared::save::RunSave`]), or empty for
 /// a new run; a save this build cannot read starts a new run.
 #[wasm_bindgen]
-pub fn host_worker_start(fast: u32, seed: &[u8], preset: &str, customers: &str, resume: &str) {
+pub fn host_worker_start(fast: u32, seed: &[u8], preset: &str, customers: &str, chaos: &str, resume: &str) {
     console_error_panic_hook::set_once();
     let scope = scope();
     let mut room_seed = [0u8; 32];
@@ -147,6 +148,7 @@ pub fn host_worker_start(fast: u32, seed: &[u8], preset: &str, customers: &str, 
         seed: room_seed,
         preset: crate::economy::Preset::parse(preset),
         tastes: (customers == "bar").then_some(crate::customers::BAR_ONLY),
+        manual_chaos: chaos == "off",
         resume: if resume.is_empty() {
             None
         } else {

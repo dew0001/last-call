@@ -56,7 +56,11 @@ pub fn run(
     mut npcs: Query<(Entity, &Customer, &mut Npc), Without<WantsToLeave>>,
     mut room: Query<&mut RunLedger, With<RoomState>>,
     owned: Res<crate::fixtures::Owned>,
+    mut effects: ResMut<crate::chaos::TableEffects>,
 ) {
+    if effects.paused {
+        return;
+    }
     let tick = tick.0;
     let slot_max = owned.0.table_max(casino::SLOT_MAX);
     let mut sorted: Vec<_> = machines.iter_mut().collect();
@@ -137,6 +141,7 @@ pub fn run(
             host.spinning -= 1;
             if host.spinning == 0 {
                 let returned = shared::slots::payout(host.bet, host.stops);
+                let returned = returned + effects.jam_extra(host.machine, returned);
                 let mut paid = returned;
                 match host.user {
                     Some((e, Who::Player(_))) => match players.get_mut(e) {

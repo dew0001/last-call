@@ -243,8 +243,8 @@ window.__hostTicks = [];
 function startHostWorker() {
   const url = new URL('./host-worker.js', import.meta.url);
   // `?fast=N` runs shifts N times faster; `?preset=` picks a test start;
-  // `?customers=bar` keeps every customer at the bar.
-  for (const key of ['fast', 'preset', 'customers']) if (params.get(key)) url.searchParams.set(key, params.get(key));
+  // `?customers=bar` keeps every customer at the bar; `?chaos=off` stops chaos events.
+  for (const key of ['fast', 'preset', 'customers', 'chaos']) if (params.get(key)) url.searchParams.set(key, params.get(key));
   // `?resume`: continue the saved run (web/saves.js).
   if (params.has('resume')) url.searchParams.set('resume', '');
   const worker = new Worker(url, { type: 'module' });

@@ -109,7 +109,11 @@ pub fn run(
     mut npcs: Query<(Entity, &Customer, &mut Npc), Without<WantsToLeave>>,
     mut room: Query<&mut RunLedger, With<RoomState>>,
     owned: Res<crate::fixtures::Owned>,
+    effects: Res<crate::chaos::TableEffects>,
 ) {
+    if effects.paused || effects.blackjack_broken {
+        return;
+    }
     let Ok((mut host, mut view)) = tables.single_mut() else { return };
     let table_max = owned.0.table_max(casino::BLACKJACK_MAX);
     let patience = casino::TABLE_PATIENCE_SECS * shared::TICK_HZ * owned.0.patience_percent() / 100;
@@ -315,7 +319,7 @@ pub fn run(
     }
 
     if let Some(round) = finished {
-        settle(&mut commands, host, &round, &mut players, &mut npcs, &mut room);
+        settle(&mut commands, host, &round, &mut players, &mut npcs, &mut room, &effects);
     }
 
     // Customers waiting on a dealer lose patience; broke ones leave.
@@ -386,10 +390,17 @@ fn settle(
     players: &mut Players,
     npcs: &mut Query<(Entity, &Customer, &mut Npc), Without<WantsToLeave>>,
     room: &mut Query<&mut RunLedger, With<RoomState>>,
+    effects: &crate::chaos::TableEffects,
 ) {
     let mut payouts = Blackjack::payout(round, &host.bets);
     let spots = casino::bettor_spots(TABLE);
+    let mut shark_won = false;
     for (p, (seat, who, entity)) in payouts.iter_mut().zip(&host.round) {
+        // The card counter wins every hand.
+        if effects.counter == Some(*entity) {
+            p.returned = p.returned.max(p.staked * 2);
+        }
+        shark_won |= effects.shark == Some(*entity) && p.returned > p.staked;
         host.last[*seat] = Some(p.returned - p.staked);
         match who {
             Who::Customer(_) => match npcs.get_mut(*entity) {
@@ -408,7 +419,13 @@ fn settle(
     }
     let (net, mut commission) = house_take(&payouts, DEALER_COMMISSION_PERCENT);
     match host.dealer.and_then(|d| players.get_mut(d).ok()) {
-        Some((_, _, _, mut pocket, _)) => pocket.0 += commission,
+        Some((_, _, _, mut pocket, _)) => {
+            pocket.0 += commission;
+            // The loan shark tips the dealer when he wins.
+            if shark_won {
+                pocket.0 += shared::chaos::SHARK_TIP;
+            }
+        }
         None => commission = 0,
     }
     super::book(room, net, commission);

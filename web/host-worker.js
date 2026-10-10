@@ -88,7 +88,8 @@ onmessage = (e) => (ready ? handle(e.data) : pending.push(e.data));
 await init();
 // `?fast=N` on the worker URL shortens every shift phase N times,
 // `?preset=` picks a test start (tests and demos), `?customers=bar`
-// sends every customer to the bar, and `?resume` continues the saved run.
+// sends every customer to the bar, `?chaos=off` runs no chaos events
+// unless a test forces one, and `?resume` continues the saved run.
 const search = new URL(self.location.href).searchParams;
 const fast = Number(search.get('fast') ?? 1) || 1;
 host_worker_start(
@@ -96,6 +97,7 @@ host_worker_start(
   crypto.getRandomValues(new Uint8Array(32)),
   search.get('preset') ?? '',
   search.get('customers') ?? '',
+  search.get('chaos') ?? '',
   search.has('resume') ? ((await latest().catch(() => undefined))?.json ?? '') : '',
 );
 ready = true;

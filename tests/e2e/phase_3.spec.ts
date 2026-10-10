@@ -212,7 +212,7 @@ test('a Wasted player cannot deal; Courage bets 1.5 times the table maximum', as
 test('customers gamble at every game, and the audit log replays in the browser', async ({ browser }) => {
   test.setTimeout(300_000);
   // fast=20: Setup 6 s, waves every 4.5 s.
-  const { host } = await createRoom(browser, undefined, '&fast=20&preset=casino');
+  const { host } = await createRoom(browser, undefined, '&chaos=off&fast=20&preset=casino');
   await walkToOnHost(host, TO_DEALER);
   await ask(host, 'Blackjack', 'TakeRole');
   const where = new Set<string>();
@@ -288,7 +288,7 @@ test('a saved run resumes in a new room with the same money and shift', async ({
   test.setTimeout(240_000);
   // fast=60: a 14-second shift. The host plays the slots so its pocket and
   // the house pool move, then the next Setup saves the run.
-  const { host } = await createRoom(browser, undefined, '&fast=60&preset=casino');
+  const { host } = await createRoom(browser, undefined, '&chaos=off&fast=60&preset=casino');
   const id = (await status(host)).playerId as string;
   await walkToOnHost(host, toSeat(...SLOT0));
   for (let i = 1; i <= 3; i++) {

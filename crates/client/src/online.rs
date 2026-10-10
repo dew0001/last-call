@@ -107,6 +107,7 @@ fn mood_name(m: shared::customers::Mood) -> &'static str {
         Mood::Drinking => "drinking",
         Mood::Leaving => "leaving",
         Mood::Gambling => "gambling",
+        Mood::Trouble => "trouble",
     }
 }
 

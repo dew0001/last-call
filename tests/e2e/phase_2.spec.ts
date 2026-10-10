@@ -11,7 +11,7 @@ test.beforeEach(({ page }, info) => {
 });
 
 test('the shift clock runs Setup, Open, Last call, Payment and rolls into the next shift', async ({ browser }) => {
-  const { host, room } = await createRoom(browser, undefined, '&fast=60');
+  const { host, room } = await createRoom(browser, undefined, '&chaos=off&fast=60');
   const player = await openTab(browser, `${room.link}&gpu=webgl2&novoice&name=Rook`, 'player');
   await waitFor(player, 'player joined', (s) => !!s.playerId && !!s.game?.shift);
 
@@ -59,7 +59,7 @@ test('money goes from a pocket into the house pool at the office safe', async ({
 
 test('the last payment wins, and a new run starts', async ({ browser }) => {
   // Week 6, 80,000 paid, 45,000 in the house.
-  const { host, room } = await createRoom(browser, undefined, '&fast=60&preset=lastweek');
+  const { host, room } = await createRoom(browser, undefined, '&chaos=off&fast=60&preset=lastweek');
   const player = await openTab(browser, `${room.link}&gpu=webgl2&novoice&name=Rook`, 'player');
   const s0 = await waitFor(player, 'player joined', (s) => !!s.playerId && !!s.game?.money);
   expect(s0.game.money.due).toBe(40_000);
@@ -90,7 +90,7 @@ test('the last payment wins, and a new run starts', async ({ browser }) => {
 
 test('a second missed payment burns the bar down', async ({ browser }) => {
   // One payment already missed, nothing in the house.
-  const { host, room } = await createRoom(browser, undefined, '&fast=60&preset=broke');
+  const { host, room } = await createRoom(browser, undefined, '&chaos=off&fast=60&preset=broke');
   const lost = await waitFor(host, 'run lost', (s) => s.game?.money?.outcome === 'lost', 90_000);
   expect(lost.game.money.missedInARow).toBe(2);
   expect(lost.game.money.last).toEqual(['missed', 16_000]);
@@ -99,7 +99,7 @@ test('a second missed payment burns the bar down', async ({ browser }) => {
 
 test('customers walk in, sit at the bar, order, and leave at last call', async ({ browser }) => {
   // fast=20: Setup 6 s, Open 27 s with a wave every 4.5 s, Last call 6 s.
-  const { host, room } = await createRoom(browser, undefined, '&fast=20&customers=bar');
+  const { host, room } = await createRoom(browser, undefined, '&chaos=off&fast=20&customers=bar');
   const player = await openTab(browser, `${room.link}&gpu=webgl2&novoice&name=Rook`, 'player');
   await waitFor(player, 'player joined', (s) => !!s.playerId && !!s.game?.shift);
 
@@ -125,7 +125,7 @@ test('customers walk in, sit at the bar, order, and leave at last call', async (
 
 test('a perfect pour, carried to a waiting customer, is paid for and tipped', async ({ browser }) => {
   // fast=20: Setup 6 s, then customers arrive at the start of Open.
-  const { host, room } = await createRoom(browser, undefined, '&fast=20&customers=bar');
+  const { host, room } = await createRoom(browser, undefined, '&chaos=off&fast=20&customers=bar');
   const player = await openTab(browser, `${room.link}&gpu=webgl2&novoice&name=Rook`, 'player');
   await waitFor(player, 'player joined', (s) => !!s.playerId && !!s.game?.money);
 

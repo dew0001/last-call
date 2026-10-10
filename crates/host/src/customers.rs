@@ -264,15 +264,24 @@ fn spawn_waves(
         };
         let cash = owned.0.customer_cash(customers::starting_cash(d.below(361), week));
         waves.next_id += 1;
-        commands.spawn((
+        let npc =
+            Npc { cash, start_cash: cash, activity, seat, path: route(&mesh.0, door, Vec2::new(at.x, at.z)), ticks: 0 };
+        spawn(&mut commands, waves.next_id, Mood::Entering, npc);
+    }
+}
+
+/// Spawn a customer at the front door.
+pub fn spawn(commands: &mut Commands, id: u32, mood: Mood, npc: Npc) -> Entity {
+    commands
+        .spawn((
             Name::new("Customer"),
-            Customer { id: waves.next_id, mood: Mood::Entering, patience: 0 },
+            Customer { id, mood, patience: 0 },
             NpcPose { pos: Vec3::new(DOOR.0, 0.0, DOOR.1), yaw: 0.0 },
-            Npc { cash, start_cash: cash, activity, seat, path: route(&mesh.0, door, Vec2::new(at.x, at.z)), ticks: 0 },
+            npc,
             Replicate::to_clients(NetworkTarget::All),
             InterpolationTarget::to_clients(NetworkTarget::All),
-        ));
-    }
+        ))
+        .id()
 }
 
 /// Customers a table sent away walk out.
@@ -288,7 +297,7 @@ fn walk_out(
 }
 
 /// Start walking out: off the stool, then to the door.
-fn leave(mesh: &NavMesh, c: &mut Customer, npc: &mut Npc, pose: &NpcPose) {
+pub fn leave(mesh: &NavMesh, c: &mut Customer, npc: &mut Npc, pose: &NpcPose) {
     if c.mood == Mood::Leaving {
         return;
     }
@@ -351,7 +360,7 @@ fn walk(
                     commands.entity(e).despawn();
                     continue;
                 }
-                Mood::Waiting | Mood::Drinking | Mood::Gambling => {}
+                Mood::Waiting | Mood::Drinking | Mood::Gambling | Mood::Trouble => {}
             }
         }
         pose.set_if_neq(next);

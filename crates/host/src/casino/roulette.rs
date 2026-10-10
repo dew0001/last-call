@@ -71,7 +71,11 @@ pub fn run(
     mut chips: Query<(Entity, &Position, &mut LinearVelocity), With<RakeChip>>,
     mut room: Query<&mut RunLedger, With<RoomState>>,
     owned: Res<crate::fixtures::Owned>,
+    effects: Res<crate::chaos::TableEffects>,
 ) {
+    if effects.paused {
+        return;
+    }
     let Ok((mut host, mut view)) = tables.single_mut() else { return };
     let table_max = owned.0.table_max(casino::ROULETTE_MAX);
     let patience = casino::TABLE_PATIENCE_SECS * shared::TICK_HZ * owned.0.patience_percent() / 100;
