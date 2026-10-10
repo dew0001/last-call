@@ -8,6 +8,33 @@
 const PHASES = { SETUP: 'Setup', OPEN: 'Open', 'LAST CALL': 'Last call', PAYMENT: 'Payment' };
 const DRUNK_COLORS = ['#6fd4ff', '#ffd25a', '#ff9a3c', '#ff4f6d', '#c04dff'];
 
+// Places with an action (crates/shared/src/bar.rs and world.rs): x, z, reach.
+const TAP = [4.0, -4.0, 1.4];
+const SAFE = [9.4, -6.4, 1.3];
+
+/** A key's label from the player's bindings (web/settings.js). */
+const key = (action) => {
+  const code = window.__lcSettings?.keys?.[action] ?? '';
+  if (/^Key[A-Z]$/.test(code)) return code.slice(3);
+  if (/^Digit\d$/.test(code)) return code.slice(5);
+  return code.replace(/(Left|Right)$/, '') || '?';
+};
+const near = (pos, [x, z, r]) => pos && Math.hypot(pos[0] - x, pos[2] - z) < r;
+
+/** What the player can do right now, as one line (or ''). */
+function prompt(s) {
+  const g = s.game;
+  if (g.drunk?.passedOut) return 'You passed out. Someone has to drag you somewhere safe…';
+  if (g.pour) return '';
+  if (g.beer) {
+    return `Serve it: walk to a waiting customer and press [${key('drop')}] by the counter · [${key('use')}] drink it yourself`;
+  }
+  if (s.holding) return `[${key('throw')}] hold to throw · [${key('drop')}] drop`;
+  if (near(s.ownPos, TAP)) return `Hold [${key('interact')}] to pour a beer, let go in the green`;
+  if (near(s.ownPos, SAFE)) return `[${key('interact')}] put $100 from your pocket into the house pool`;
+  return '';
+}
+
 const money = (v) => `${v < 0 ? '-' : ''}$${Math.abs(v).toLocaleString('en-US')}`;
 const clock = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
@@ -28,6 +55,7 @@ export function mountHud() {
       <div class="hud-small" id="hud-debt"></div>
       <div class="hud-small" id="hud-due"></div>
     </div>
+    <div class="hud-prompt" id="hud-prompt" hidden></div>
     <div class="hud-card hud-drunk">
       <div class="hud-row"><span class="hud-label">Drunk</span><span id="hud-tier"></span></div>
       <div class="hud-meter"><div class="hud-meter-fill" id="hud-drunk-fill"></div></div>
@@ -61,6 +89,10 @@ export function mountHud() {
       $('hud-due').classList.toggle('warn', m.house < m.due);
     }
     set('hud-pocket', money(g.pocket ?? 0));
+
+    const line = prompt(s);
+    $('hud-prompt').hidden = !line;
+    set('hud-prompt', line);
 
     const d = g.drunk;
     const level = d?.level ?? 0;

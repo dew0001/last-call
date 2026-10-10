@@ -371,6 +371,7 @@ pub fn add(app: &mut App, cfg: OnlineConfig) {
             place_props,
             dress_customers,
             place_customers,
+            animate_gait,
             dress_puddles,
             follow_camera.in_set(CameraSet),
             post_effects,
@@ -789,7 +790,7 @@ pub(crate) fn setup_bar(
         Transform::from_xyz(0.0, -0.6, (pier.z0 + pier.z1) / 2.0 + 5.0),
     ));
     // A neon strip per room in its accent color (bloom makes them glow).
-    for a in AREAS.iter() {
+    for a in AREAS.iter().filter(|a| a.room != Room::Bar) {
         let accent = art::palette(a.room).1;
         let lum = accent.to_linear();
         let neon = materials.add(StandardMaterial {
@@ -799,20 +800,26 @@ pub(crate) fn setup_bar(
         });
         let len = ((a.x1 - a.x0) * 0.5).min(4.0);
         commands.spawn((
-            Mesh3d(meshes.add(Cuboid::new(len, 0.12, 0.06))),
+            Mesh3d(meshes.add(Capsule3d::new(0.025, len).mesh().longitudes(8).latitudes(4).build())),
             MeshMaterial3d(neon),
-            Transform::from_xyz((a.x0 + a.x1) / 2.0, 2.5, a.z0 + 0.12),
+            Transform::from_xyz((a.x0 + a.x1) / 2.0, 2.7, a.z0 + 0.12)
+                .with_rotation(Quat::from_rotation_z(std::f32::consts::FRAC_PI_2)),
         ));
     }
-    // The bar's sign over the counter.
+    // The bar's neon sign on the back wall, over the shelves, with a pink
+    // light so it glows on the bricks around it.
     commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(3.0, 0.6, 0.1))),
+        Mesh3d(meshes.add(art::neon_text("LAST CALL", 0.42, Color::WHITE))),
         MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(1.0, 0.2, 0.6),
-            emissive: LinearRgba::rgb(4.0, 0.4, 2.0),
+            base_color: Color::srgb(1.0, 0.3, 0.7),
+            emissive: LinearRgba::rgb(9.0, 0.9, 4.5),
             ..default()
         })),
-        Transform::from_xyz(0.0, 2.4, -bar::HALF_Z + 0.05),
+        Transform::from_xyz(0.0, 2.6, -bar::HALF_Z + 0.12),
+    ));
+    commands.spawn((
+        PointLight { intensity: 40_000.0, range: 4.0, color: Color::srgb(1.0, 0.25, 0.65), ..default() },
+        Transform::from_xyz(0.0, 2.6, -bar::HALF_Z + 0.6),
     ));
     // Warm lamps inside (at most 8 per room); a cold moon outside, the only shadow caster.
     for (_, x, z) in shared::world::lamps() {
@@ -995,16 +1002,19 @@ fn dress_players(
         if !predicted && !interpolated {
             continue;
         }
-        let hue = (player.id % 360) as f32;
-        let mut body = crate::art::figure(Color::hsl(hue, 0.65, 0.5), Color::srgb(0.98, 0.7, 0.5));
+        // A player's shirt is a bright colour from their id, so friends tell
+        // each other apart; the rest of the outfit varies too.
+        let mut outfit = crate::art::Outfit::from_seed(player.id);
+        outfit.shirt = Color::hsl((player.id % 360) as f32, 0.7, 0.5);
+        let mut parts = crate::art::figure_parts(outfit);
         if player.cosmetic > 0 {
-            body.merge(&crate::art::hat(player.cosmetic - 1)).expect("same attributes");
+            parts.body.merge(&crate::art::hat(player.cosmetic - 1)).expect("same attributes");
         }
-        let mesh = meshes.add(body);
         let material =
             materials.add(StandardMaterial { base_color: Color::WHITE, perceptual_roughness: 0.7, ..default() });
+        rig(&mut commands, entity, parts, &mut meshes, &material);
         let mut e = commands.entity(entity);
-        e.insert((Dressed, Mesh3d(mesh), MeshMaterial3d(material), Transform::default()));
+        e.insert((Dressed, Transform::default()));
         // First person: your own body would fill the view.
         if predicted {
             e.insert(Visibility::Hidden);
@@ -1158,15 +1168,15 @@ fn dress_customers(
     customers: Query<(Entity, &Customer), (With<Interpolated>, Without<DressedCustomer>)>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut cache: Local<Option<(Handle<Mesh>, Handle<Mesh>, Handle<StandardMaterial>)>>,
+    mut cache: Local<Option<(Handle<StandardMaterial>, Handle<Mesh>, Handle<StandardMaterial>)>>,
 ) {
     if customers.is_empty() {
         return;
     }
-    let (body, marker, marker_mat) = cache
+    let (cloth, marker, marker_mat) = cache
         .get_or_insert_with(|| {
             (
-                meshes.add(crate::art::figure(Color::srgb(0.45, 0.42, 0.4), Color::srgb(0.85, 0.68, 0.55))),
+                materials.add(StandardMaterial { base_color: Color::WHITE, perceptual_roughness: 0.75, ..default() }),
                 meshes.add(Sphere::new(0.12)),
                 materials.add(StandardMaterial {
                     base_color: Color::srgb(1.0, 0.85, 0.2),
@@ -1177,33 +1187,109 @@ fn dress_customers(
         })
         .clone();
     for (entity, c) in &customers {
-        // Muted tints, so players stand out; eight shades share materials.
-        let hue = (c.id % 8 * 45) as f32;
-        let mat = materials.add(StandardMaterial { base_color: Color::hsl(hue, 0.25, 0.8), ..default() });
-        commands
-            .entity(entity)
-            .insert((DressedCustomer, Mesh3d(body.clone()), MeshMaterial3d(mat), Transform::default()))
-            .with_child((
-                OrderMarker,
-                Mesh3d(marker.clone()),
-                MeshMaterial3d(marker_mat.clone()),
-                Transform::from_xyz(0.0, 1.15, 0.0),
-                Visibility::Hidden,
-            ));
+        // Every customer dresses differently; their shirts are a little
+        // duller than the players'.
+        let mut outfit = crate::art::Outfit::from_seed(u64::from(c.id) + 7);
+        outfit.shirt = outfit.shirt.mix(&Color::srgb(0.4, 0.38, 0.36), 0.35);
+        rig(&mut commands, entity, crate::art::figure_parts(outfit), &mut meshes, &cloth);
+        commands.entity(entity).insert((DressedCustomer, Transform::default())).with_child((
+            OrderMarker,
+            Mesh3d(marker.clone()),
+            MeshMaterial3d(marker_mat.clone()),
+            Transform::from_xyz(0.0, 1.15, 0.0),
+            Visibility::Hidden,
+        ));
     }
 }
 
 fn place_customers(
-    mut customers: Query<(&Customer, &NpcPose, &mut Transform, &Children), With<DressedCustomer>>,
+    mut customers: Query<(&Customer, &NpcPose, &mut Transform, &Children, Option<&mut Gait>), With<DressedCustomer>>,
     mut markers: Query<&mut Visibility, With<OrderMarker>>,
 ) {
-    for (c, pose, mut t, children) in &mut customers {
+    use shared::customers::Mood;
+    for (c, pose, mut t, children, gait) in &mut customers {
+        // Waiting or drinking at the counter: sitting on a stool.
+        if let Some(mut gait) = gait {
+            let at_counter = (pose.pos.z - (bar::COUNTER.1 + bar::COUNTER.3 + 0.8)).abs() < 0.6;
+            gait.seated = at_counter && matches!(c.mood, Mood::Waiting | Mood::Drinking);
+        }
         t.translation = pose.pos + Vec3::Y * (bar::PLAYER_HEIGHT / 2.0);
         t.rotation = Quat::from_rotation_y(pose.yaw);
         let shown = if c.mood == shared::customers::Mood::Waiting { Visibility::Inherited } else { Visibility::Hidden };
         for child in children.iter() {
             if let Ok(mut v) = markers.get_mut(child) {
                 v.set_if_neq(shown);
+            }
+        }
+    }
+}
+
+/// A walking figure's stride (players and customers).
+#[derive(Component, Default)]
+struct Gait {
+    phase: f32,
+    swing: f32,
+    last: Option<Vec3>,
+    /// On a stool at the counter: legs forward, forearms on the bar.
+    seated: bool,
+}
+
+/// An arm or a leg: 0 left arm, 1 right arm, 2 left leg, 3 right leg.
+#[derive(Component)]
+struct Limb(u8);
+
+/// Put an articulated figure on `entity`: its body as the entity's mesh,
+/// the limbs as children turning at their joints.
+fn rig(
+    commands: &mut Commands,
+    entity: Entity,
+    parts: crate::art::FigureParts,
+    meshes: &mut Assets<Mesh>,
+    material: &Handle<StandardMaterial>,
+) {
+    let arm = meshes.add(parts.arm);
+    let leg = meshes.add(parts.leg);
+    let mut e = commands.entity(entity);
+    e.insert((Mesh3d(meshes.add(parts.body)), MeshMaterial3d(material.clone()), Gait::default()));
+    for (i, joint) in parts.joints.into_iter().enumerate() {
+        let mesh = if i < 2 { arm.clone() } else { leg.clone() };
+        e.with_child((
+            Limb(i as u8),
+            Mesh3d(mesh),
+            MeshMaterial3d(material.clone()),
+            Transform::from_translation(joint),
+        ));
+    }
+}
+
+/// Swing arms and legs with the speed a figure moves at: a stride that grows
+/// from standing to a run, arms opposite to legs.
+fn animate_gait(
+    time: Res<Time>,
+    mut walkers: Query<(&Transform, &mut Gait, &Children)>,
+    mut limbs: Query<(&Limb, &mut Transform), Without<Gait>>,
+) {
+    let dt = time.delta_secs().max(1e-4);
+    for (t, mut gait, children) in &mut walkers {
+        let pos = t.translation;
+        let speed = gait.last.map_or(0.0, |l| Vec2::new(pos.x - l.x, pos.z - l.z).length() / dt).min(8.0);
+        gait.last = Some(pos);
+        let target = (speed / 3.0).min(1.0);
+        gait.swing += (target - gait.swing) * (dt * 8.0).min(1.0);
+        gait.phase += dt * (3.0 + speed * 2.4);
+        let a = gait.phase.sin() * 0.7 * gait.swing;
+        for child in children.iter() {
+            if let Ok((limb, mut lt)) = limbs.get_mut(child) {
+                let angle = if gait.seated {
+                    // Thighs forward off the stool, arms resting forward.
+                    if limb.0 < 2 { 0.9 + 0.05 * (gait.phase * 0.3 + f32::from(limb.0)).sin() } else { 1.35 }
+                } else {
+                    match limb.0 {
+                        0 | 3 => a,
+                        _ => -a,
+                    }
+                };
+                lt.rotation = Quat::from_rotation_x(if limb.0 < 2 && !gait.seated { angle * 0.8 } else { angle });
             }
         }
     }
