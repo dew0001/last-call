@@ -26,6 +26,15 @@ pub fn points(card: Card) -> u8 {
     rank(card).min(10)
 }
 
+/// The Hi-Lo count value: 2 to 6 count +1, 7 to 9 count 0, tens and aces -1.
+pub fn hi_lo(card: Card) -> i32 {
+    match rank(card) {
+        2..=6 => 1,
+        7..=9 => 0,
+        _ => -1,
+    }
+}
+
 /// Suit 0 to 3 (spades, hearts, diamonds, clubs).
 pub fn suit(card: Card) -> u8 {
     card / 13 % 4

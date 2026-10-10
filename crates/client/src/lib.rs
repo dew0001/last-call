@@ -11,6 +11,7 @@ use bevy::prelude::*;
 use bevy::render::renderer::RenderAdapterInfo;
 
 pub mod casino;
+pub mod chaos;
 pub mod online;
 #[cfg(target_arch = "wasm32")]
 mod web;

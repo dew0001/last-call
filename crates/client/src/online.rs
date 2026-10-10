@@ -86,6 +86,8 @@ pub struct GameStatus {
     pub voice_pitch: Vec<(String, f32)>,
     /// The tables.
     pub casino: crate::casino::CasinoStatus,
+    /// Focus, items, upgrades and chaos.
+    pub phase4: crate::chaos::Phase4Status,
 }
 
 #[derive(Default, Debug, Clone, serde::Serialize)]
@@ -203,6 +205,7 @@ pub fn add(app: &mut App, cfg: OnlineConfig) {
     app.init_resource::<LocalPour>();
     app.add_systems(FixedUpdate, predict_pour);
     crate::casino::add(app);
+    crate::chaos::add(app);
     app.add_systems(Startup, (setup_bar, setup_hud));
     app.add_systems(
         Update,
@@ -215,15 +218,24 @@ pub fn add(app: &mut App, cfg: OnlineConfig) {
             dress_customers,
             place_customers,
             dress_puddles,
-            follow_camera,
+            follow_camera.in_set(CameraSet),
             update_status,
             update_hud,
             update_pour_gauge,
             update_drunk_text,
         )
-            .chain(),
+            .chain()
+            .in_set(OnlineSet),
     );
 }
+
+/// The online drawing and status systems.
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct OnlineSet;
+
+/// The camera follows the player.
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct CameraSet;
 
 /// The shift clock line at the top of the screen. A wall clock replaces it
 /// in the art pass (plan section 7: diegetic UI).
@@ -895,6 +907,7 @@ fn update_status(
     timeline: Option<Res<LocalTimeline>>,
     game: GameQueries,
     casino: crate::casino::CasinoQueries,
+    phase4: crate::chaos::Phase4Queries,
     mut status: ResMut<NetStatus>,
 ) {
     let GameQueries { room, pockets, customers, gauges, beers, puddles, drunks, local_pour } = game;
@@ -961,6 +974,7 @@ fn update_status(
                 v
             },
             casino: casino.status(session.player_id, own.single().ok().map(|p| p.0)),
+            phase4: phase4.status(session.player_id, own.single().ok().map(|p| p.0)),
         },
     };
 }

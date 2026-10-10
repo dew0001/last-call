@@ -404,6 +404,13 @@ fn update_panel(
                 let last = seat.last.map_or(String::new(), |l| format!("  last {l:+}"));
                 s += &format!("Seat {}: {name} bet ${}  {}{turn}{last}\n", i + 1, seat.bet, hands.join(" | "));
             }
+            let p4 = &status.game.phase4;
+            if let Some(count) = p4.count {
+                s += &format!("Hi-Lo count {count:+}\n");
+            }
+            if let Some(card) = &p4.hole_card {
+                s += &format!("Marked deck: the hole card is {card}\n");
+            }
             if casino::at_role_spot(TableId::Blackjack, pos.x, pos.z) {
                 s += "\nT take/leave the deal   Enter deal   H hit   G stand";
                 if let Some(a) = b.dealer_should {

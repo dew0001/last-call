@@ -64,6 +64,22 @@ pub enum FixtureAction {
     Use,
 }
 
+impl FixtureAction {
+    /// A menu line: what it is and what it costs (`upgrades` for the next rank).
+    pub fn label(self, upgrades: &crate::upgrades::Upgrades) -> String {
+        match self {
+            FixtureAction::Buy(i) => format!("{} ${}", i.label(), i.price()),
+            FixtureAction::Upgrade(u) => match upgrades.next_cost(u) {
+                Some(c) => format!("{} (rank {}/{}) ${c}", u.label(), upgrades.rank(u) + 1, u.max_rank()),
+                None => format!("{} (max)", u.label()),
+            },
+            FixtureAction::Charm(c) => format!("{} ${}", c.label(), c.price()),
+            FixtureAction::Track(n) => format!("Play \"{}\"", TRACKS[usize::from(n) % TRACKS.len()]),
+            FixtureAction::Use => "Use".into(),
+        }
+    }
+}
+
 /// Jukebox tracks (generated loops, plan section 8).
 pub const TRACKS: [&str; 5] = ["Last Orders", "Tide Out", "Neon Rain", "Loan Shark Blues", "Closing Time"];
 
@@ -116,6 +132,20 @@ impl Fixture {
         out
     }
 
+    /// What the fixture offers, in key order (key 1 is the first).
+    pub fn menu(self) -> Vec<FixtureAction> {
+        match self {
+            Fixture::ZeenDrawer => vec![FixtureAction::Buy(Item::Zeen)],
+            Fixture::KitchenPass => vec![FixtureAction::Buy(Item::Fries), FixtureAction::Buy(Item::Burger)],
+            Fixture::Shop => crate::upgrades::ALL.iter().map(|u| FixtureAction::Upgrade(*u)).collect(),
+            Fixture::CharmShelf => {
+                [Charm::RiggedDie, Charm::MarkedDeck, Charm::ColdBrew].into_iter().map(FixtureAction::Charm).collect()
+            }
+            Fixture::Jukebox => (0..TRACKS.len() as u8).map(FixtureAction::Track).collect(),
+            Fixture::Breaker | Fixture::ServiceKey(_) => vec![FixtureAction::Use],
+        }
+    }
+
     /// Can a player at (x, z) use it?
     pub fn in_reach(self, x: f32, z: f32) -> bool {
         world::near(self.position(), x, z)
@@ -142,6 +172,17 @@ pub fn rigged_spin(dozen: u8, d: &mut impl crate::rng::Draw) -> u8 {
 mod tests {
     use super::*;
     use crate::rng::SimRng;
+
+    #[test]
+    fn every_fixture_has_a_menu_that_fits_the_number_keys() {
+        let u = crate::upgrades::Upgrades::default();
+        for f in Fixture::all() {
+            let menu = f.menu();
+            assert!(!menu.is_empty() && menu.len() <= 10, "{f:?}");
+            assert!(menu.iter().all(|a| !a.label(&u).is_empty()));
+        }
+        assert_eq!(FixtureAction::Buy(Item::Zeen).label(&u), "Zeen $3");
+    }
 
     #[test]
     fn every_fixture_stands_in_a_room_clear_of_blocks() {

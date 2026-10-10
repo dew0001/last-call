@@ -78,7 +78,7 @@ pub fn client_start(config: JsValue) -> Result<(), JsValue> {
     let mut app = crate::build_app(online);
     if let Some(bridge) = app.world().get_resource::<NetBridge>() {
         INBOX.with(|i| *i.borrow_mut() = Some(bridge.0.clone()));
-        app.add_systems(PreUpdate, (read_scripted_input, read_table_requests));
+        app.add_systems(PreUpdate, (read_scripted_input, read_table_requests, read_fixture_requests));
         app.add_systems(Last, send_outgoing);
     }
     app.add_systems(Last, publish_status);
@@ -133,6 +133,24 @@ fn read_table_requests(mut out: ResMut<shared::client::OutgoingTable>) {
         }
     }
     let _ = Reflect::set(&window, &"__lcTable".into(), &Array::new());
+}
+
+/// `window.__lcFixture.push({ fixture, action })` sends a fixture request
+/// (tests and automation): `{ fixture: "ZeenDrawer", action: { Buy: "Zeen" } }`.
+fn read_fixture_requests(mut out: ResMut<shared::client::OutgoingFixture>) {
+    let Some(window) = web_sys::window() else { return };
+    let Ok(value) = Reflect::get(&window, &"__lcFixture".into()) else { return };
+    let Ok(list) = value.dyn_into::<Array>() else { return };
+    if list.length() == 0 {
+        return;
+    }
+    for item in list.iter() {
+        match serde_wasm_bindgen::from_value::<shared::protocol::FixtureRequest>(item) {
+            Ok(request) => out.0.push(request),
+            Err(e) => set_error(format!("bad fixture request: {e}")),
+        }
+    }
+    let _ = Reflect::set(&window, &"__lcFixture".into(), &Array::new());
 }
 
 fn publish_status(status: Res<RenderStatus>, net: Option<Res<NetStatus>>) {
