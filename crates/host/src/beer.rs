@@ -292,6 +292,7 @@ fn serve(
     mut npcs: Query<(&mut Customer, &mut Npc)>,
     mut pockets: Query<(&Player, &mut Pocket)>,
     mut room: Query<&mut RunLedger, With<RoomState>>,
+    crowd: Res<crate::games::Crowd>,
 ) {
     let Ok(mut run) = room.single_mut() else { return };
     for (glass, pos, vel, held, fill, beer) in &glasses {
@@ -304,7 +305,8 @@ fn serve(
             continue;
         };
         let Some((paid, tip)) = beer::serve(fill.0, beer.perfect) else { continue };
-        let paid = paid.min(npc.cash);
+        // A crowd from the roof pays 20% more.
+        let paid = crowd.price(paid).min(npc.cash);
         npc.cash -= paid;
         run.ledger.house += paid;
         if tip > 0

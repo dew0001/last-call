@@ -125,6 +125,55 @@ A chaos NPC: a cop, a brawler, the inspector, the loan shark, the card counter (
 
 The kitchen fire (a hazard area).
 
+## Side games (host to clients)
+
+### `FishPhase` (enum)
+
+Where a line at a fishing spot is.
+- `Idle`
+- `Waiting`
+- `Biting`
+- `Reeling`
+
+### `FishingView` (struct)
+
+A fishing spot on the pier.
+
+### `ShotView` (struct)
+
+A basketball shot as released, for clients to draw the flight.
+
+### `HoopsView` (struct)
+
+The roof court.
+
+### `KickView` (struct)
+
+A penalty as it crossed the line.
+
+### `PenaltyView` (struct)
+
+The penalty spot and goal.
+
+### `FieldGoalResult` (struct)
+
+A field goal attempt's result.
+
+### `FieldGoalView` (struct)
+
+
+### `GauntletView` (struct)
+
+The gauntlet lane.
+
+### `Tracer` (struct)
+
+A shot's line for clients to draw.
+
+### `PitView` (struct)
+
+The fight pit.
+
 ## Room state (host to clients)
 
 ### `RoomState` (struct)
@@ -180,6 +229,34 @@ The tick a player pressed (`down`) or let go of E at the beer tap, by the client
 ### `FixtureRequest` (struct)
 
 A player uses a fixture (drawer, kitchen pass, shop, breaker...). The host checks where the player stands, the money and the rules.
+
+### `GameRequest` (struct)
+
+A player acts in a side game (plan sections 5.5 to 5.9). The host finds the station by where the player stands and checks the rules and money.
+
+### `GameAction` (enum)
+
+- `Cast`: Fishing: cast from the pier spot the player stands at (charge 0 to 100).
+- `Hook`: Fishing: strike when the bobber dips.
+- `Reel`: Fishing: the reel is held or let go.
+- `BetCatch`: Fishing: bet on the fight at a spot.
+- `JoinHoops`: Basketball: enter the next contest (pays the entry fee).
+- `StartHoops`
+- `Shoot`: Basketball: a shot with this charge (0 to 1000) and look.
+- `JoinShootout`: Penalties: enter the shootout, or stand in goal.
+- `TakeGoal`
+- `StartShootout`
+- `Kick`: Penalties: the kicker's kick from the spot.
+- `Dive`: Penalties: the goalie dives.
+- `BetKick`: Penalties: a spectator bets on the next kick (goal or not), 1 to 1.
+- `FieldGoal`: Football: a field goal from the tee, at this distance, for this stake.
+- `Run`: Football: start a gauntlet run for this stake.
+- `Dodge`
+- `StiffArm`
+- `JoinPit`: Fight pit: enter the next round (voting for teams or not).
+- `StartPit`
+- `Pick`: Fight pit: take a weapon from the rack the player stands at.
+- `Fire`: Fight pit: fire along this look, as the shooter saw the others at `view_tick` (their interpolated tick), for lag compensation.
 
 ### `Control` (struct)
 

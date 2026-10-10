@@ -101,6 +101,18 @@ pub fn pick_fish(zone: u8, d: &mut impl Draw) -> Fish {
     Fish::Minnow
 }
 
+/// Fishing spots at the end of the pier: (x, z).
+pub const SPOTS: [(f32, f32); 2] = [(-2.0, 45.5), (2.0, 45.5)];
+/// How close a fisher stands to a spot.
+pub const SPOT_REACH: f32 = 1.5;
+/// Bet limits on a fight.
+pub const BET_MAX: i64 = 200;
+
+/// The spot a player at (x, z) stands at.
+pub fn spot_at(x: f32, z: f32) -> Option<u8> {
+    SPOTS.iter().position(|(sx, sz)| (sx - x).hypot(sz - z) <= SPOT_REACH).map(|i| i as u8)
+}
+
 /// Bite delay, seconds.
 pub const BITE_SECS: (u32, u32) = (5, 25);
 /// Ticks to hook once the bobber dips (600 ms).

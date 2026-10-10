@@ -30,6 +30,7 @@ pub mod drunk;
 pub mod economy;
 pub mod fixtures;
 pub mod game;
+pub mod games;
 pub mod physics;
 pub mod replay;
 pub mod runner;
@@ -144,6 +145,7 @@ impl HostSim {
             buffs::BuffsPlugin,
             fixtures::FixturesPlugin,
             chaos::ChaosPlugin,
+            games::GamesPlugin,
         ));
 
         deterministic_schedules(&mut app);
@@ -233,6 +235,11 @@ impl HostSim {
     /// A fixture request from a local player (tests), as if it had come over the network.
     pub fn fixture_request(&mut self, player: Entity, request: shared::protocol::FixtureRequest) {
         self.app.world_mut().resource_mut::<fixtures::FixtureQueue>().0.push((player, request));
+    }
+
+    /// A side-game request from a local player (tests and bots), as if it had come over the network.
+    pub fn game_request(&mut self, player: Entity, action: shared::protocol::GameAction) {
+        self.app.world_mut().resource_mut::<games::GameQueue>().0.push((player, action));
     }
 
     /// Start a chaos event on the next tick of Open (tests).

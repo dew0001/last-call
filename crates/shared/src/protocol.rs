@@ -12,7 +12,7 @@ use lightyear::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// Protocol version. Bump on any breaking change. Sent in [`Join`].
-pub const PROTOCOL_VERSION: u16 = 10;
+pub const PROTOCOL_VERSION: u16 = 11;
 
 // ---------- Components (host to clients) ----------
 
@@ -247,6 +247,127 @@ pub struct Fire {
     pub pos: Vec3,
 }
 
+// ---------- Side games (host to clients) ----------
+
+/// Where a line at a fishing spot is.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum FishPhase {
+    #[default]
+    Idle,
+    Waiting,
+    Biting,
+    Reeling,
+}
+
+/// A fishing spot on the pier.
+#[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+pub struct FishingView {
+    pub spot: u8,
+    pub fisher: Option<u64>,
+    pub phase: FishPhase,
+    pub zone: u8,
+    pub tension: u16,
+    pub band: (u16, u16),
+    pub progress: u16,
+    pub need: u16,
+    /// The last cast's end: (fisher, how it ended).
+    pub last: Option<(u64, crate::fishing::Catch)>,
+    /// Bets on the fight on now: (player, side, amount).
+    pub bets: Vec<(u64, crate::fishing::Side, i64)>,
+    pub casts: u32,
+}
+
+/// A basketball shot as released, for clients to draw the flight.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+pub struct ShotView {
+    pub by: u64,
+    pub shot: crate::hoops::Shot,
+    pub made: bool,
+}
+
+/// The roof court.
+#[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+pub struct HoopsView {
+    /// The contest forming or under way.
+    pub contest: Option<crate::hoops::Contest>,
+    pub last: Option<ShotView>,
+    pub shots: u32,
+    /// The last contest's payouts: (player, amount).
+    pub paid: Vec<(u64, i64)>,
+    /// A crowd (5 of 5): seconds left of better drink sales.
+    pub crowd_secs: u16,
+}
+
+/// A penalty as it crossed the line.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+pub struct KickView {
+    pub by: u64,
+    pub x: f32,
+    pub height: f32,
+    pub result: crate::kicks::KickResult,
+    pub dive: Option<crate::kicks::Dive>,
+}
+
+/// The penalty spot and goal.
+#[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+pub struct PenaltyView {
+    pub shootout: crate::kicks::Shootout,
+    /// A kick in flight (the goalie may still dive).
+    pub in_flight: bool,
+    pub last: Option<KickView>,
+    pub kicks: u32,
+    /// Bets on the next kick: (player, goal, amount).
+    pub bets: Vec<(u64, bool, i64)>,
+    pub paid: Vec<(u64, i64)>,
+}
+
+/// A field goal attempt's result.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+pub struct FieldGoalResult {
+    pub by: u64,
+    pub yards: u8,
+    pub lateral: f32,
+    pub cleared: bool,
+    pub good: bool,
+    pub returned: i64,
+}
+
+#[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+pub struct FieldGoalView {
+    pub last: Option<FieldGoalResult>,
+    pub kicks: u32,
+}
+
+/// The gauntlet lane.
+#[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+pub struct GauntletView {
+    pub runner: Option<u64>,
+    pub run: Option<crate::gauntlet::Run>,
+    pub stake: i64,
+    pub last: Option<(u64, crate::gauntlet::RunEnd)>,
+    pub runs: u32,
+}
+
+/// A shot's line for clients to draw.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+pub struct Tracer {
+    pub by: u64,
+    pub from: [f32; 3],
+    pub to: [f32; 3],
+    pub hit: Option<u64>,
+}
+
+/// The fight pit.
+#[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+pub struct PitView {
+    pub round: crate::pit::Round,
+    /// The latest shots (at most 16).
+    pub tracers: Vec<Tracer>,
+    pub shots: u32,
+    pub paid: Vec<(u64, i64)>,
+    pub rounds: u32,
+}
+
 // ---------- Room state (host to clients) ----------
 
 /// Marks the one room-state entity. Room-wide components live on it.
@@ -426,6 +547,89 @@ pub struct FixtureRequest {
     pub action: crate::fixtures::FixtureAction,
 }
 
+/// A player acts in a side game (plan sections 5.5 to 5.9). The host finds
+/// the station by where the player stands and checks the rules and money.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+pub struct GameRequest(pub GameAction);
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+pub enum GameAction {
+    /// Fishing: cast from the pier spot the player stands at (charge 0 to 100).
+    Cast {
+        power: u8,
+    },
+    /// Fishing: strike when the bobber dips.
+    Hook,
+    /// Fishing: the reel is held or let go.
+    Reel {
+        held: bool,
+    },
+    /// Fishing: bet on the fight at a spot.
+    BetCatch {
+        spot: u8,
+        side: crate::fishing::Side,
+        amount: i64,
+    },
+    /// Basketball: enter the next contest (pays the entry fee).
+    JoinHoops {
+        mode: crate::hoops::Mode,
+    },
+    StartHoops,
+    /// Basketball: a shot with this charge (0 to 1000) and look.
+    Shoot {
+        power: u16,
+        yaw: f32,
+        pitch: f32,
+    },
+    /// Penalties: enter the shootout, or stand in goal.
+    JoinShootout,
+    TakeGoal,
+    StartShootout,
+    /// Penalties: the kicker's kick from the spot.
+    Kick {
+        kick: crate::kicks::Kick,
+    },
+    /// Penalties: the goalie dives.
+    Dive {
+        dive: crate::kicks::Dive,
+    },
+    /// Penalties: a spectator bets on the next kick (goal or not), 1 to 1.
+    BetKick {
+        goal: bool,
+        amount: i64,
+    },
+    /// Football: a field goal from the tee, at this distance, for this stake.
+    FieldGoal {
+        yards: u8,
+        stake: i64,
+        kick: crate::kicks::Kick,
+    },
+    /// Football: start a gauntlet run for this stake.
+    Run {
+        stake: i64,
+    },
+    Dodge {
+        right: bool,
+    },
+    StiffArm,
+    /// Fight pit: enter the next round (voting for teams or not).
+    JoinPit {
+        teams: bool,
+    },
+    StartPit,
+    /// Fight pit: take a weapon from the rack the player stands at.
+    Pick {
+        weapon: crate::pit::Weapon,
+    },
+    /// Fight pit: fire along this look, as the shooter saw the others at
+    /// `view_tick` (their interpolated tick), for lag compensation.
+    Fire {
+        yaw: f32,
+        pitch: f32,
+        view_tick: u32,
+    },
+}
+
 /// Reliable, ordered control channel (join, replies, votes).
 pub struct Control;
 
@@ -450,6 +654,7 @@ impl Plugin for ProtocolPlugin {
         app.register_message::<TableRequest>().add_direction(NetworkDirection::ClientToServer);
         app.register_message::<TapEvent>().add_direction(NetworkDirection::ClientToServer);
         app.register_message::<FixtureRequest>().add_direction(NetworkDirection::ClientToServer);
+        app.register_message::<GameRequest>().add_direction(NetworkDirection::ClientToServer);
 
         // Send inputs every 2 ticks (32 Hz); each packet repeats the last 4
         // sends, which covers about 125 ms of packet loss. Keeps upload under
@@ -486,6 +691,12 @@ impl Plugin for ProtocolPlugin {
         app.component::<ChaosState>().replicate();
         app.component::<ChaosNpc>().replicate();
         app.component::<Fire>().replicate();
+        app.component::<FishingView>().replicate();
+        app.component::<HoopsView>().replicate();
+        app.component::<PenaltyView>().replicate();
+        app.component::<FieldGoalView>().replicate();
+        app.component::<GauntletView>().replicate();
+        app.component::<PitView>().replicate();
     }
 }
 

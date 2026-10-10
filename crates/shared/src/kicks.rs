@@ -25,10 +25,15 @@ use crate::sports::{Entrant, best, signed_unit};
 pub const GOAL_HALF_WIDTH: f32 = 3.66;
 pub const BAR: f32 = 2.44;
 /// The goal line and the penalty spot in the parking lot: (x, z).
-pub const GOAL: (f32, f32) = (0.0, 25.5);
-pub const PENALTY_SPOT: (f32, f32) = (0.0, 14.5);
-/// The field goal tee.
-pub const TEE: (f32, f32) = (-8.0, 12.0);
+pub const GOAL: (f32, f32) = (-7.0, 25.5);
+pub const PENALTY_SPOT: (f32, f32) = (-7.0, 14.5);
+/// Where the goalie stands.
+pub const GOALIE_SPOT: (f32, f32) = (-7.0, 25.0);
+/// The field goal tee, in the lot's south-west corner (the uprights are
+/// notional: the lot is shorter than 40 yards).
+pub const TEE: (f32, f32) = (-12.0, 9.5);
+/// How close a kicker or goalie must stand to their spot.
+pub const SPOT_REACH: f32 = 1.5;
 /// Kicks per entrant in a shootout.
 pub const KICKS: u8 = 5;
 /// Shootout entry fee.

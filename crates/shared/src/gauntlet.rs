@@ -11,8 +11,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::rng::Draw;
 
-/// The lane: x from -6 to 6, from z = 25 (start) to z = 9 (end zone).
-pub const LANE_X: (f32, f32) = (-6.0, 6.0);
+/// The lane, on the east side of the parking lot: x from 3 to 13, from
+/// z = 25 (start) to z = 9 (end zone).
+pub const LANE_X: (f32, f32) = (3.0, 13.0);
+/// The middle of the lane.
+pub const LANE_MID: f32 = (LANE_X.0 + LANE_X.1) / 2.0;
 pub const START_Z: f32 = 25.0;
 pub const END_Z: f32 = 9.0;
 pub const SECONDS: u32 = 20;
@@ -162,7 +165,7 @@ mod tests {
         let mut run = Run::start(1, &mut d);
         let mut end = None;
         for _ in 0..(SECONDS * 64) {
-            if let Some(e) = run.step([0.0, START_Z], 1.0) {
+            if let Some(e) = run.step([LANE_MID, START_Z], 1.0) {
                 end = Some(e);
                 break;
             }
@@ -173,7 +176,7 @@ mod tests {
         for t in &mut run.tacklers {
             t.stunned = 10_000;
         }
-        let mut at = [0.0, START_Z];
+        let mut at = [LANE_MID, START_Z];
         let mut end = None;
         for _ in 0..(SECONDS * 64) {
             at[1] -= 6.0 / 64.0;
@@ -189,23 +192,23 @@ mod tests {
     fn dodges_cool_down_and_stay_in_the_lane() {
         let mut d = SimRng::new(2);
         let mut run = Run::start(1, &mut d);
-        assert_eq!(run.dodge([5.0, 20.0], 1.0), Some([6.0, 20.0]));
-        assert_eq!(run.dodge([5.0, 20.0], 1.0), None, "cooling down");
+        assert_eq!(run.dodge([12.0, 20.0], 1.0), Some([13.0, 20.0]));
+        assert_eq!(run.dodge([12.0, 20.0], 1.0), None, "cooling down");
         for _ in 0..64 {
-            run.step([0.0, 30.0], 0.0);
+            run.step([LANE_MID, 30.0], 0.0);
         }
-        assert_eq!(run.dodge([0.0, 20.0], -1.0), Some([-1.5, 20.0]));
+        assert_eq!(run.dodge([8.0, 20.0], -1.0), Some([6.5, 20.0]));
     }
 
     #[test]
     fn a_stiff_arm_shoves_and_stuns() {
         let mut d = SimRng::new(2);
         let mut run = Run::start(1, &mut d);
-        run.tacklers[0].pos = [0.0, 19.0];
-        assert!(run.stiff_arm([0.0, 20.0]));
+        run.tacklers[0].pos = [8.0, 19.0];
+        assert!(run.stiff_arm([8.0, 20.0]));
         assert!((run.tacklers[0].pos[1] - 17.0).abs() < 1e-5);
         assert_eq!(run.tacklers[0].stunned, STUN_TICKS);
-        assert!(!run.stiff_arm([5.0, 25.0]), "nobody in reach");
+        assert!(!run.stiff_arm([LANE_X.1, 26.5]), "nobody in reach");
     }
 
     #[test]
@@ -214,16 +217,17 @@ mod tests {
         for seed in 0..40 {
             let mut d = SimRng::new(seed);
             let mut run = Run::start(1, &mut d);
-            let mut at = [0.0f32, START_Z];
+            let mut at = [LANE_MID, START_Z];
             loop {
                 let near = run
                     .tacklers
                     .iter()
                     .any(|t| t.stunned == 0 && ((t.pos[0] - at[0]).powi(2) + (t.pos[1] - at[1]).powi(2)).sqrt() < 1.2);
-                if near && !run.stiff_arm(at) {
-                    if let Some(p) = run.dodge(at, if at[0] > 0.0 { -1.0 } else { 1.0 }) {
-                        at = p;
-                    }
+                if near
+                    && !run.stiff_arm(at)
+                    && let Some(p) = run.dodge(at, if at[0] > LANE_MID { -1.0 } else { 1.0 })
+                {
+                    at = p;
                 }
                 let dir = bot_run_dir(&run, at);
                 at = [at[0] + dir[0] * 6.0 / 64.0, at[1] + dir[1] * 6.0 / 64.0];
