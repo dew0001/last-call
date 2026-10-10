@@ -7,18 +7,32 @@
 //   { t: 'leave', peer }           a player left
 //   { t: 'local', port }           MessagePort for the host's own client (peer 0)
 //   { t: 'chaos', kind }           start a chaos event (tests), e.g. 'Outage'
+//   { t: 'start' }                 the host starts the shift
+//   { t: 'save' }                  the host saves the run now
 // Worker -> page messages:
 //   { t: 'tick', tick, tps }       once per second
 //   { t: 'out', items: [[peer, ArrayBuffer], ...] }  bytes for players
 //   { t: 'audit', run }            the RNG audit log's run id (IndexedDB)
-import init, { host_worker_start, host_connect, host_packet, host_leave, host_force_chaos } from './pkg/host.js';
+//   { t: 'saved' }                 a save reached IndexedDB
+import init, {
+  host_worker_start,
+  host_connect,
+  host_packet,
+  host_leave,
+  host_force_chaos,
+  host_start_shift,
+  host_save_now,
+} from './pkg/host.js';
 import { append, newRun, prune } from './audit.js';
 import { latest, store } from './saves.js';
 
 // The newest run save, written at every Setup (web/saves.js).
 let saves = Promise.resolve();
 globalThis.__hostSave = (json) => {
-  saves = saves.then(() => store(json)).catch((e) => postMessage({ t: 'error', message: `save: ${e}` }));
+  saves = saves
+    .then(() => store(json))
+    .then(() => postMessage({ t: 'saved' }))
+    .catch((e) => postMessage({ t: 'error', message: `save: ${e}` }));
 };
 
 // The RNG audit log: the wasm host hands over JSONL once a second; chunks
@@ -73,6 +87,12 @@ function handle(msg) {
     case 'chaos':
       host_force_chaos(msg.kind);
       break;
+    case 'start':
+      host_start_shift();
+      break;
+    case 'save':
+      host_save_now();
+      break;
     case 'local':
       localPort = msg.port;
       host_connect(LOCAL_PEER);
@@ -103,6 +123,7 @@ host_worker_start(
   search.get('customers') ?? '',
   search.get('chaos') ?? '',
   search.has('resume') ? ((await latest().catch(() => undefined))?.json ?? '') : '',
+  search.has('autostart') ? 'auto' : '',
 );
 ready = true;
 for (const m of pending.splice(0)) handle(m);

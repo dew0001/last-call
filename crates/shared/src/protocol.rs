@@ -12,7 +12,7 @@ use lightyear::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// Protocol version. Bump on any breaking change. Sent in [`Join`].
-pub const PROTOCOL_VERSION: u16 = 12;
+pub const PROTOCOL_VERSION: u16 = 13;
 
 // ---------- Components (host to clients) ----------
 
@@ -386,6 +386,8 @@ pub struct ShiftClock {
     pub phase: crate::shift::ShiftPhase,
     pub seconds_left: u16,
     pub running: bool,
+    /// Setup is waiting for the host to start the shift.
+    pub waiting: bool,
 }
 
 /// The run's money and standing. `due` is the payment due at the end of the

@@ -53,7 +53,7 @@ export async function openTab(browser: Browser, url: string, tag: string, size =
 
 /** Host a room. `extra` adds URL parameters, for example `&fast=60`. */
 export async function createRoom(browser: Browser, size?: { width: number; height: number }, extra = '') {
-  const host = await openTab(browser, `/?create&gpu=webgl2&name=Host${extra}`, 'host', size);
+  const host = await openTab(browser, `/?create&autostart&gpu=webgl2&name=Host${extra}`, 'host', size);
   await expect.poll(() => host.evaluate(() => (window as any).__lcRoom?.code ?? null), { timeout: 60_000 }).toMatch(
     /^[BCDFGHJKLMNPQRSTVWXYZ]{5}$/,
   );

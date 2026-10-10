@@ -327,6 +327,8 @@ function startHostWorker() {
   // `?fast=N` runs shifts N times faster; `?preset=` picks a test start;
   // `?customers=bar` keeps every customer at the bar; `?chaos=off` stops chaos events.
   for (const key of ['fast', 'preset', 'customers', 'chaos']) if (params.get(key)) url.searchParams.set(key, params.get(key));
+  // `?autostart`: shifts start on their own (tests); otherwise the host starts each one.
+  if (params.has('autostart')) url.searchParams.set('autostart', '');
   // The tutorial shift: no chaos, every customer at the bar.
   if (params.has('tutorial')) {
     url.searchParams.set('chaos', 'off');
@@ -338,6 +340,7 @@ function startHostWorker() {
   worker.addEventListener('message', (e) => {
     if (e.data?.t === 'tick') window.__hostTicks.push(e.data);
     if (e.data?.t === 'audit') exposeAudit(e.data.run);
+    if (e.data?.t === 'saved') window.dispatchEvent(new Event('lastcall-saved'));
     if (e.data?.t === 'error') {
       console.error('host worker stack', e.data.message, e.data.stack);
       reportCrash(`host: ${e.data.message}`, e.data.stack);
@@ -346,6 +349,11 @@ function startHostWorker() {
   worker.onerror = (e) => console.error('host worker error', e.message);
   // Tests start a chaos event on the host: `__forceChaos('Outage')`.
   window.__forceChaos = (kind) => worker.postMessage({ t: 'chaos', kind });
+  // The host's controls (the Start shift button and the pause menu's Save).
+  window.__lcHost = {
+    startShift: () => worker.postMessage({ t: 'start' }),
+    save: () => worker.postMessage({ t: 'save' }),
+  };
   return worker;
 }
 window.startHostWorker = startHostWorker;
@@ -500,8 +508,11 @@ async function runTitle() {
   runClient(mod, { online: false });
 }
 
-// Pointer lock for mouse look once the player clicks the game.
-document.getElementById('bevy')?.addEventListener('click', (e) => e.target.requestPointerLock?.());
+// In a room, clicking the game locks the mouse to it for mouse look
+// (web/settings.js shows the crosshair; Esc frees it and pauses).
+document.getElementById('bevy')?.addEventListener('click', (e) => {
+  if (window.__lastCall?.playerId) Promise.resolve(e.target.requestPointerLock?.()).catch(() => {});
+});
 
 const fail = (e) => {
   console.error(e);

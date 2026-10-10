@@ -127,6 +127,18 @@ pub fn host_force_chaos(kind: &str) {
     with_state(|s| s.sim.force_chaos(k));
 }
 
+/// The host starts the shift (the Start shift button).
+#[wasm_bindgen]
+pub fn host_start_shift() {
+    with_state(|s| s.sim.start_shift());
+}
+
+/// The host saves the run now (the pause menu's Save).
+#[wasm_bindgen]
+pub fn host_save_now() {
+    with_state(|s| s.sim.save_now());
+}
+
 #[wasm_bindgen]
 pub fn host_leave(peer: u32) {
     with_state(|s| {
@@ -144,9 +156,19 @@ pub fn host_leave(peer: u32) {
 /// `bar` to send every customer to the bar (tests of the beer tap), or empty.
 /// `chaos` is `off` for no scheduled chaos events (tests force them), or empty.
 /// `resume` is a saved run as JSON ([`shared::save::RunSave`]), or empty for
-/// a new run; a save this build cannot read starts a new run.
+/// a new run; a save this build cannot read starts a new run. `start` is
+/// `auto` for a clock that runs on its own (tests); otherwise each Setup
+/// waits for [`host_start_shift`].
 #[wasm_bindgen]
-pub fn host_worker_start(fast: u32, seed: &[u8], preset: &str, customers: &str, chaos: &str, resume: &str) {
+pub fn host_worker_start(
+    fast: u32,
+    seed: &[u8],
+    preset: &str,
+    customers: &str,
+    chaos: &str,
+    resume: &str,
+    start: &str,
+) {
     console_error_panic_hook::set_once();
     let scope = scope();
     let mut room_seed = [0u8; 32];
@@ -159,6 +181,7 @@ pub fn host_worker_start(fast: u32, seed: &[u8], preset: &str, customers: &str, 
         preset: crate::economy::Preset::parse(preset),
         tastes: (customers == "bar").then_some(crate::customers::BAR_ONLY),
         manual_chaos: chaos == "off",
+        manual_start: start != "auto",
         resume: if resume.is_empty() {
             None
         } else {

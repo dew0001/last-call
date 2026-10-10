@@ -218,6 +218,7 @@ fn end_run(
         phase: ShiftPhase::Setup,
         ticks_left: config.timings.setup * shared::TICK_HZ,
         frozen: false,
+        waiting: config.manual_start,
     };
     started.write(PhaseStarted { calendar, phase: ShiftPhase::Setup });
     info!("new run, new game plus level {ng}");

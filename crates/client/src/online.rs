@@ -47,12 +47,143 @@ pub struct Settings {
     pub sensitivity: f32,
     /// Low: no shadows, no bloom.
     pub low_graphics: bool,
+    /// The mouse turns the view (in the browser: only while it is locked to
+    /// the game, so a free cursor can use the menus).
+    pub mouse_look: bool,
+    /// Pull the mouse toward you to look up.
+    pub invert_y: bool,
+    pub keys: Keybinds,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { sensitivity: 1.0, low_graphics: false }
+        Self { sensitivity: 1.0, low_graphics: false, mouse_look: true, invert_y: false, keys: Keybinds::default() }
     }
+}
+
+/// The rebindable keys (the settings' Controls tab). Table and side-game
+/// keys are fixed and shown on their panels.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Keybinds {
+    pub forward: KeyCode,
+    pub back: KeyCode,
+    pub left: KeyCode,
+    pub right: KeyCode,
+    pub sprint: KeyCode,
+    pub jump: KeyCode,
+    pub crouch: KeyCode,
+    pub interact: KeyCode,
+    pub throw: KeyCode,
+    pub drop: KeyCode,
+    pub use_item: KeyCode,
+}
+
+impl Default for Keybinds {
+    fn default() -> Self {
+        Self {
+            forward: KeyCode::KeyW,
+            back: KeyCode::KeyS,
+            left: KeyCode::KeyA,
+            right: KeyCode::KeyD,
+            sprint: KeyCode::ShiftLeft,
+            jump: KeyCode::Space,
+            crouch: KeyCode::ControlLeft,
+            interact: KeyCode::KeyE,
+            throw: KeyCode::KeyF,
+            drop: KeyCode::KeyQ,
+            use_item: KeyCode::KeyR,
+        }
+    }
+}
+
+impl Keybinds {
+    /// Set one action from its settings name and a browser key code
+    /// (`KeyboardEvent.code`, such as `KeyE` or `ShiftLeft`).
+    pub fn set(&mut self, action: &str, code: &str) {
+        let Some(key) = key_code(code) else { return };
+        let slot = match action {
+            "forward" => &mut self.forward,
+            "back" => &mut self.back,
+            "left" => &mut self.left,
+            "right" => &mut self.right,
+            "sprint" => &mut self.sprint,
+            "jump" => &mut self.jump,
+            "crouch" => &mut self.crouch,
+            "interact" => &mut self.interact,
+            "throw" => &mut self.throw,
+            "drop" => &mut self.drop,
+            "use" => &mut self.use_item,
+            _ => return,
+        };
+        *slot = key;
+    }
+}
+
+/// A browser `KeyboardEvent.code` as a Bevy key code (the keys a player
+/// would bind).
+pub fn key_code(code: &str) -> Option<KeyCode> {
+    use KeyCode as K;
+    const LETTERS: [KeyCode; 26] = [
+        K::KeyA,
+        K::KeyB,
+        K::KeyC,
+        K::KeyD,
+        K::KeyE,
+        K::KeyF,
+        K::KeyG,
+        K::KeyH,
+        K::KeyI,
+        K::KeyJ,
+        K::KeyK,
+        K::KeyL,
+        K::KeyM,
+        K::KeyN,
+        K::KeyO,
+        K::KeyP,
+        K::KeyQ,
+        K::KeyR,
+        K::KeyS,
+        K::KeyT,
+        K::KeyU,
+        K::KeyV,
+        K::KeyW,
+        K::KeyX,
+        K::KeyY,
+        K::KeyZ,
+    ];
+    const DIGITS: [KeyCode; 10] =
+        [K::Digit0, K::Digit1, K::Digit2, K::Digit3, K::Digit4, K::Digit5, K::Digit6, K::Digit7, K::Digit8, K::Digit9];
+    if let Some(c) = code.strip_prefix("Key").filter(|c| c.len() == 1).and_then(|c| c.chars().next()) {
+        return c.is_ascii_uppercase().then(|| LETTERS[(c as u8 - b'A') as usize]);
+    }
+    if let Some(d) = code.strip_prefix("Digit").and_then(|d| d.parse::<usize>().ok()) {
+        return DIGITS.get(d).copied();
+    }
+    Some(match code {
+        "Space" => K::Space,
+        "ShiftLeft" => K::ShiftLeft,
+        "ShiftRight" => K::ShiftRight,
+        "ControlLeft" => K::ControlLeft,
+        "ControlRight" => K::ControlRight,
+        "AltLeft" => K::AltLeft,
+        "AltRight" => K::AltRight,
+        "Tab" => K::Tab,
+        "CapsLock" => K::CapsLock,
+        "Enter" => K::Enter,
+        "Backquote" => K::Backquote,
+        "ArrowUp" => K::ArrowUp,
+        "ArrowDown" => K::ArrowDown,
+        "ArrowLeft" => K::ArrowLeft,
+        "ArrowRight" => K::ArrowRight,
+        "Comma" => K::Comma,
+        "Period" => K::Period,
+        "Slash" => K::Slash,
+        "Semicolon" => K::Semicolon,
+        "Quote" => K::Quote,
+        "BracketLeft" => K::BracketLeft,
+        "BracketRight" => K::BracketRight,
+        _ => return None,
+    })
 }
 
 /// What the page shows and tests read.
@@ -179,6 +310,8 @@ pub struct ShiftStatus {
     pub phase: &'static str,
     pub seconds_left: u16,
     pub running: bool,
+    /// Setup waits for the host to start the shift.
+    pub waiting: bool,
 }
 
 impl From<ShiftClock> for ShiftStatus {
@@ -189,6 +322,7 @@ impl From<ShiftClock> for ShiftStatus {
             phase: c.phase.label(),
             seconds_left: c.seconds_left,
             running: c.running,
+            waiting: c.waiting,
         }
     }
 }
@@ -662,11 +796,15 @@ fn read_input(
     }
     const SENSITIVITY: f32 = 0.0025;
     let sens = SENSITIVITY * settings.sensitivity;
-    look.yaw -= motion.delta.x * sens;
-    look.pitch = (look.pitch - motion.delta.y * sens).clamp(-1.4, 1.4);
+    if settings.mouse_look {
+        let dy = if settings.invert_y { -motion.delta.y } else { motion.delta.y };
+        look.yaw -= motion.delta.x * sens;
+        look.pitch = (look.pitch - dy * sens).clamp(-1.4, 1.4);
+    }
+    let k = settings.keys;
     let axis =
         |pos: KeyCode, neg: KeyCode| f32::from(u8::from(keys.pressed(pos))) - f32::from(u8::from(keys.pressed(neg)));
-    let mut mv = Vec2::new(axis(KeyCode::KeyD, KeyCode::KeyA), axis(KeyCode::KeyW, KeyCode::KeyS));
+    let mut mv = Vec2::new(axis(k.right, k.left), axis(k.forward, k.back));
     // A gamepad: left stick walks, right stick looks (2.5 rad/s at full tilt).
     let mut pad_buttons = 0;
     for pad in &pads {
@@ -696,13 +834,13 @@ fn read_input(
     }
     let mut b = pad_buttons;
     for (key, bit) in [
-        (KeyCode::ShiftLeft, buttons::SPRINT),
-        (KeyCode::Space, buttons::JUMP),
-        (KeyCode::ControlLeft, buttons::CROUCH),
-        (KeyCode::KeyE, buttons::INTERACT),
-        (KeyCode::KeyF, buttons::THROW),
-        (KeyCode::KeyQ, buttons::DROP),
-        (KeyCode::KeyR, buttons::USE),
+        (k.sprint, buttons::SPRINT),
+        (k.jump, buttons::JUMP),
+        (k.crouch, buttons::CROUCH),
+        (k.interact, buttons::INTERACT),
+        (k.throw, buttons::THROW),
+        (k.drop, buttons::DROP),
+        (k.use_item, buttons::USE),
     ] {
         if keys.pressed(key) {
             b |= bit;
@@ -780,7 +918,12 @@ fn dress_players(
         let mesh = meshes.add(body);
         let material =
             materials.add(StandardMaterial { base_color: Color::WHITE, perceptual_roughness: 0.7, ..default() });
-        commands.entity(entity).insert((Dressed, Mesh3d(mesh), MeshMaterial3d(material), Transform::default()));
+        let mut e = commands.entity(entity);
+        e.insert((Dressed, Mesh3d(mesh), MeshMaterial3d(material), Transform::default()));
+        // First person: your own body would fill the view.
+        if predicted {
+            e.insert(Visibility::Hidden);
+        }
     }
 }
 
@@ -967,6 +1110,9 @@ fn place_customers(
     }
 }
 
+/// Eye height above the feet: a little under the 1.6 m player.
+const EYE_HEIGHT: f32 = 1.5;
+
 fn follow_camera(
     look: Res<Look>,
     time: Res<Time>,
@@ -982,18 +1128,9 @@ fn follow_camera(
         *t = Transform::from_translation(eye).looking_at(eye + Vec3::new(0.3, 1.2, -2.0), Vec3::Y);
         return;
     }
-    // Third person, behind and above the player for the gray-box phase.
-    let back = Quat::from_rotation_y(look.yaw) * Vec3::new(0.0, 0.0, 3.5);
-    let mut eye = pos.0 + Vec3::Y * 2.2 + back;
-    // Stay inside the room: behind a player near a wall, the camera would
-    // otherwise see the wall's outside.
-    if let Some(room) = shared::world::room_at(pos.0.x, pos.0.z) {
-        let a =
-            shared::world::area_of(if room == shared::world::Room::Office { shared::world::Room::Bar } else { room });
-        eye.x = eye.x.clamp(a.x0 + 0.3, a.x1 - 0.3);
-        eye.z = eye.z.clamp(a.z0 + 0.3, a.z1 - 0.3);
-    }
-    *t = Transform::from_translation(eye).looking_at(pos.0 + Vec3::Y * 1.2, Vec3::Y);
+    // First person: at eye height, turned by the mouse.
+    let eye = pos.0 + Vec3::Y * EYE_HEIGHT;
+    *t = Transform::from_translation(eye).with_rotation(Quat::from_euler(EulerRot::YXZ, look.yaw, look.pitch, 0.0));
     // Courage and up: the view sways.
     let sway = shared::drunk::camera_sway(drunk.map_or(0, |d| d.level));
     if sway > 0.0 {

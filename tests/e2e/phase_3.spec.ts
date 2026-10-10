@@ -320,7 +320,7 @@ test('a saved run resumes in a new room with the same money and shift', async ({
   await title.close();
 
   const resumed = await context.newPage();
-  await resumed.goto('/?create&resume&gpu=webgl2&nodraw&novoice&name=Host');
+  await resumed.goto('/?create&autostart&resume&gpu=webgl2&nodraw&novoice&name=Host');
   const s = await waitFor(resumed, 'resumed', (s) => !!s.playerId && !!s.game?.money && s.game.pocket != null, 60_000);
   expect(s.playerId).toBe(id);
   expect(s.game.shift.week).toBe(save.calendar.week);

@@ -83,21 +83,50 @@ test('a crash report is accepted by the signaling Worker', async ({ browserName 
   expect(bad.status).toBe(400);
 });
 
-test('settings persist and reach the game; the graphics preset drops bloom', async ({ browser }) => {
-  const { host } = await createRoom(browser, undefined, '&chaos=off');
+test('the pause menu: settings persist, keys rebind, Esc opens and closes it', async ({ browser }) => {
+  // A real window size: the menu does not fit the tiny test tabs.
+  const { host } = await createRoom(browser, { width: 1024, height: 700 }, '&chaos=off');
+  await host.keyboard.press('Escape');
+  await expect(host.locator('#menu')).toBeVisible();
+  await expect(host.locator('[data-act="save"]')).toBeVisible();
+  await host.locator('[data-act="settings"]').click();
   await host.evaluate(() => {
     const p = document.getElementById('settings') as HTMLFormElement;
-    (p.elements.namedItem('graphics') as HTMLSelectElement).value = 'low';
-    (p.elements.namedItem('sensitivity') as HTMLInputElement).value = '2';
-    p.dispatchEvent(new Event('input'));
+    const g = p.elements.namedItem('graphics') as HTMLSelectElement;
+    const m = p.elements.namedItem('sensitivity') as HTMLInputElement;
+    g.value = 'low';
+    m.value = '2';
+    m.dispatchEvent(new Event('input', { bubbles: true }));
   });
+  // Rebind Interact from E to G.
+  await host.locator('[data-tab="controls"]').click();
+  await host.locator('[data-bind="interact"]').click();
+  await host.keyboard.press('KeyG');
+  await expect(host.locator('[data-bind="interact"]')).toHaveText('G');
   const saved = await host.evaluate(() => JSON.parse(localStorage.getItem('lastcall-settings') ?? '{}'));
-  expect(saved).toMatchObject({ graphics: 'low', sensitivity: 2 });
-  await host.keyboard.press('Escape');
-  await expect(host.locator('#settings')).toBeVisible();
-  await host.keyboard.press('Escape');
-  await expect(host.locator('#settings')).toBeHidden();
+  expect(saved).toMatchObject({ graphics: 'low', sensitivity: 2, keys: { interact: 'KeyG' } });
+  await host.keyboard.press('Escape'); // settings -> main menu
+  await host.keyboard.press('Escape'); // close
+  await expect(host.locator('#menu')).toBeHidden();
   await host.context().close();
+});
+
+test('the host opens the bar, and saves on demand', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 160, height: 90 } });
+  const page = await context.newPage();
+  await page.goto('/?create&gpu=webgl2&nodraw&novoice&name=Host&chaos=off');
+  await waitFor(page, 'waiting in Setup', (s) => !!s.game?.shift?.waiting);
+  await expect(page.locator('#shift-prompt')).toContainText('open the doors');
+  // Setup does not count down while it waits.
+  const before = (await status(page)).game.shift.secondsLeft;
+  await page.waitForTimeout(2500);
+  expect((await status(page)).game.shift.secondsLeft).toBe(before);
+  await page.keyboard.press('KeyO');
+  await waitFor(page, 'the bar is open', (s) => s.game?.shift?.phase === 'OPEN' && !s.game.shift.waiting);
+  await expect(page.locator('#shift-prompt')).toBeHidden();
+  await page.evaluate(() => (window as any).__lcHost.save());
+  await expect(page.locator('.toast')).toContainText('Game saved', { timeout: 10_000 });
+  await context.close();
 });
 
 test('an achievement unlocks a hat that the next room shows', async ({ browser }) => {
@@ -120,7 +149,7 @@ test('an achievement unlocks a hat that the next room shows', async ({ browser }
   expect(unlocks.earned).toContain('boot');
   // Choose the hat; a new room's player wears it.
   await page.evaluate(async (u) => (await import(/* @vite-ignore */ '/achievements.js')).chooseHat(u, 3), uuid);
-  await page.goto('/?create&gpu=webgl2&nodraw&novoice&name=Hat&chaos=off');
+  await page.goto('/?create&autostart&gpu=webgl2&nodraw&novoice&name=Hat&chaos=off');
   await waitFor(page, 'joined', (s) => !!s.playerId);
   await expect.poll(() => page.evaluate(() => (window as any).__lcCosmetic)).toBe(3);
   await context.close();

@@ -87,3 +87,35 @@ fn a_player_who_has_not_rejoined_keeps_their_pocket_in_later_saves() {
     assert_eq!(pockets.get(&0xc), Some(&99), "absent player's money is kept");
     assert_eq!(pockets.get(&0xa), Some(&10));
 }
+
+#[test]
+fn the_host_opens_the_bar_and_saves_on_demand() {
+    let config = HostConfig { timings: fast(), manual_start: true, ..Default::default() };
+    let mut sim = HostSim::with_config(config);
+    sim.add_local_player(0xa, "a", 0);
+    // Setup waits: three seconds pass and it is still Setup.
+    for _ in 0..(3 * shared::TICK_HZ) {
+        sim.tick();
+    }
+    let c = clock(&mut sim);
+    assert_eq!(c.phase, ShiftPhase::Setup);
+    assert!(c.waiting && !c.running);
+    // The host opens the bar: Open starts within two ticks.
+    sim.start_shift();
+    sim.tick();
+    sim.tick();
+    let c = clock(&mut sim);
+    assert_eq!(c.phase, ShiftPhase::Open);
+    assert!(!c.waiting);
+    // A save on demand, mid-shift.
+    sim.save_now();
+    sim.tick();
+    let save = sim.take_save().expect("a save on demand");
+    assert_eq!(save.calendar, Calendar::default());
+    // The next shift's Setup waits again.
+    for _ in 0..(10 * shared::TICK_HZ) {
+        sim.tick();
+    }
+    let c = clock(&mut sim);
+    assert_eq!((c.phase, c.waiting), (ShiftPhase::Setup, true));
+}

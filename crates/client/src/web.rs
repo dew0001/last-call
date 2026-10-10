@@ -187,7 +187,22 @@ fn read_settings(mut settings: ResMut<crate::online::Settings>) {
     }
     let sens = Reflect::get(&v, &"sensitivity".into()).ok().and_then(|x| x.as_f64()).unwrap_or(1.0) as f32;
     let low = Reflect::get(&v, &"graphics".into()).ok().and_then(|x| x.as_string()).is_some_and(|g| g == "low");
-    let next = crate::online::Settings { sensitivity: sens.clamp(0.1, 5.0), low_graphics: low };
+    let invert_y = Reflect::get(&v, &"invertY".into()).ok().and_then(|x| x.as_bool()).unwrap_or(false);
+    // The mouse looks around only while it is locked to the game.
+    let mouse_look = Reflect::get(&window, &"__lcLocked".into()).ok().and_then(|x| x.as_bool()).unwrap_or(false);
+    let mut keys = crate::online::Keybinds::default();
+    if let Ok(map) = Reflect::get(&v, &"keys".into())
+        && map.is_object()
+    {
+        for entry in Object::entries(map.unchecked_ref()).iter() {
+            let pair: Array = entry.unchecked_into();
+            if let (Some(action), Some(code)) = (pair.get(0).as_string(), pair.get(1).as_string()) {
+                keys.set(&action, &code);
+            }
+        }
+    }
+    let next =
+        crate::online::Settings { sensitivity: sens.clamp(0.1, 5.0), low_graphics: low, mouse_look, invert_y, keys };
     if *settings != next {
         *settings = next;
     }

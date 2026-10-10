@@ -29,15 +29,22 @@ pub struct SavePlugin;
 
 impl Plugin for SavePlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<SavedPockets>().init_resource::<PendingSave>();
+        app.init_resource::<SavedPockets>().init_resource::<PendingSave>().init_resource::<SaveNow>();
         app.add_systems(FixedUpdate, write_save.after(crate::economy::EconomySet));
     }
 }
 
+/// The host asked to save now.
+#[derive(Resource, Default)]
+pub struct SaveNow(pub bool);
+
 /// Save at each Setup, except the room's first: opening a room (by mistake,
-/// say) does not replace the saved run until a shift has been played.
+/// say) does not replace the saved run until a shift has been played. The
+/// host can also save at any time ([`SaveNow`]).
+#[allow(clippy::too_many_arguments)]
 fn write_save(
     mut first: Local<bool>,
+    mut now: ResMut<SaveNow>,
     mut started: MessageReader<PhaseStarted>,
     timer: Res<ShiftTimer>,
     saved: Res<SavedPockets>,
@@ -45,11 +52,14 @@ fn write_save(
     players: Query<(&Player, &Pocket)>,
     mut pending: ResMut<PendingSave>,
 ) {
-    if !started.read().any(|p| p.phase == ShiftPhase::Setup) {
-        return;
-    }
-    if !*first {
+    let setup = started.read().any(|p| p.phase == ShiftPhase::Setup);
+    let asked = std::mem::take(&mut now.0);
+    if setup && !*first {
         *first = true;
+        if !asked {
+            return;
+        }
+    } else if !setup && !asked {
         return;
     }
     let Ok((run, upgrades)) = room.single() else { return };

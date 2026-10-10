@@ -223,7 +223,7 @@ test('a hidden host tab keeps a 64 Hz tick for 60 s', async ({ browserName }, in
   const base = String(info.project.use.baseURL ?? 'http://localhost:8080');
   const raw = await RawChromium.launch();
   try {
-    const { tab: host } = await raw.firstTab(`${base}/?create&gpu=webgl2&novoice&nodraw&name=Host`);
+    const { tab: host } = await raw.firstTab(`${base}/?create&autostart&gpu=webgl2&novoice&nodraw&name=Host`);
     let link: string | undefined;
     for (let i = 0; i < 120 && !link; i++) {
       await new Promise((r) => setTimeout(r, 500));

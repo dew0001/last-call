@@ -56,7 +56,7 @@ test('every room draws within the budgets', async ({ browser, browserName }) => 
   // the screenshots.
   await host.addInitScript(() => localStorage.setItem('lastcall-settings', JSON.stringify({ graphics: 'low' })));
   host.on('console', (m) => m.type() === 'error' && console.log(`[host] ${m.text().slice(0, 300)}`));
-  await host.goto('/?create&gpu=webgl2&novoice&name=Host&chaos=off');
+  await host.goto('/?create&autostart&gpu=webgl2&novoice&name=Host&chaos=off');
   await waitFor(host, 'joined', (s) => !!s.playerId && (s.propsSeen ?? 0) > 100, 90_000);
   // Warm up: SwiftShader compiles each new shader pipeline on first use.
   for (let i = 0; i < 3; i++) console.log('warming', JSON.stringify(await frameStats(host)));

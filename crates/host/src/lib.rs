@@ -65,6 +65,8 @@ pub struct HostConfig {
     pub resume: Option<shared::save::RunSave>,
     /// No scheduled chaos: only events started with [`HostSim::force_chaos`] (tests).
     pub manual_chaos: bool,
+    /// Each Setup waits for [`HostSim::start_shift`] (the browser game).
+    pub manual_start: bool,
 }
 
 /// Run every schedule on one thread, in its fixed topological order. The
@@ -119,7 +121,7 @@ impl HostSim {
         app.insert_resource(ReplicationMetadata::new(shared::SNAPSHOT_INTERVAL));
         app.init_resource::<TickCount>();
         app.add_systems(FixedUpdate, advance_tick);
-        app.insert_resource(shift::ShiftConfig { timings: config.timings });
+        app.insert_resource(shift::ShiftConfig { timings: config.timings, manual_start: config.manual_start });
         app.insert_resource(RoomSeed(config.seed));
         app.insert_resource(customers::Tastes(config.tastes.unwrap_or(customers::ACTIVITY_WEIGHTS)));
         app.insert_resource(casino::Audit(shared::audit::AuditLog::new(&config.seed)));
@@ -245,6 +247,17 @@ impl HostSim {
     /// Start a chaos event on the next tick of Open (tests).
     pub fn force_chaos(&mut self, kind: shared::chaos::ChaosKind) {
         self.app.world_mut().resource_mut::<chaos::ForcedChaos>().0.push(kind);
+    }
+
+    /// The host starts the shift: a waiting Setup ends on the next tick.
+    pub fn start_shift(&mut self) {
+        self.app.world_mut().resource_mut::<shift::StartShift>().0 = true;
+    }
+
+    /// Save the run now (the host's Save button). Resuming starts this
+    /// shift's Setup with the money as it is now.
+    pub fn save_now(&mut self) {
+        self.app.world_mut().resource_mut::<save::SaveNow>().0 = true;
     }
 
     /// How chaos events have ended so far, in order.

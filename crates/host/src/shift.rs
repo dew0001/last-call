@@ -17,7 +17,14 @@ use crate::game::AwaitingReconnect;
 #[derive(Resource, Clone, Copy, Debug, Default)]
 pub struct ShiftConfig {
     pub timings: Timings,
+    /// Each Setup waits for the host to start the shift ([`StartShift`]).
+    /// Off for tests and bots: the clock then runs on its own.
+    pub manual_start: bool,
 }
+
+/// The host asked to start the shift (the host tab's Start shift button).
+#[derive(Resource, Default)]
+pub struct StartShift(pub bool);
 
 /// Host-side clock state.
 #[derive(Resource, Clone, Copy, Debug)]
@@ -27,6 +34,8 @@ pub struct ShiftTimer {
     pub ticks_left: u32,
     /// Stopped while the win or loss screen shows.
     pub frozen: bool,
+    /// Setup waits here for the host (see [`ShiftConfig::manual_start`]).
+    pub waiting: bool,
 }
 
 /// Sent on the tick a phase starts (including the first Setup).
@@ -44,7 +53,7 @@ pub struct ShiftPlugin;
 
 impl Plugin for ShiftPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<ShiftConfig>();
+        app.init_resource::<ShiftConfig>().init_resource::<StartShift>();
         app.add_message::<PhaseStarted>();
         app.add_systems(Startup, start_clock.after(crate::physics::SpawnRoom));
         app.add_systems(FixedUpdate, run_clock.in_set(RunClock).after(crate::game::MovePlayers));
@@ -65,11 +74,12 @@ pub fn start_clock(
     let calendar = start.map(|s| s.calendar).unwrap_or_default();
     let phase = ShiftPhase::Setup;
     let seconds = config.timings.seconds(phase);
-    commands.insert_resource(ShiftTimer { calendar, phase, ticks_left: ticks(seconds), frozen: false });
+    let waiting = config.manual_start;
+    commands.insert_resource(ShiftTimer { calendar, phase, ticks_left: ticks(seconds), frozen: false, waiting });
     commands.spawn((
         Name::new("Room"),
         RoomState,
-        ShiftClock { calendar, phase, seconds_left: seconds as u16, running: false },
+        ShiftClock { calendar, phase, seconds_left: seconds as u16, running: false, waiting },
         Replicate::to_clients(NetworkTarget::All),
     ));
     started.write(PhaseStarted { calendar, phase });
@@ -81,9 +91,15 @@ fn run_clock(
     players: Query<(), (With<Player>, Without<AwaitingReconnect>)>,
     mut clock: Query<&mut ShiftClock, With<RoomState>>,
     mut started: MessageWriter<PhaseStarted>,
+    mut start: ResMut<StartShift>,
 ) {
     let (Some(mut timer), Ok(mut clock)) = (timer, clock.single_mut()) else { return };
-    let running = !players.is_empty() && !timer.frozen;
+    if std::mem::take(&mut start.0) && timer.waiting && timer.phase == ShiftPhase::Setup {
+        // The host opens the bar: Setup ends now.
+        timer.waiting = false;
+        timer.ticks_left = 1;
+    }
+    let running = !players.is_empty() && !timer.frozen && !timer.waiting;
     if running {
         timer.ticks_left = timer.ticks_left.saturating_sub(1);
         if timer.ticks_left == 0 {
@@ -92,6 +108,7 @@ fn run_clock(
                 None => {
                     timer.calendar = timer.calendar.next_shift();
                     timer.phase = ShiftPhase::Setup;
+                    timer.waiting = config.manual_start;
                 }
             }
             timer.ticks_left = ticks(config.timings.seconds(timer.phase));
@@ -100,5 +117,6 @@ fn run_clock(
     }
     let seconds_left = timer.ticks_left.div_ceil(shared::TICK_HZ) as u16;
     // Write only on change, so replication sends at most one update a second.
-    clock.set_if_neq(ShiftClock { calendar: timer.calendar, phase: timer.phase, seconds_left, running });
+    let waiting = timer.waiting;
+    clock.set_if_neq(ShiftClock { calendar: timer.calendar, phase: timer.phase, seconds_left, running, waiting });
 }
