@@ -4,6 +4,10 @@ import { expect, test } from '@playwright/test';
 import { createRoom, openTab, status, waitFor } from './helpers';
 
 const SIGNAL = process.env.SIGNAL_URL ?? 'ws://127.0.0.1:8787';
+// The load and crash-report tests talk to the local `wrangler dev` Worker.
+// Against the deployed site (BASE_URL) there is none, and test reports must
+// not fill the live KV store.
+const LIVE = !!process.env.BASE_URL;
 const LETTERS = 'BCDFGHJKLMNPQRSTVWXYZ';
 const code = () => Array.from({ length: 5 }, () => LETTERS[Math.floor(Math.random() * LETTERS.length)]).join('');
 
@@ -55,6 +59,7 @@ async function room() {
 
 test('load: 50 rooms of 8 join through the signaling Worker within the 15 s budget', async ({ browserName }) => {
   test.skip(browserName !== 'chromium', 'runs from Node; once is enough');
+  test.skip(LIVE, 'needs the local wrangler dev Worker');
   test.setTimeout(120_000);
   const start = Date.now();
   const rooms = await Promise.all(Array.from({ length: 50 }, () => room()));
@@ -66,6 +71,7 @@ test('load: 50 rooms of 8 join through the signaling Worker within the 15 s budg
 
 test('a crash report is accepted by the signaling Worker', async ({ browserName }) => {
   test.skip(browserName !== 'chromium', 'runs from Node; once is enough');
+  test.skip(LIVE, 'needs the local wrangler dev Worker');
   const base = SIGNAL.replace(/^ws/, 'http');
   const ok = await fetch(`${base}/report`, {
     method: 'POST',
