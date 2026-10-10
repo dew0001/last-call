@@ -88,6 +88,8 @@ pub struct GameStatus {
     pub casino: crate::casino::CasinoStatus,
     /// Focus, items, upgrades and chaos.
     pub phase4: crate::chaos::Phase4Status,
+    /// The side games.
+    pub games: crate::games::GamesStatus,
 }
 
 #[derive(Default, Debug, Clone, serde::Serialize)]
@@ -206,6 +208,7 @@ pub fn add(app: &mut App, cfg: OnlineConfig) {
     app.add_systems(FixedUpdate, predict_pour);
     crate::casino::add(app);
     crate::chaos::add(app);
+    crate::games::add(app);
     app.add_systems(Startup, (setup_bar, setup_hud));
     app.add_systems(
         Update,
@@ -908,6 +911,7 @@ fn update_status(
     game: GameQueries,
     casino: crate::casino::CasinoQueries,
     phase4: crate::chaos::Phase4Queries,
+    games: crate::games::GamesQueries,
     mut status: ResMut<NetStatus>,
 ) {
     let GameQueries { room, pockets, customers, gauges, beers, puddles, drunks, local_pour } = game;
@@ -975,6 +979,7 @@ fn update_status(
             },
             casino: casino.status(session.player_id, own.single().ok().map(|p| p.0)),
             phase4: phase4.status(session.player_id, own.single().ok().map(|p| p.0)),
+            games: games.status(own.single().ok().map(|p| p.0)),
         },
     };
 }

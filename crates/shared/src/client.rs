@@ -31,6 +31,10 @@ pub struct OutgoingTable(pub Vec<TableRequest>);
 #[derive(Resource, Default, Clone, Debug)]
 pub struct OutgoingFixture(pub Vec<FixtureRequest>);
 
+/// Side-game requests to send to the host (UI keys, bot scripts).
+#[derive(Resource, Default, Clone, Debug)]
+pub struct OutgoingGame(pub Vec<GameAction>);
+
 /// Who this client is. Set by the app before connecting.
 #[derive(Resource, Clone, Debug)]
 pub struct Identity {
@@ -60,6 +64,7 @@ impl Plugin for ClientNetPlugin {
             .init_resource::<OutgoingTable>()
             .init_resource::<OutgoingTaps>()
             .init_resource::<OutgoingFixture>()
+            .init_resource::<OutgoingGame>()
             .init_resource::<ConnectAfterFrames>();
         // Margin for jitter: 2x covers about 95% of packets. lightyear's default
         // (4x) put browser clients more than a second ahead of the host.
@@ -135,15 +140,24 @@ fn send_table_requests(
     mut out: ResMut<OutgoingTable>,
     mut taps: ResMut<OutgoingTaps>,
     mut fixtures: ResMut<OutgoingFixture>,
+    mut games: ResMut<OutgoingGame>,
     mut links: Query<
-        (&mut MessageSender<TableRequest>, &mut MessageSender<TapEvent>, &mut MessageSender<FixtureRequest>),
+        (
+            &mut MessageSender<TableRequest>,
+            &mut MessageSender<TapEvent>,
+            &mut MessageSender<FixtureRequest>,
+            &mut MessageSender<GameRequest>,
+        ),
         (With<Client>, With<Connected>),
     >,
 ) {
     if session.player_id.is_none() {
         return;
     }
-    let Ok((mut tables, mut tap_sender, mut fixture_sender)) = links.single_mut() else { return };
+    let Ok((mut tables, mut tap_sender, mut fixture_sender, mut game_sender)) = links.single_mut() else { return };
+    for action in games.0.drain(..) {
+        game_sender.send::<Control>(GameRequest(action));
+    }
     for request in fixtures.0.drain(..) {
         fixture_sender.send::<Control>(request);
     }

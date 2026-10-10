@@ -82,5 +82,22 @@ pub fn replicated_hash(world: &mut World) -> u64 {
     for v in slots {
         h.bytes(&serde_json::to_vec(v).unwrap_or_default());
     }
+    // The side games.
+    let mut spots: Vec<&FishingView> = world.query::<&FishingView>().iter(world).collect();
+    spots.sort_by_key(|s| s.spot);
+    spots.dedup();
+    for v in spots {
+        h.bytes(&serde_json::to_vec(v).unwrap_or_default());
+    }
+    let json = |world: &mut World| {
+        let mut out = Vec::new();
+        out.extend(world.query::<&HoopsView>().iter(world).flat_map(|v| serde_json::to_vec(v).unwrap_or_default()));
+        out.extend(world.query::<&PenaltyView>().iter(world).flat_map(|v| serde_json::to_vec(v).unwrap_or_default()));
+        out.extend(world.query::<&FieldGoalView>().iter(world).flat_map(|v| serde_json::to_vec(v).unwrap_or_default()));
+        out.extend(world.query::<&GauntletView>().iter(world).flat_map(|v| serde_json::to_vec(v).unwrap_or_default()));
+        out.extend(world.query::<&PitView>().iter(world).flat_map(|v| serde_json::to_vec(v).unwrap_or_default()));
+        out
+    };
+    h.bytes(&json(world));
     h.0
 }

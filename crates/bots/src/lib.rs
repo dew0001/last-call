@@ -10,6 +10,8 @@ use host::HostSim;
 use lightyear::prelude::client::*;
 use lightyear::prelude::*;
 use shared::client::{ClientNetPlugin, Identity, LocalInput, Session};
+
+pub mod games;
 use shared::pipe::{PipeIo, PipeStats};
 use shared::protocol::*;
 use std::sync::Arc;
@@ -37,6 +39,8 @@ pub enum Script {
     /// Walk to a table and play it: run it from the dealer or croupier spot
     /// (`role`), or bet at bettor spot `spot` (see [`play_tables`]).
     Casino { table: shared::casino::TableId, role: bool, spot: u8 },
+    /// Walk to a side game's station and play it (see [`games`]).
+    Game(games::SideGame),
 }
 
 /// The way from a spawn point to a table spot, around the tables: across
@@ -86,6 +90,7 @@ fn drive(
     mut step: ResMut<RouteStep>,
     mut plan: ResMut<DragPlan>,
     casino_plan: Res<CasinoPlan>,
+    lane: Query<&GauntletView>,
     mut input: ResMut<LocalInput>,
 ) {
     clock.0 += 1;
@@ -132,6 +137,23 @@ fn drive(
                     _ => 0.0,
                 };
                 PlayerInput::new(Vec2::ZERO, yaw, 0.0, 0)
+            }
+        }
+        Script::Game(game) => {
+            let pos = own.iter().find(|(p, _)| Some(p.id) == session.player_id).map(|(_, pos)| pos.0);
+            let steer = match (game, pos, session.player_id) {
+                (games::SideGame::Gauntlet, Some(at), Some(id)) => {
+                    lane.iter().next().and_then(|v| games::gauntlet_steer(v, id, at))
+                }
+                _ => None,
+            };
+            if let Some((mv, yaw)) = steer {
+                PlayerInput::new(mv, yaw, 0.0, shared::movement::buttons::SPRINT)
+            } else if step.0 < casino_plan.0.len() {
+                let i = follow_route(&casino_plan.0, pos, &mut step.0, clock.0);
+                PlayerInput::new(i.mv(), i.yaw(), 0.0, 0)
+            } else {
+                PlayerInput::default()
             }
         }
         Script::Drag => {
@@ -242,6 +264,30 @@ fn play_tables(
     }
 }
 
+/// A [`Script::Game`] bot's side-game requests once it reaches its station.
+#[allow(clippy::too_many_arguments)]
+fn play_games(
+    script: Res<Script>,
+    session: Res<Session>,
+    clock: Res<BotClock>,
+    step: Res<RouteStep>,
+    plan: Res<CasinoPlan>,
+    own: Query<(&Player, &PlayerPos), With<Predicted>>,
+    timeline: Option<Res<InterpolationTimeline>>,
+    views: (Query<&FishingView>, Query<&HoopsView>, Query<&PenaltyView>, Query<&GauntletView>, Query<&PitView>),
+    others: Query<(&Player, &PlayerPos), With<Interpolated>>,
+    mut out: ResMut<shared::client::OutgoingGame>,
+) {
+    let Script::Game(game) = *script else { return };
+    if step.0 < plan.0.len() {
+        return;
+    }
+    let Some(at) = own.iter().find(|(p, _)| Some(p.id) == session.player_id).map(|(_, p)| p.0) else { return };
+    let tick = timeline.map_or(0, |t| t.tick().0);
+    let (fishing, hoops, pens, lane, pit) = views;
+    games::play(game, &session, at, clock.0, tick, &fishing, &hoops, &pens, &lane, &pit, &others, &mut out);
+}
+
 /// Steer toward the current waypoint; at the end, tap E.
 fn follow_route(route: &[(f32, f32)], pos: Option<Vec3>, step: &mut usize, frame: u64) -> PlayerInput {
     use shared::movement::buttons::INTERACT;
@@ -309,9 +355,10 @@ pub fn bot_app(io: PipeIo, index: u8, script: Script) -> App {
     app.add_systems(FixedPreUpdate, drive.before(lightyear::prelude::client::input::InputSystems::WriteClientInputs));
     app.insert_resource(CasinoPlan(match script {
         Script::Casino { table, role, spot } => casino_route(table, role, spot),
+        Script::Game(game) => games::route(game),
         _ => Vec::new(),
     }));
-    app.add_systems(Update, play_tables);
+    app.add_systems(Update, (play_tables, play_games));
     let mut uuid = [0u8; 16];
     uuid[0] = 0xb0;
     uuid[1] = index;

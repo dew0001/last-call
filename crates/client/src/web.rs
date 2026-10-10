@@ -78,7 +78,10 @@ pub fn client_start(config: JsValue) -> Result<(), JsValue> {
     let mut app = crate::build_app(online);
     if let Some(bridge) = app.world().get_resource::<NetBridge>() {
         INBOX.with(|i| *i.borrow_mut() = Some(bridge.0.clone()));
-        app.add_systems(PreUpdate, (read_scripted_input, read_table_requests, read_fixture_requests));
+        app.add_systems(
+            PreUpdate,
+            (read_scripted_input, read_table_requests, read_fixture_requests, read_game_requests),
+        );
         app.add_systems(Last, send_outgoing);
     }
     app.add_systems(Last, publish_status);
@@ -151,6 +154,25 @@ fn read_fixture_requests(mut out: ResMut<shared::client::OutgoingFixture>) {
         }
     }
     let _ = Reflect::set(&window, &"__lcFixture".into(), &Array::new());
+}
+
+/// `window.__lcGame.push(action)` sends a side-game request (tests and
+/// automation): `{ Cast: { power: 50 } }`, `"Hook"`, `{ Fire: { yaw, pitch, view_tick: 0 } }`
+/// (a `view_tick` of 0 is filled with this client's interpolation tick).
+fn read_game_requests(mut out: ResMut<shared::client::OutgoingGame>) {
+    let Some(window) = web_sys::window() else { return };
+    let Ok(value) = Reflect::get(&window, &"__lcGame".into()) else { return };
+    let Ok(list) = value.dyn_into::<Array>() else { return };
+    if list.length() == 0 {
+        return;
+    }
+    for item in list.iter() {
+        match serde_wasm_bindgen::from_value::<shared::protocol::GameAction>(item) {
+            Ok(action) => out.0.push(action),
+            Err(e) => set_error(format!("bad game request: {e}")),
+        }
+    }
+    let _ = Reflect::set(&window, &"__lcGame".into(), &Array::new());
 }
 
 fn publish_status(status: Res<RenderStatus>, net: Option<Res<NetStatus>>) {
