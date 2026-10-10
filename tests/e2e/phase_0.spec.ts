@@ -133,9 +133,11 @@ test('auto-detect ends on a renderer that draws', async ({ page }) => {
 });
 
 test('host simulation ticks at 64 Hz in a Web Worker', async ({ page }) => {
-  await page.goto('/?hostonly');
+  // The ticks are the check, not the page's load event: in one CI run Firefox
+  // never fired "load" for this page within three minutes.
+  await page.goto('/?hostonly', { waitUntil: 'domcontentloaded' });
   await expect
-    .poll(async () => page.evaluate(() => (window as any).__hostTicks.length), { timeout: 30_000 })
+    .poll(async () => page.evaluate(() => (window as any).__hostTicks?.length ?? 0), { timeout: 60_000 })
     .toBeGreaterThanOrEqual(4);
   const reports: { tick: number; tps: number }[] = await page.evaluate(() => (window as any).__hostTicks);
   // Skip the first report: it includes worker start-up.
