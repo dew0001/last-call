@@ -1,7 +1,7 @@
 // Phase 7: release checks. The signaling load test (50 rooms of 8 joining at
 // once), crash reports, settings, achievements, and the tutorial prompts.
 import { expect, test } from '@playwright/test';
-import { createRoom, openTab, status, waitFor } from './helpers';
+import { createRoom, openTab, status, waitFor, walkTo } from './helpers';
 
 const SIGNAL = process.env.SIGNAL_URL ?? 'ws://127.0.0.1:8787';
 // The load and crash-report tests talk to the local `wrangler dev` Worker.
@@ -129,10 +129,10 @@ test('an achievement unlocks a hat that the next room shows', async ({ browser }
 test('the tutorial walks a new player through the first shift', async ({ browser }) => {
   const { host } = await createRoom(browser, undefined, '&tutorial');
   await expect(host.locator('#tutorial')).toContainText('WASD');
-  // Walk: the first prompt moves on.
-  await host.evaluate(() => ((window as any).__lcInput = { mx: 0, my: 1, yaw: 0, pitch: 0, buttons: 0 }));
+  // Walk across open floor (straight ahead can end at the counter after a
+  // step): the first prompt moves on.
+  await walkTo(host, [[4.0, -1.5], [0, 3.4]]);
   await expect(host.locator('#tutorial')).toContainText('tap', { timeout: 30_000 });
-  await host.evaluate(() => ((window as any).__lcInput = null));
   expect((await status(host)).game?.shift?.phase).toBe('SETUP');
   await host.context().close();
 });
