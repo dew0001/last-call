@@ -192,22 +192,33 @@ jobs:
         id: worker
         if: steps.secrets.outputs.ready == 'true'
         run: |
+          set -o pipefail
           # The crash-report KV namespace: create it once, then use its id.
-          title="last-call-signal-REPORTS"
-          id=$(npx wrangler kv namespace list | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const n=JSON.parse(s).find(x=>x.title==='$title');console.log(n?n.id:'')})")
+          # Wrangler 4 titles a namespace with exactly the name given.
+          title="last-call-reports"
+          find_id() {
+            npx wrangler kv namespace list | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const n=JSON.parse(s).find(x=>x.title==='$title');console.log(n?n.id:'')})"
+          }
+          id=$(find_id)
           if [ -z "$id" ]; then
-            npx wrangler kv namespace create REPORTS
-            id=$(npx wrangler kv namespace list | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const n=JSON.parse(s).find(x=>x.title==='$title');console.log(n?n.id:'')})")
+            npx wrangler kv namespace create "$title"
+            id=$(find_id)
+          fi
+          if [ -z "$id" ]; then
+            echo "::error::no KV namespace titled $title"
+            exit 1
           fi
           sed -i "s/REPORTS_NAMESPACE_ID/$id/" wrangler.toml
           npx wrangler deploy | tee worker.log
           url=$(grep -oE 'https://[a-z0-9.-]+\.workers\.dev' worker.log | head -1)
+          [ -n "$url" ] || { echo "::error::no Worker URL in the deploy output"; exit 1; }
           echo "url=$url" >> "$GITHUB_OUTPUT"
       - name: deploy client to Pages
         id: pages
         if: steps.secrets.outputs.ready == 'true'
         run: |
           npx wrangler pages project create last-call --production-branch main || true
+          set -o pipefail
           npx wrangler pages deploy dist --project-name last-call --branch "${GITHUB_REF_NAME}" --commit-dirty=true | tee pages.log
           url=$(grep -oE 'https://[a-z0-9]+\.[a-z0-9-]+\.pages\.dev' pages.log | head -1)
           alias=$(grep -oE 'alias URL: https://[^ ]+' pages.log | sed 's/alias URL: //' | head -1)

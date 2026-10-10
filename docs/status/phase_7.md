@@ -8,7 +8,7 @@ Date: 2026-10-10. Branch: `main-ygr4w2`.
 - **Achievements and hats.** Six achievements, kept in localStorage with the player's UUID: 21 three times in a shift, passing out on the roof, catching the boot, landing a shark, scoring in the gauntlet, winning a fight pit round. Each unlocks a hat; the lobby picks one and every room shows it.
 - **New game plus.** Each level: +25% debt and payments, one more chaos event a shift (up to four), customers 10% less patient (down to 60%).
 - **Tutorial shift.** The lobby's Tutorial button opens a calm first shift (no chaos, customers at the bar) with prompts that wait for each step: walk, pour, serve, bank at the safe, try a table, then how the loan shark collects.
-- **Crash reports.** A wasm panic in a client, or an error in the host Worker, posts once to the signaling Worker's `/report`, which keeps the newest 200 in Workers KV. The deploy job creates the KV namespace on its first run.
+- **Crash reports.** A wasm panic in a client, or an error in the host Worker, posts once to the signaling Worker's `/report`, which keeps the newest 200 in Workers KV. The deploy job creates the KV namespace (`last-call-reports`) on its first run. An earlier run left an unused namespace titled `REPORTS` in the Cloudflare account; it can be deleted from the dashboard.
 - **Deploy from CI.** Every push deploys: Cloudflare Pages for the client, `wrangler deploy` for the signaling Worker, then smoke tests against the live site (from Phase 1; it skips with a notice until the Cloudflare secrets are set, see `docs/YOU_DO_THIS.md`).
 
 ## Load and soak
