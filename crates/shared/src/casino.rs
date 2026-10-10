@@ -59,6 +59,9 @@ pub enum TableAction {
     Rake,
     /// Slots: pull the lever with this bet.
     Pull(i64),
+    /// Roulette: use a rigged die (Lucky Charm Shelf) so the next spin lands
+    /// in this dozen (0 to 2).
+    RiggedDie(u8),
 }
 
 // ---------- Layout ----------

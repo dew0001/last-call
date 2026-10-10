@@ -40,12 +40,14 @@ pub struct RouletteHost {
     betting: u32,
     last: Option<u8>,
     spins: u32,
+    /// A rigged die forces the next spin into this dozen.
+    rigged: Option<u8>,
 }
 
 pub fn spawn(mut commands: Commands) {
     commands.spawn((
         Name::new("Roulette table"),
-        RouletteHost { croupier: None, bets: Vec::new(), spin: None, betting: 0, last: None, spins: 0 },
+        RouletteHost { croupier: None, bets: Vec::new(), spin: None, betting: 0, last: None, spins: 0, rigged: None },
         RouletteView::default(),
         Replicate::to_clients(NetworkTarget::All),
     ));
@@ -72,6 +74,7 @@ pub fn run(
     mut room: Query<&mut RunLedger, With<RoomState>>,
     owned: Res<crate::fixtures::Owned>,
     effects: Res<crate::chaos::TableEffects>,
+    mut inventories: Query<&mut Inventory>,
 ) {
     if effects.paused {
         return;
@@ -133,15 +136,36 @@ pub fn run(
             }
             TableAction::Spin => {
                 if is_croupier && host.spin.is_none() && !host.bets.is_empty() && to_rake == 0 {
-                    let spin = decide(
-                        &mut rngs,
-                        &mut audit,
-                        TABLE,
-                        tick,
-                        |d| Roulette::start(d, &()),
-                        |s| Some(shared::audit::Derived::Spin { result: s.result }),
-                    );
+                    let spin = match host.rigged.take() {
+                        Some(dozen) => decide(
+                            &mut rngs,
+                            &mut audit,
+                            TABLE,
+                            tick,
+                            |d| Spin { result: shared::fixtures::rigged_spin(dozen, d), settled: false },
+                            |s| Some(shared::audit::Derived::RiggedSpin { dozen, result: s.result }),
+                        ),
+                        None => decide(
+                            &mut rngs,
+                            &mut audit,
+                            TABLE,
+                            tick,
+                            |d| Roulette::start(d, &()),
+                            |s| Some(shared::audit::Derived::Spin { result: s.result }),
+                        ),
+                    };
                     host.spin = Some((spin, MIN_SPIN_SECS * shared::TICK_HZ));
+                }
+            }
+            TableAction::RiggedDie(dozen) => {
+                if host.spin.is_none()
+                    && host.rigged.is_none()
+                    && casino::can_reach(TABLE, pos.0.x, pos.0.z)
+                    && let Ok(mut inv) = inventories.get_mut(who_e)
+                    && inv.rigged_dice > 0
+                {
+                    inv.rigged_dice -= 1;
+                    host.rigged = Some(dozen % 3);
                 }
             }
             TableAction::Rake if is_croupier => {

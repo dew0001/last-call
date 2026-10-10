@@ -25,6 +25,8 @@ pub enum Derived {
     Spin { result: u8 },
     /// Where the slot reels stop.
     Reels { stops: [u8; 3] },
+    /// A spin forced into a dozen by a rigged die.
+    RiggedSpin { dozen: u8, result: u8 },
 }
 
 impl Derived {
@@ -35,6 +37,9 @@ impl Derived {
             Derived::Shuffle { .. } => Derived::Shuffle { cards: cards::shuffle(DECKS, &mut d) },
             Derived::Spin { .. } => Derived::Spin { result: roulette::spin(&mut d) },
             Derived::Reels { .. } => Derived::Reels { stops: slots::pull(&mut d) },
+            Derived::RiggedSpin { dozen, .. } => {
+                Derived::RiggedSpin { dozen: *dozen, result: crate::fixtures::rigged_spin(*dozen, &mut d) }
+            }
         };
         if d.left() != 0 {
             return Err(format!("{} draws left over", d.left()));
@@ -192,7 +197,7 @@ pub fn verify<'a>(lines: impl IntoIterator<Item = &'a str>) -> Result<Report, St
                 }
                 match what {
                     Derived::Shuffle { .. } => report.shuffles += 1,
-                    Derived::Spin { .. } => report.spins += 1,
+                    Derived::Spin { .. } | Derived::RiggedSpin { .. } => report.spins += 1,
                     Derived::Reels { .. } => report.reels += 1,
                 }
             }

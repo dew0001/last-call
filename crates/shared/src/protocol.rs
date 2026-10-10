@@ -85,6 +85,8 @@ pub struct Inventory {
     pub well_fed: bool,
     /// Fish plate: one reroll of the next losing roulette spin.
     pub lucky: bool,
+    /// Marked deck: the dealer's hole card while a blackjack round is in play.
+    pub hole_card: Option<u8>,
 }
 
 /// Vomit on the floor (from The Spins). Also a [`Puddle`] (it is slippery);

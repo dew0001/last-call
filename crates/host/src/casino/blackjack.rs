@@ -110,6 +110,7 @@ pub fn run(
     mut room: Query<&mut RunLedger, With<RoomState>>,
     owned: Res<crate::fixtures::Owned>,
     effects: Res<crate::chaos::TableEffects>,
+    mut inventories: Query<&mut Inventory>,
 ) {
     if effects.paused || effects.blackjack_broken {
         return;
@@ -348,6 +349,19 @@ pub fn run(
 
     let next = build_view(host, &seated_customers, &players, &npcs);
     view.set_if_neq(next);
+    // A marked deck shows its holder the dealer's hole card.
+    let hole = host
+        .game
+        .round
+        .as_ref()
+        .filter(|r| matches!(r.phase, Phase::Insurance | Phase::Players { .. }))
+        .and_then(|r| r.dealer.get(1).copied());
+    for mut inv in &mut inventories {
+        let want = if inv.marked_deck { hole } else { None };
+        if inv.hole_card != want {
+            inv.hole_card = want;
+        }
+    }
 }
 
 /// What happens to a seat that cannot or will not decide: decline insurance, stand.
