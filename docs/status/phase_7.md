@@ -15,7 +15,7 @@ Date: 2026-10-10. Branch: `main-ygr4w2`.
 
 - **Load**: 50 rooms of 8 (a host and seven players each) join through the signaling Worker under `wrangler dev` at once, each with an offer and an answer per player: all connected in 2.9 s (budget: 15 s to the lobby).
 - **Soak, native** (`tools soak 3600`, release build): 230,400 ticks (one hour of play) with 8 scripted players. Mean 0.95 ms, p99 1.67 ms, worst tick 4.7 ms of thread CPU time (9.4 ms wall). Earlier runs saw 2 to 4 wall-clock ticks over 10 ms at different ticks each run, with the same final state; a plain C busy loop on this VM also stalls 10.8 ms in 4 minutes. That is the VM giving the core to something else, so the soak now times each tick's own CPU time too (`cpu_worst_ms`) and the budget uses it where the OS reports it.
-- **Soak, wasm in headless Chromium** (`SOAK_SECS=3600`, `tests/e2e/phase_7.spec.ts`): SOAK_WASM
+- **Soak, wasm in headless Chromium** (`SOAK_SECS=3600`, `tests/e2e/phase_7.spec.ts`): run twice, 230,400 ticks each. Mean 1.17 and 1.16 ms, p99 2.1 ms. Each run had 4 to 6 ticks over 10 ms (worst 26 and 32 ms), all at different ticks in the two runs, with the same end state: no tick was over 10 ms in both. The sim is deterministic, so a tick that is slow in its own right is slow every run; the others are the VM stalling the browser (a C busy loop alongside saw a 29.6 ms stall). The browser has no thread CPU clock, so the test checks the ticks slow in both runs.
 - CI runs the wasm soak for two minutes on every push.
 
 ## Tests

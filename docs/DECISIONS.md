@@ -460,7 +460,7 @@ A wasm panic in the client (or an error in the host Worker) is posted once to th
 
 The load test opens 50 rooms of 8 against `wrangler dev` at once and completes every join and an offer and answer per player through the relay (the WebRTC media itself is between browsers and is covered by the Phase 1 tests). The soak runs the replay's scripted players plus two more (eight) for an hour of plan-length shifts with customers, tables and chaos, timing every host tick: `tools soak 3600` natively, and `host_soak` in headless Chromium (`SOAK_SECS=3600`; CI runs two minutes).
 
-Natively the budget ("no tick over 10 ms") is checked on each tick's thread CPU time (`CLOCK_THREAD_CPUTIME_ID`). Wall-clock runs on the cloud VM had 2 to 4 ticks over 10 ms an hour, at different ticks each run with the same end state, and a plain C busy loop saw a 10.8 ms stall in 4 minutes: those are the VM running something else. The browser has no thread CPU clock, so the wasm soak stays on wall time.
+Natively the budget ("no tick over 10 ms") is checked on each tick's thread CPU time (`CLOCK_THREAD_CPUTIME_ID`). Wall-clock runs on the cloud VM had 2 to 4 ticks over 10 ms an hour, at different ticks each run with the same end state, and a plain C busy loop saw a 10.8 ms stall in 4 minutes: those are the VM running something else. The browser has no thread CPU clock, so the wasm soak runs twice and fails on a tick over 10 ms in both runs: the simulation is deterministic, so real cost repeats and a stall does not. One hour in Chromium: 4 and 6 ticks over 10 ms, none in both.
 
 ### Eight test tabs at 20 frames a second
 

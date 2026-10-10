@@ -471,7 +471,7 @@ Each phase ends with a demo build at a URL and a checklist. Do not start the nex
 - [x] Tutorial shift: scripted first shift with prompts.
 - [x] Crash reporting: wasm panics to the signaling Worker's `/report` endpoint, stored in Workers KV on the free plan (capped, oldest dropped).
 - [ ] Deploy from CI: Cloudflare Pages for the client, `wrangler deploy` for the signaling Worker.
-- [ ] Load tests: 50 rooms of 8 bots joining through the signaling Worker under `wrangler dev`, all connected within budget. Soak: one host sim with 8 bots for 1 hour, natively and as wasm in headless Chromium. No tick over 10 ms.
+- [x] Load tests: 50 rooms of 8 bots joining through the signaling Worker under `wrangler dev`, all connected within budget. Soak: one host sim with 8 bots for 1 hour, natively and as wasm in headless Chromium. No tick over 10 ms.
 
 ---
 
