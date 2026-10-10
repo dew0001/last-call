@@ -381,6 +381,29 @@ Event lengths are not scaled by `?fast`; a fast room's Last call ends any event 
 
 Fixtures are colored posts. A panel at the top right lists the nearest fixture's menu with number keys (U for the breaker and service keys, whose number keys belong to the slot machine beside them). A banner at the top shows running events with their counters. Focus shows a running Hi-Lo count in the blackjack panel, counted on the client from the cards it has seen since the last shuffle.
 
+## Phase 5
+
+### Side games are arithmetic, not rigid bodies
+
+The plan simulates the basketball with the same avian settings on host and client, with client prediction. Here the ball is a point under gravity and wind, stepped at 64 Hz in shared code (`shared::hoops::fly`), so the host decides a shot at once and every client replays the identical flight to draw it. Kicks are arithmetic too (`shared::kicks`): where the ball crosses the goal line, and when. This keeps every outcome deterministic and replayable, and the ball cannot be knocked by a stray prop. The cost: no rebounds off the rim, and the ball is not a prop players can pick up. A physical ball can come with the art pass.
+
+### Charge, aim and timing travel as one request
+
+A cast, shot or kick is one reliable request carrying its charge and aim (`GameRequest`), sent when the player lets go of C. The host adds the aim error (drink, Focus) from its own RNG stream. This sidesteps the late-input problem (`docs/DECISIONS.md`, Phase 3): a held button's timing never depends on input packets arriving in time. The reel is the exception: it sends "held" and "let go" as they happen, and the tension is the host's.
+
+### Stations and money
+
+- Fishing: two spots at the end of the pier. A landed fish sells at its value at once (new money). Bets on a fight are 1 to 1 against the house, one per player, at most $200. A landed fish (not the boot) also counts toward a fish plate at the kitchen: $10 and a lucky reroll of the next roulette spin in which all of that player's bets would lose.
+- Basketball: 3 of 5 and HORSE (2 to 4 players), $20 entry into a pot the winners split. Anyone on the court may shoot for practice when no contest is under way. A 5 of 5 draws a crowd: beers sell 20% better for two minutes. Not built: customers betting on players and the customers' "Around the World" (customers stay in the bar).
+- Penalties: a shootout of five kicks each, $20 entry, against the NPC goalie or a player in goal. A player goalie may dive before the kick (a guess) or during its flight; each save pays him the entry fee from the house. Spectators bet goal or miss at 1 to 1.
+- Field goals: 20, 30 and 40 yards pay 1, 2 and 4 to 1 from the house. The parking lot is shorter than 40 yards, so the distance is notional; the uprights stand at the lot's north end.
+- The gauntlet: on the lot's east side, apart from the penalty goal. The runner moves with the normal controls; the host moves him on a dodge (a correction the client sees). A tackle ends the run; the plan's ragdoll on contact is not applied (the drunk ragdoll is tied to the drunk meter).
+- The fight pit: a square inside the basement. Fighters who are down cannot shoot or be hit but can still walk; they reappear at a corner after 3 s. A round everyone left is dropped. Spectators anywhere can throw a beer at a player: a loose beer moving faster than 2 m/s within half a meter adds 20 drunk.
+
+### Lag compensation
+
+The host keeps half a second of every player's position, by lightyear tick. A shot carries the tick of the shooter's interpolation timeline; the host rewinds the other fighters to that tick, clamped to 200 ms, and casts the ray against a cylinder body and a sphere head. Tests cover a hit on a target who has since moved, and a miss when the claimed tick is older than 200 ms.
+
 ## User decisions
 
 ### No debt-tier unlocks (2026-10-09)

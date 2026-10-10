@@ -449,12 +449,12 @@ Each phase ends with a demo build at a URL and a checklist. Do not start the nex
 - [x] Room doors. No tier gates: every room is open from the start (user decision, 2026-10-09).
 
 ### Phase 5: Side minigames (weeks 9 to 12)
-- [ ] Fishing with bets.
-- [ ] Basketball with 3 of 5 and HORSE.
-- [ ] Soccer penalties.
-- [ ] Football field goal and gauntlet.
-- [ ] Fight pit with four weapons, lag compensation, spectator beers.
-- [ ] Each minigame has a unit-tested `Minigame` impl and a bot that can play it.
+- [x] Fishing with bets.
+- [x] Basketball with 3 of 5 and HORSE.
+- [x] Soccer penalties.
+- [x] Football field goal and gauntlet.
+- [x] Fight pit with four weapons, lag compensation, spectator beers.
+- [x] Each minigame has a unit-tested `Minigame` impl and a bot that can play it.
 
 ### Phase 6: Art and performance pass (weeks 13 to 15)
 - [ ] Replace gray box with final meshes per section 7.
