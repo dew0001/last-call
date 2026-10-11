@@ -10,13 +10,24 @@ test('real keys: pour and drink with the starting pocket', async ({ page }) => {
   console.log('pocket at start', (await status(page)).game.pocket);
   await page.evaluate(() => (window as any).__lcTeleport(4.0, -5.0));
   await page.waitForTimeout(1500);
-  await page.keyboard.down('KeyE');
-  await waitFor(page, 'pouring', (s) => !!s.game?.pour, 10_000);
-  // Well short of full: a slow browser reads the status late, and an
-  // overfilled glass spills.
-  await waitFor(page, 'mostly full', (s) => (s.game?.pour?.[0] ?? 0) >= 70, 20_000);
-  await page.keyboard.up('KeyE');
-  await waitFor(page, 'holding a beer', (s) => !!s.game?.beer, 10_000);
+  // Pour with E held. Release well short of full: a slow browser reads the
+  // status late. A runner that stalls can still overfill the glass (a spill
+  // is the game working; tests/e2e/phase_2 checks the pour's timing), so
+  // pour again after a spill.
+  for (let attempt = 1; ; attempt++) {
+    const puddles = (await status(page)).game?.puddles ?? 0;
+    await page.keyboard.down('KeyE');
+    await waitFor(page, 'pouring', (s) => !!s.game?.pour, 10_000);
+    await waitFor(page, 'mostly full', (s) => (s.game?.pour?.[0] ?? 0) >= 70, 20_000);
+    await page.keyboard.up('KeyE');
+    const s = await waitFor(page, 'poured', (s) => !s.game?.pour, 10_000);
+    if (s.game?.beer) break;
+    const held = await waitFor(page, 'holding or spilled', (s) => !!s.game?.beer || (s.game?.puddles ?? 0) > puddles, 5_000);
+    if (held.game?.beer) break;
+    console.log('spilled on attempt', attempt);
+    if (attempt === 3) throw new Error('spilled three pours');
+    await page.waitForTimeout(500);
+  }
   await page.keyboard.press('KeyR');
   const d = await waitFor(page, 'drank it', (s) => !s.game?.beer && (s.game?.drunk?.level ?? 0) > 0, 10_000);
   console.log('after drink', d.game.pocket, d.game.drunk.level);

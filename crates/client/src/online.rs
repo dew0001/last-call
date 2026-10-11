@@ -1110,9 +1110,13 @@ fn predict_pour(
     let at_tap = shared::movement::distance_to_tap(pos.0.to_array()) < bar::TAP_REACH;
     let holding = held.iter().any(|h| h.0 == Some(id));
     let out = drunks.iter().any(|(p, d)| p.id == id && d.passed_out);
-    if input.buttons & buttons::INTERACT == 0 || !at_tap || holding || out {
-        // A pour that had not overflowed ends here: the glass is filled to this tick.
-        if pour.0.take().is_some_and(|p| p.fill <= shared::beer::OVERFLOW) {
+    let released = input.buttons & buttons::INTERACT == 0;
+    if released || !at_tap || holding || out {
+        // A pour that had not overflowed ends here: the glass is filled to this
+        // tick. Only letting go of E is stamped: the host ends a pour at a
+        // stamp, and this client's predicted position or hands can briefly
+        // disagree with the host's (a correction) while E is still down.
+        if pour.0.take().is_some_and(|p| p.fill <= shared::beer::OVERFLOW) && released {
             taps.0.push(TapEvent { tick, down: false });
         }
         return;
