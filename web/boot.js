@@ -516,9 +516,10 @@ async function runTitle() {
     const code = parseRoomCode(document.getElementById('join-code').value);
     if (code) location.search = `?room=${code}`;
   });
-  // `?cam=x,y,z,yaw`: a fixed title camera, for screenshots of the map.
+  // `?cam=x,y,z,yaw[,pitch]`: a fixed title camera, for screenshots of the map.
   const cam = params.get('cam')?.split(',').map(Number);
-  runClient(mod, { online: false, cube: params.has('cube'), nodraw: params.has('nodraw'), cam: cam?.length === 4 ? cam : undefined });
+  if (cam?.length === 4) cam.push(0);
+  runClient(mod, { online: false, cube: params.has('cube'), nodraw: params.has('nodraw'), cam: cam?.length === 5 ? cam : undefined });
 }
 
 // In a room, clicking the game locks the mouse to it for mouse look

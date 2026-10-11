@@ -46,9 +46,9 @@ struct StartConfig {
     /// Title screen only: the renderer-check cube instead of the bar (tests).
     #[serde(default)]
     cube: bool,
-    /// Title screen only: a fixed camera, x, y, z, yaw (screenshots).
+    /// Title screen only: a fixed camera, x, y, z, yaw, pitch (screenshots).
     #[serde(default)]
-    cam: Option<[f32; 4]>,
+    cam: Option<[f32; 5]>,
 }
 
 fn parse_uuid(hex: &str) -> [u8; 16] {

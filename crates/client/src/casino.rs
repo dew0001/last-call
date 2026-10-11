@@ -16,6 +16,8 @@ use shared::protocol::*;
 use shared::roulette::{self, Bet as RBet};
 use shared::slots::{self, Symbol};
 
+use crate::art;
+
 use crate::online::{NetStatus, NoDraw};
 
 pub fn add(app: &mut App) {
@@ -499,15 +501,17 @@ struct CardTile;
 
 #[derive(Resource)]
 struct CardLooks {
-    mesh: Handle<Mesh>,
-    face: Handle<StandardMaterial>,
+    back_mesh: Handle<Mesh>,
     back: Handle<StandardMaterial>,
+    face: Handle<StandardMaterial>,
+    /// Face meshes by card, made on first deal.
+    faces: std::collections::HashMap<u8, Handle<Mesh>>,
 }
 
 #[derive(Resource)]
-struct SymbolLooks([Handle<StandardMaterial>; 5]);
+struct SymbolLooks([Handle<Mesh>; 5]);
 
-fn setup_tables(
+pub(crate) fn setup_tables(
     mut commands: Commands,
     nodraw: Option<Res<NoDraw>>,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -524,78 +528,91 @@ fn setup_tables(
             ..default()
         })
     };
-    let felt = mat(Color::srgb(0.05, 0.4, 0.18), 0.0);
+    // Vertex-painted pieces (art.rs) share one material.
+    let painted = mat(Color::WHITE, 0.0);
     let h = casino::FELT_HEIGHT;
-    for ((cx, cz), (hx, hz)) in [(casino::BLACKJACK, casino::BLACKJACK_HALF), (casino::ROULETTE, casino::ROULETTE_HALF)]
-    {
-        commands.spawn((
-            Mesh3d(meshes.add(Cuboid::new(hx * 2.0 - 0.1, 0.01, hz * 2.0 - 0.1))),
-            MeshMaterial3d(felt.clone()),
-            Transform::from_xyz(cx, h + 0.005, cz),
-        ));
-    }
-    // The wheel: a dark disc at the roulette table's west end, with a ball.
+    // The felt printing: seat rings and the chip rack at blackjack, the
+    // number layout at roulette.
+    let (bx, bz) = casino::BLACKJACK;
+    let seats: Vec<(f32, f32)> =
+        casino::bettor_spots(TableId::Blackjack).iter().map(|(x, z)| (x - bx, z - bz)).collect();
+    commands.spawn((
+        Mesh3d(meshes.add(art::blackjack_layout(&seats, casino::BLACKJACK_HALF.1))),
+        MeshMaterial3d(painted.clone()),
+        Transform::from_xyz(bx, h + 0.002, bz),
+    ));
     let (rx, rz) = casino::ROULETTE;
-    let wheel_at = Vec3::new(rx - casino::ROULETTE_HALF.0 + 0.45, h + 0.03, rz);
-    commands
-        .spawn((
-            Wheel,
-            Mesh3d(meshes.add(Cylinder::new(0.38, 0.05))),
-            MeshMaterial3d(mat(Color::srgb(0.25, 0.1, 0.05), 0.0)),
-            Transform::from_translation(wheel_at),
-        ))
-        .with_children(|w| {
-            // Red and black pocket marks around the rim.
-            let red = mat(Color::srgb(0.7, 0.05, 0.05), 0.2);
-            let black = mat(Color::srgb(0.05, 0.05, 0.05), 0.0);
-            let green = mat(Color::srgb(0.0, 0.6, 0.2), 0.2);
-            let mark = meshes.add(Cuboid::new(0.05, 0.02, 0.05));
-            for (i, n) in roulette::WHEEL_ORDER.iter().enumerate() {
-                let a = i as f32 / 37.0 * std::f32::consts::TAU;
-                let m = if *n == 0 {
-                    green.clone()
-                } else if roulette::is_red(*n) {
-                    red.clone()
-                } else {
-                    black.clone()
-                };
-                w.spawn((
-                    Mesh3d(mark.clone()),
-                    MeshMaterial3d(m),
-                    Transform::from_xyz(a.sin() * 0.32, 0.03, a.cos() * 0.32),
-                ));
-            }
-        });
+    commands.spawn((
+        Mesh3d(meshes.add(art::roulette_layout(-casino::ROULETTE_HALF.0 + 1.0, roulette::is_red))),
+        MeshMaterial3d(painted.clone()),
+        Transform::from_xyz(rx, h + 0.002, rz + 0.05),
+    ));
+    // The wheel turns in a bowl at the roulette table's west end; the ball
+    // rides on top.
+    let wheel_at = Vec3::new(rx - casino::ROULETTE_HALF.0 + 0.55, h + 0.03, rz);
+    commands.spawn((
+        Mesh3d(meshes.add(art::wheel_bowl())),
+        MeshMaterial3d(painted.clone()),
+        Transform::from_translation(wheel_at - Vec3::Y * 0.02),
+    ));
+    commands.spawn((
+        Wheel,
+        Mesh3d(meshes.add(art::wheel(&roulette::WHEEL_ORDER, roulette::is_red))),
+        MeshMaterial3d(painted.clone()),
+        Transform::from_translation(wheel_at + Vec3::Y * 0.02),
+    ));
     commands.spawn((
         Ball,
-        Mesh3d(meshes.add(Sphere::new(0.025))),
+        Mesh3d(meshes.add(Sphere::new(0.022))),
         MeshMaterial3d(mat(Color::WHITE, 0.5)),
-        Transform::from_translation(wheel_at + Vec3::Y * 0.06),
+        Transform::from_translation(wheel_at + Vec3::Y * 0.08),
     ));
-    // Slot reels: three tiles on each machine's front face.
-    let symbols = [
-        mat(Color::srgb(0.85, 0.05, 0.1), 0.6),
-        mat(Color::srgb(0.95, 0.9, 0.1), 0.6),
-        mat(Color::srgb(0.95, 0.6, 0.1), 0.6),
-        mat(Color::srgb(0.2, 0.2, 0.9), 0.6),
-        mat(Color::srgb(1.0, 1.0, 1.0), 0.8),
-    ];
-    let tile = meshes.add(Cuboid::new(0.02, 0.18, 0.14));
+    // Slot reels: three white drums in each machine's window, each showing
+    // its symbol; a lit topper over each machine.
+    let symbols = art::reel_symbols().map(|m| meshes.add(m));
+    let drum = meshes.add(Cuboid::new(0.02, 0.2, 0.16));
+    let drum_mat = mat(Color::srgb(0.97, 0.96, 0.92), 0.15);
+    let symbol_mat = painted.clone();
+    let topper = meshes.add(Cuboid::new(0.04, 0.12, casino::SLOT_HALF.1 * 2.0 - 0.06));
+    let topper_mat = mat(Color::srgb(1.0, 0.8, 0.35), 1.2);
     for (m, (sx, sz)) in casino::SLOTS.iter().enumerate() {
         for r in 0..3 {
-            commands.spawn((
-                Reel(m as u8, r),
-                Mesh3d(tile.clone()),
-                MeshMaterial3d(symbols[0].clone()),
-                Transform::from_xyz(sx + casino::SLOT_HALF.0 + 0.011, 1.2, sz - 0.17 + r as f32 * 0.17),
-            ));
+            commands
+                .spawn((
+                    Mesh3d(drum.clone()),
+                    MeshMaterial3d(drum_mat.clone()),
+                    Transform::from_xyz(sx + casino::SLOT_HALF.0 + 0.011, 1.2, sz - 0.18 + r as f32 * 0.18),
+                ))
+                .with_child((
+                    Reel(m as u8, r),
+                    Mesh3d(symbols[0].clone()),
+                    MeshMaterial3d(symbol_mat.clone()),
+                    Transform::from_xyz(0.012, 0.0, 0.0),
+                ));
         }
+        // The topper: a lit panel with three sevens.
+        commands
+            .spawn((
+                Mesh3d(topper.clone()),
+                MeshMaterial3d(topper_mat.clone()),
+                Transform::from_xyz(sx + casino::SLOT_HALF.0 - 0.01, casino::SLOT_HEIGHT - 0.1, *sz),
+            ))
+            .with_children(|t| {
+                for i in -1..=1 {
+                    t.spawn((
+                        Mesh3d(symbols[4].clone()),
+                        MeshMaterial3d(symbol_mat.clone()),
+                        Transform::from_xyz(0.022, 0.0, i as f32 * 0.17).with_scale(Vec3::splat(0.85)),
+                    ));
+                }
+            });
     }
     commands.insert_resource(SymbolLooks(symbols));
     commands.insert_resource(CardLooks {
-        mesh: meshes.add(Cuboid::new(0.09, 0.004, 0.13)),
-        face: mat(Color::srgb(0.95, 0.95, 0.9), 0.1),
+        back_mesh: meshes.add(Cuboid::new(0.09, 0.004, 0.13)),
         back: mat(Color::srgb(0.6, 0.05, 0.1), 0.0),
+        face: painted,
+        faces: default(),
     });
 }
 
@@ -603,32 +620,41 @@ fn setup_tables(
 /// along the dealer side, each seat's in front of the seat.
 fn draw_cards(
     mut commands: Commands,
-    looks: Option<Res<CardLooks>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    looks: Option<ResMut<CardLooks>>,
     views: Query<&BlackjackView, Changed<BlackjackView>>,
     tiles: Query<Entity, With<CardTile>>,
 ) {
-    let (Some(looks), Ok(v)) = (looks, views.single()) else { return };
+    let (Some(mut looks), Ok(v)) = (looks, views.single()) else { return };
     for e in &tiles {
         commands.entity(e).despawn();
     }
     let (cx, cz) = casino::BLACKJACK;
     let y = casino::FELT_HEIGHT + 0.012;
-    let mut tile = |x: f32, z: f32, hidden: bool| {
-        commands.spawn((
-            CardTile,
-            Mesh3d(looks.mesh.clone()),
-            MeshMaterial3d(if hidden { looks.back.clone() } else { looks.face.clone() }),
-            Transform::from_xyz(x, y, z),
-        ));
+    let mut tile = |x: f32, z: f32, card: u8| {
+        let (mesh, mat) = if card == HIDDEN_CARD {
+            (looks.back_mesh.clone(), looks.back.clone())
+        } else {
+            let face = looks
+                .faces
+                .entry(card)
+                .or_insert_with(|| {
+                    let suit = shared::cards::suit(card);
+                    meshes.add(art::card_face(shared::cards::rank(card), suit == 1 || suit == 2))
+                })
+                .clone();
+            (face, looks.face.clone())
+        };
+        commands.spawn((CardTile, Mesh3d(mesh), MeshMaterial3d(mat), Transform::from_xyz(x, y, z)));
     };
     for (i, c) in v.dealer_cards.iter().enumerate() {
-        tile(cx - 0.15 + i as f32 * 0.1, cz - 0.3, *c == HIDDEN_CARD);
+        tile(cx - 0.15 + i as f32 * 0.1, cz - 0.3, *c);
     }
     let spots = casino::bettor_spots(TableId::Blackjack);
     for (s, seat) in v.seats.iter().enumerate() {
         for (h, hand) in seat.hands.iter().enumerate() {
-            for (i, _) in hand.cards.iter().enumerate() {
-                tile(spots[s].0 - 0.08 + i as f32 * 0.04 + h as f32 * 0.2, cz + 0.25 - i as f32 * 0.03, false);
+            for (i, c) in hand.cards.iter().enumerate() {
+                tile(spots[s].0 - 0.08 + i as f32 * 0.04 + h as f32 * 0.2, cz + 0.25 - i as f32 * 0.03, *c);
             }
         }
     }
@@ -663,7 +689,7 @@ fn spin_reels(
     time: Res<Time>,
     looks: Option<Res<SymbolLooks>>,
     machines: Query<&SlotView>,
-    mut reels: Query<(&Reel, &mut MeshMaterial3d<StandardMaterial>)>,
+    mut reels: Query<(&Reel, &mut Mesh3d)>,
 ) {
     let Some(looks) = looks else { return };
     for v in &machines {

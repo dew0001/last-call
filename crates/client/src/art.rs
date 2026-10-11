@@ -400,23 +400,250 @@ pub fn counter(b: &bar::Block) -> Mesh {
     ])
 }
 
-/// A casino table: a wooden base and a green felt top.
+/// A casino table: a pedestal on a wide foot, a wooden apron, a green felt
+/// top and a padded leather rail round the edge.
 pub fn table(b: &bar::Block) -> Mesh {
     let (w, d, h) = (b.hx * 2.0, b.hz * 2.0, b.height);
-    combine(vec![
-        part(boxy(w * 0.7, h - 0.08, d * 0.6), at(0.0, -0.04, 0.0), Color::srgb(0.25, 0.14, 0.07)),
-        part(boxy(w, 0.08, d), at(0.0, h / 2.0 - 0.04, 0.0), Color::srgb(0.08, 0.38, 0.18)),
-        part(boxy(w + 0.06, 0.06, 0.06), at(0.0, h / 2.0 - 0.02, d / 2.0), Color::srgb(0.35, 0.2, 0.1)),
-    ])
+    let (wood, dark, leather) =
+        (Color::srgb(0.32, 0.17, 0.08), Color::srgb(0.12, 0.07, 0.04), Color::srgb(0.16, 0.06, 0.04));
+    let top = h / 2.0;
+    let mut parts = vec![
+        // Foot and pedestal.
+        part(boxy(w * 0.55, 0.06, d * 0.55), at(0.0, -top + 0.03, 0.0), dark),
+        part(boxy(w * 0.35, h - 0.2, d * 0.3), at(0.0, -0.07, 0.0), wood),
+        // Apron under the top, with a brass trim along its edge.
+        part(boxy(w - 0.08, 0.12, d - 0.08), at(0.0, top - 0.11, 0.0), wood),
+        part(boxy(w - 0.06, 0.02, d - 0.06), at(0.0, top - 0.06, 0.0), Color::srgb(0.85, 0.65, 0.25)),
+        // The felt.
+        part(boxy(w, 0.04, d), at(0.0, top - 0.02, 0.0), Color::srgb(0.06, 0.36, 0.17)),
+    ];
+    // The rail: four padded bars, a little proud of the felt.
+    for (x, z, sx, sz) in [
+        (0.0, d / 2.0 - 0.05, w + 0.04, 0.12),
+        (0.0, -d / 2.0 + 0.05, w + 0.04, 0.12),
+        (w / 2.0 - 0.05, 0.0, 0.12, d),
+        (-w / 2.0 + 0.05, 0.0, 0.12, d),
+    ] {
+        parts.push(part(boxy(sx, 0.07, sz), at(x, top + 0.02, z), leather));
+    }
+    combine(parts)
 }
 
-/// A slot machine: a cabinet with a glowing screen facing +X (the room).
+/// A slot machine facing +X (the room): a plinth, a cabinet with gold trim,
+/// a framed reel window, a button deck, a coin tray and a lever. The reels
+/// and the lit topper are separate (they change or glow).
 pub fn slot_machine(b: &bar::Block) -> Mesh {
     let (w, d, h) = (b.hx * 2.0, b.hz * 2.0, b.height);
+    let y = |world: f32| world - h / 2.0;
+    let (body, plinth, gold, black) = (
+        Color::srgb(0.45, 0.04, 0.12),
+        Color::srgb(0.1, 0.05, 0.07),
+        Color::srgb(0.95, 0.72, 0.25),
+        Color::srgb(0.02, 0.02, 0.03),
+    );
+    let front = w / 2.0;
+    let mut parts = vec![
+        part(boxy(w + 0.04, 0.5, d + 0.04), at(0.0, y(0.25), 0.0), plinth),
+        part(boxy(w, 1.1, d), at(0.0, y(1.05), 0.0), body),
+        // The reel window: a black recess behind the reels, a gold frame round it.
+        part(boxy(0.01, 0.26, 0.56), at(front + 0.004, y(1.2), 0.0), black),
+        part(boxy(0.05, 0.03, 0.62), at(front + 0.02, y(1.345), 0.0), gold),
+        part(boxy(0.05, 0.03, 0.62), at(front + 0.02, y(1.055), 0.0), gold),
+        part(boxy(0.05, 0.32, 0.03), at(front + 0.02, y(1.2), 0.295), gold),
+        part(boxy(0.05, 0.32, 0.03), at(front + 0.02, y(1.2), -0.295), gold),
+        // The button deck, sloping toward the player, with three buttons.
+        part(
+            boxy(0.16, 0.04, d - 0.04),
+            Transform::from_xyz(front + 0.06, y(0.93), 0.0).with_rotation(Quat::from_rotation_z(-0.3)),
+            plinth,
+        ),
+        // The coin tray.
+        part(boxy(0.12, 0.06, 0.3), at(front + 0.04, y(0.58), 0.0), Color::srgb(0.7, 0.7, 0.72)),
+        part(boxy(0.1, 0.02, 0.26), at(front + 0.05, y(0.6), 0.0), black),
+        // Gold corner trim.
+        part(boxy(0.03, 1.1, 0.03), at(front, y(1.05), d / 2.0), gold),
+        part(boxy(0.03, 1.1, 0.03), at(front, y(1.05), -d / 2.0), gold),
+        // The topper's housing.
+        part(boxy(w + 0.02, 0.06, d + 0.02), at(0.0, y(1.63), 0.0), gold),
+        // The lever on the right side, with a red knob.
+        part(
+            tube(0.025, 0.08, 8),
+            Transform::from_xyz(0.05, y(1.1), d / 2.0 + 0.04)
+                .with_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2)),
+            Color::srgb(0.75, 0.75, 0.78),
+        ),
+        part(tube(0.012, 0.4, 6), at(0.05, y(1.3), d / 2.0 + 0.08), Color::srgb(0.75, 0.75, 0.78)),
+        part(ball(0.045), at(0.05, y(1.52), d / 2.0 + 0.08), Color::srgb(0.85, 0.05, 0.08)),
+    ];
+    for (i, c) in
+        [Color::srgb(0.9, 0.1, 0.1), Color::srgb(0.95, 0.8, 0.1), Color::srgb(0.1, 0.7, 0.2)].into_iter().enumerate()
+    {
+        parts.push(part(
+            boxy(0.04, 0.03, 0.06),
+            Transform::from_xyz(front + 0.07, y(0.955), -0.15 + i as f32 * 0.15)
+                .with_rotation(Quat::from_rotation_z(-0.3)),
+            c,
+        ));
+    }
+    combine(parts)
+}
+
+/// The five reel symbols in [`shared::slots::Symbol`] order (cherry, lemon,
+/// bell, bar, seven), each about 0.12 m, drawn on the YZ plane facing +X.
+pub fn reel_symbols() -> [Mesh; 5] {
+    let red = Color::srgb(0.85, 0.05, 0.1);
+    let stem = Color::srgb(0.15, 0.55, 0.15);
+    let gold = Color::srgb(0.95, 0.7, 0.15);
+    let rot = |a: f32| Quat::from_rotation_x(a);
+    [
+        combine(vec![
+            part(ball(0.03), at(0.0, -0.025, -0.03), red),
+            part(ball(0.03), at(0.0, -0.035, 0.03), red),
+            part(boxy(0.01, 0.07, 0.008), Transform::from_xyz(0.0, 0.015, -0.015).with_rotation(rot(0.4)), stem),
+            part(boxy(0.01, 0.07, 0.008), Transform::from_xyz(0.0, 0.01, 0.017).with_rotation(rot(-0.35)), stem),
+            part(boxy(0.01, 0.02, 0.04), at(0.0, 0.05, 0.0), stem),
+        ]),
+        part(ball(0.05), Transform::from_scale(Vec3::new(0.4, 0.8, 1.15)), Color::srgb(0.98, 0.88, 0.1)),
+        combine(vec![
+            part(Cone::new(0.05, 0.08).mesh().resolution(10).build(), at(0.0, 0.0, 0.0), gold),
+            part(ball(0.015), at(0.0, 0.05, 0.0), gold),
+            part(ball(0.014), at(0.0, -0.045, 0.0), Color::srgb(0.5, 0.35, 0.1)),
+        ]),
+        combine(vec![
+            part(boxy(0.012, 0.05, 0.12), Transform::IDENTITY, Color::srgb(0.05, 0.05, 0.08)),
+            part(boxy(0.014, 0.008, 0.1), at(0.0, 0.012, 0.0), Color::WHITE),
+            part(boxy(0.014, 0.008, 0.1), at(0.0, -0.012, 0.0), Color::WHITE),
+        ]),
+        combine(vec![
+            part(boxy(0.012, 0.022, 0.08), at(0.0, 0.045, 0.0), red),
+            part(boxy(0.012, 0.11, 0.024), Transform::from_xyz(0.0, -0.005, 0.01).with_rotation(rot(-0.38)), red),
+        ]),
+    ]
+}
+
+/// A face-up card (0.09 by 0.13 m, lying flat): white, with pips in the
+/// suit's color (one per point up to ten), a big pip on a gold frame for
+/// a face card, and one big pip for an ace.
+pub fn card_face(rank: u8, red_suit: bool) -> Mesh {
+    let ink = if red_suit { Color::srgb(0.8, 0.05, 0.08) } else { Color::srgb(0.05, 0.05, 0.08) };
+    let mut parts = vec![part(boxy(0.09, 0.004, 0.13), Transform::IDENTITY, Color::srgb(0.96, 0.95, 0.9))];
+    let pip = |x: f32, z: f32, s: f32| part(boxy(s, 0.002, s), at(x, 0.003, z), ink);
+    match rank {
+        1 => parts.push(pip(0.0, 0.0, 0.03)),
+        11..=13 => {
+            parts.push(part(boxy(0.06, 0.001, 0.09), at(0.0, 0.0025, 0.0), Color::srgb(0.9, 0.7, 0.2)));
+            parts.push(pip(0.0, 0.0, 0.025));
+            // Marks for J, Q, K: one, two or three bars.
+            for i in 0..(rank - 10) {
+                parts.push(part(boxy(0.012, 0.002, 0.004), at(-0.02 + f32::from(i) * 0.02, 0.0035, -0.035), ink));
+            }
+        }
+        n => {
+            let n = usize::from(n.min(10));
+            let cols = if n <= 3 { 1 } else { 2 };
+            let rows = n.div_ceil(cols);
+            for i in 0..n {
+                let (c, r) = (i % cols, i / cols);
+                let x = if cols == 1 { 0.0 } else { -0.02 + c as f32 * 0.04 };
+                let z = (r as f32 - (rows - 1) as f32 / 2.0) * (0.1 / rows.max(1) as f32);
+                parts.push(pip(x, z, 0.014));
+            }
+        }
+    }
+    combine(parts)
+}
+
+/// Felt printing for the blackjack table: a gold ring for each seat and the
+/// dealer's chip rack. Positions are relative to the table's center.
+pub fn blackjack_layout(seats: &[(f32, f32)], half_z: f32) -> Mesh {
+    let gold = Color::srgb(0.9, 0.75, 0.35);
+    let mut parts = Vec::new();
+    for (x, _) in seats {
+        parts.push(part(
+            Torus::new(0.075, 0.085).mesh().minor_resolution(4).major_resolution(20).build(),
+            Transform::from_xyz(*x, 0.0, half_z - 0.27).with_scale(Vec3::new(1.0, 0.2, 1.0)),
+            gold,
+        ));
+    }
+    parts.push(part(boxy(0.5, 0.03, 0.12), at(0.0, 0.015, -half_z + 0.14), Color::srgb(0.08, 0.05, 0.04)));
+    let chips = [
+        Color::srgb(0.85, 0.1, 0.1),
+        Color::srgb(0.1, 0.6, 0.25),
+        Color::srgb(0.08, 0.08, 0.1),
+        Color::srgb(0.15, 0.3, 0.85),
+        Color::srgb(0.95, 0.95, 0.95),
+    ];
+    for (i, c) in chips.into_iter().enumerate() {
+        parts.push(part(tube(0.019, 0.04, 10), at(-0.18 + i as f32 * 0.09, 0.05, -half_z + 0.14), c));
+    }
+    combine(parts)
+}
+
+/// Felt printing for the roulette layout: a green zero, then three rows of
+/// twelve numbers in red and black, on a white grid. `x0` is the zero's
+/// west edge, relative to the table's center.
+pub fn roulette_layout(x0: f32, is_red: impl Fn(u8) -> bool) -> Mesh {
+    let (cw, rh) = (0.1, 0.13);
+    let mut parts =
+        vec![part(boxy(cw * 13.0 + 0.02, 0.001, rh * 3.0 + 0.02), at(x0 + cw * 6.5, 0.0, 0.0), Color::WHITE)];
+    parts.push(part(
+        boxy(cw - 0.01, 0.002, rh * 3.0 - 0.01),
+        at(x0 + cw / 2.0, 0.001, 0.0),
+        Color::srgb(0.0, 0.5, 0.2),
+    ));
+    for col in 0..12u8 {
+        for row in 0..3u8 {
+            let n = col * 3 + 3 - row;
+            let c = if is_red(n) { Color::srgb(0.7, 0.05, 0.06) } else { Color::srgb(0.06, 0.06, 0.07) };
+            let x = x0 + cw * (f32::from(col) + 1.5);
+            let z = (f32::from(row) - 1.0) * rh;
+            parts.push(part(boxy(cw - 0.01, 0.002, rh - 0.01), at(x, 0.001, z), c));
+        }
+    }
+    combine(parts)
+}
+
+/// The roulette wheel's turning part: a dark wooden disc, 37 pockets in
+/// wheel order round the rim, a gold ring inside them and a gold turret.
+pub fn wheel(order: &[u8], is_red: impl Fn(u8) -> bool) -> Mesh {
+    let gold = Color::srgb(0.95, 0.75, 0.3);
+    let mut parts = vec![
+        part(tube(0.38, 0.05, 37), Transform::IDENTITY, Color::srgb(0.22, 0.09, 0.04)),
+        part(
+            Torus::new(0.255, 0.27).mesh().minor_resolution(4).major_resolution(37).build(),
+            at(0.0, 0.025, 0.0),
+            gold,
+        ),
+        part(Cone::new(0.08, 0.08).mesh().resolution(12).build(), at(0.0, 0.065, 0.0), gold),
+        part(tube(0.012, 0.08, 6), at(0.0, 0.12, 0.0), gold),
+    ];
+    for (i, n) in order.iter().enumerate() {
+        let a = i as f32 / order.len() as f32 * std::f32::consts::TAU;
+        let c = if *n == 0 {
+            Color::srgb(0.0, 0.55, 0.2)
+        } else if is_red(*n) {
+            Color::srgb(0.7, 0.05, 0.05)
+        } else {
+            Color::srgb(0.05, 0.05, 0.05)
+        };
+        parts.push(part(
+            boxy(0.06, 0.012, 0.075),
+            Transform::from_xyz(a.sin() * 0.32, 0.03, a.cos() * 0.32).with_rotation(Quat::from_rotation_y(a)),
+            c,
+        ));
+    }
+    combine(parts)
+}
+
+/// The bowl the wheel turns in: a wide wooden rim.
+pub fn wheel_bowl() -> Mesh {
     combine(vec![
-        part(boxy(w, h, d), Transform::IDENTITY, Color::srgb(0.5, 0.08, 0.4)),
-        part(boxy(0.02, h * 0.3, d * 0.7), at(w / 2.0 + 0.01, h * 0.15, 0.0), Color::srgb(1.0, 0.95, 0.6)),
-        part(tube(0.03, 0.4, 6), at(w / 2.0 - 0.05, h * 0.15, d / 2.0 + 0.05), Color::srgb(0.8, 0.8, 0.8)),
+        part(tube(0.46, 0.08, 37), Transform::IDENTITY, Color::srgb(0.3, 0.16, 0.07)),
+        part(
+            Torus::new(0.42, 0.47).mesh().minor_resolution(6).major_resolution(37).build(),
+            at(0.0, 0.04, 0.0),
+            Color::srgb(0.38, 0.2, 0.09),
+        ),
     ])
 }
 
@@ -452,6 +679,19 @@ mod tests {
             let t = triangles(&m);
             assert!(t > 0 && t < 300, "{name}: {t} triangles");
         }
+    }
+
+    #[test]
+    fn casino_pieces_stay_cheap() {
+        for s in reel_symbols() {
+            assert!(triangles(&s) < 300);
+        }
+        for rank in 1..=13 {
+            assert!(triangles(&card_face(rank, rank % 2 == 0)) < 200, "{rank}");
+        }
+        let order: Vec<u8> = (0..37).collect();
+        assert!(triangles(&wheel(&order, |n| n % 2 == 1)) < 2_000);
+        assert!(triangles(&roulette_layout(-0.5, |n| n % 2 == 1)) < 600);
     }
 
     #[test]

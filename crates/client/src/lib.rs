@@ -41,8 +41,8 @@ pub enum Mode {
     /// Join a room.
     Online(online::OnlineConfig),
     /// The title screen: the bar, empty, with a slow camera drift, or a
-    /// fixed camera (x, y, z, yaw) for screenshots of the map (`?cam=`).
-    Title(Option<[f32; 4]>),
+    /// fixed camera (x, y, z, yaw, pitch) for screenshots of the map (`?cam=`).
+    Title(Option<[f32; 5]>),
     /// A spinning cube: the renderer check (tests, `?cube`).
     Cube,
 }
@@ -84,7 +84,7 @@ pub fn build_app(mode: Mode) -> App {
         }
         Mode::Title(cam) => {
             app.insert_resource(TitleCam(cam))
-                .add_systems(Startup, online::setup_bar)
+                .add_systems(Startup, (online::setup_bar, casino::setup_tables))
                 .add_systems(Update, (title_camera, online::graphics_preset, look::cull_far));
         }
         Mode::Cube => {
@@ -121,13 +121,13 @@ fn setup_backdrop(
 }
 
 #[derive(Resource)]
-struct TitleCam(Option<[f32; 4]>);
+struct TitleCam(Option<[f32; 5]>);
 
 /// The title screen's camera drifts slowly along the bar.
 fn title_camera(time: Res<Time>, fixed: Res<TitleCam>, mut cam: Query<&mut Transform, With<Camera3d>>) {
     let Ok(mut t) = cam.single_mut() else { return };
-    if let Some([x, y, z, yaw]) = fixed.0 {
-        *t = Transform::from_xyz(x, y, z).with_rotation(Quat::from_rotation_y(yaw));
+    if let Some([x, y, z, yaw, pitch]) = fixed.0 {
+        *t = Transform::from_xyz(x, y, z).with_rotation(Quat::from_euler(EulerRot::YXZ, yaw, pitch, 0.0));
         return;
     }
     let s = time.elapsed_secs() * 0.06;
