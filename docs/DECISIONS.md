@@ -493,3 +493,14 @@ Cause, reproduced: under CPU load a browser tab stalls for a few hundred millise
 Fix: the client stamps the tick its predicted pour starts and ends (`TapEvent`, reliable). The host keeps the last second of pour states. A release stamp ends the pour at the fill it had at that tick, even if the host has since overflowed (an overflow waits half a second for an earlier stamp before it becomes a puddle). A press stamp from before the host's pour started adds the missed steps (at most half a second). After the inputs show E let go, the host waits 8 ticks (125 ms) for a stamp before settling on its own state. The host still computes the pour; the stamp only says when. Bots send no stamps and pour by inputs alone.
 
 Open: other one-shot presses (E pick-up, Q drop, R drink, table keys) can still be lost when a stall swallows a whole press. Table actions already travel as reliable messages. The pick-up and drop presses would need the same treatment; the browser tests press again when a press did not take.
+
+### Release builds optimize for speed (`opt-level = 3`)
+
+The Chromium budget test (main-thread CPU per frame at most 8 ms) failed on CI by about 0.1 ms in the bar and the lot. Most of the frame cost is fixed: the office, with 9 meshes, took 5.8 ms. The release profile used `opt-level = "z"` (smallest code). Measured locally with the same test, same machine:
+
+| | worst room CPU per frame | client `.wasmz` | first load (Brotli) |
+|---|---|---|---|
+| `opt-level = "z"` | 7.00 ms | 7.77 MB | 21.89 MB |
+| `opt-level = 3` | 5.15 ms | 10.47 MB | 25.33 MB |
+
+Both sizes stay inside the plan's budgets (12 MB per client wasm, 40 MB first load). A local release build takes about 15 minutes instead of 3. Room lamps also became distance-culled (18 m): with no shadows on Low they lit through walls anyway, and CPU light clustering costs per light in view.
