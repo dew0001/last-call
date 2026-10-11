@@ -533,6 +533,13 @@ document.getElementById('bevy')?.addEventListener('pointerdown', (e) => {
   if (e.button === 2) window.__lcClicks[1] += 1;
 });
 document.getElementById('bevy')?.addEventListener('contextmenu', (e) => e.preventDefault());
+// In a room, the game takes the keys whenever nothing else has the focus
+// (no click needed first: a key pressed before any click still counts).
+setInterval(() => {
+  const canvas = document.getElementById('bevy');
+  const free = !document.activeElement || document.activeElement === document.body;
+  if (canvas && free && window.__lastCall?.playerId) canvas.focus({ preventScroll: true });
+}, 250);
 document.addEventListener('pointerlockchange', () => {
   if (document.pointerLockElement) document.pointerLockElement.focus({ preventScroll: true });
 });

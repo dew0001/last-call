@@ -12,7 +12,9 @@ test('real keys: pour and drink with the starting pocket', async ({ page }) => {
   await page.waitForTimeout(1500);
   await page.keyboard.down('KeyE');
   await waitFor(page, 'pouring', (s) => !!s.game?.pour, 10_000);
-  await waitFor(page, 'nearly full', (s) => (s.game?.pour?.[0] ?? 0) >= 88, 20_000);
+  // Well short of full: a slow browser reads the status late, and an
+  // overfilled glass spills.
+  await waitFor(page, 'mostly full', (s) => (s.game?.pour?.[0] ?? 0) >= 70, 20_000);
   await page.keyboard.up('KeyE');
   await waitFor(page, 'holding a beer', (s) => !!s.game?.beer, 10_000);
   await page.keyboard.press('KeyR');

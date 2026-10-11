@@ -203,9 +203,16 @@ fn mark_own_player(
 /// Buttons pressed since the last tick was written. A quick tap can go down
 /// and up between two ticks (the tick runs 64 times a second, the browser's
 /// frames are not in step with it): the app latches the press here and the
-/// next tick sends it, so no tap is lost.
+/// next ticks send it, so no tap is lost.
+///
+/// A tap is held for [`TAP_TICKS`] ticks: the host drops an input that
+/// arrives after its tick, and a one-tick press could be that one. The host
+/// acts on the press edge, so a longer tap is still one press.
 #[derive(Resource, Default)]
-pub struct TapLatch(pub u16);
+pub struct TapLatch(pub u16, [u8; 16]);
+
+/// How many ticks a latched tap stays down (about 60 ms).
+pub const TAP_TICKS: u8 = 4;
 
 fn write_input(
     local: Res<LocalInput>,
@@ -213,7 +220,16 @@ fn write_input(
     mut q: Query<&mut ActionState<PlayerInput>, With<InputMarker<PlayerInput>>>,
 ) {
     let mut input = local.0;
-    input.buttons |= latch.0;
+    let new = latch.0;
+    for (bit, left) in latch.1.iter_mut().enumerate() {
+        if new & (1 << bit) != 0 {
+            *left = TAP_TICKS;
+        }
+        if *left > 0 {
+            input.buttons |= 1 << bit;
+            *left -= 1;
+        }
+    }
     for mut action in &mut q {
         action.0 = input;
     }
