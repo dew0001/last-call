@@ -1428,9 +1428,15 @@ pub(crate) fn graphics_preset(
     }
     for cam in &cams {
         if settings.low_graphics {
-            commands.entity(cam).remove::<(Bloom, bevy::camera::Hdr, Vignette, ChromaticAberration)>();
+            // Low: no HDR, no post passes and no multisampling (its resolve
+            // is a pass every frame).
+            commands
+                .entity(cam)
+                .remove::<(Bloom, bevy::camera::Hdr, Vignette, ChromaticAberration)>()
+                .insert(bevy::render::view::Msaa::Off);
         } else {
             commands.entity(cam).insert((
+                bevy::render::view::Msaa::Sample4,
                 bevy::camera::Hdr,
                 Bloom::NATURAL,
                 Vignette { intensity: 0.25, radius: 0.9, ..default() },
