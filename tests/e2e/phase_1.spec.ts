@@ -244,7 +244,11 @@ test('a hidden host tab keeps a 64 Hz tick for 60 s', async ({ browserName }, in
     expect(await host.eval('document.visibilityState')).toBe('hidden');
 
     // The player walks while the host tab is hidden; the host sim moves it.
-    await player.eval('window.__lcInput = { mx: 0, my: 1, yaw: Math.PI, pitch: 0, buttons: 0 }');
+    // Back and forth along the room every two seconds: a walk in one
+    // direction reaches a wall within a second.
+    await player.eval(
+      'let d = 0; setInterval(() => { d ^= 1; window.__lcInput = { mx: 0, my: 1, yaw: d ? 0 : Math.PI, pitch: 0, buttons: 0 }; }, 2000)',
+    );
     const start = await host.eval<number>('window.__hostTicks.length');
     await new Promise((r) => setTimeout(r, 60_000));
     const reports = await host.eval<{ tps: number; players: [string, number, number, number][] }[]>(
@@ -260,7 +264,8 @@ test('a hidden host tab keeps a 64 Hz tick for 60 s', async ({ browserName }, in
     for (const tps of rates.slice(1)) expect(tps).toBeGreaterThan(62);
     const track = reports.map((r) => r.players.find((p) => p[0] === me)).filter(Boolean) as [string, number, number, number][];
     expect(track.length).toBeGreaterThan(10);
-    expect(track[track.length - 1][3]).not.toBe(track[0][3]);
+    const zs = track.map((p) => p[3]);
+    expect(Math.max(...zs) - Math.min(...zs)).toBeGreaterThan(1);
     host.close();
     player.close();
   } finally {
