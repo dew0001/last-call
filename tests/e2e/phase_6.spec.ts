@@ -16,7 +16,9 @@ const BUDGET = { drawCalls: 400, triangles: 250_000, frameCpuMs: 8 };
 async function cpuPerFrame(page: Page) {
   const browser = page.context().browser()!;
   await browser.startTracing(page, { categories: ['devtools.timeline'] });
-  await page.waitForTimeout(3000);
+  // Six seconds: a tab with no GPU draws a few frames a second, and a median
+  // of a handful of frames swings by a millisecond.
+  await page.waitForTimeout(6000);
   const trace = JSON.parse((await browser.stopTracing()).toString());
   const frames = (trace.traceEvents as any[]).filter((e) => e.name === 'FireAnimationFrame' && e.ph === 'X' && e.tdur != null);
   const cpu = frames.map((e) => e.tdur / 1000).sort((a, b) => a - b);

@@ -836,6 +836,7 @@ pub(crate) fn setup_bar(
     commands.spawn((
         PointLight { intensity: 40_000.0, range: 4.0, color: Color::srgb(1.0, 0.25, 0.65), ..default() },
         Transform::from_xyz(0.0, 2.6, -bar::HALF_Z + 0.6),
+        crate::look::Far(25.0),
     ));
     // Outside: OPEN in blue neon over the front door, facing the lot.
     commands.spawn((
@@ -850,11 +851,12 @@ pub(crate) fn setup_bar(
     commands.spawn((
         PointLight { intensity: 60_000.0, range: 6.0, color: Color::srgb(0.3, 0.75, 1.0), ..default() },
         Transform::from_xyz(0.0, 2.6, bar::HALF_Z + 0.8),
+        crate::look::Far(25.0),
     ));
     // The parking lot: painted bays along both sides, and light under the
     // street lamps (crates/client/src/look.rs places the posts).
     let lot = shared::world::area_of(Room::ParkingLot);
-    let line = meshes.add(Cuboid::new(0.1, 0.005, 4.5));
+    let mut lines = Vec::new();
     let paint_mat = materials.add(StandardMaterial {
         base_color: Color::srgba(0.95, 0.92, 0.8, 0.85),
         perceptual_roughness: 0.6,
@@ -864,17 +866,16 @@ pub(crate) fn setup_bar(
     for i in 0..6 {
         let z = lot.z0 + 5.0 + i as f32 * 2.7;
         for x in [lot.x0 + 2.25, lot.x1 - 2.25] {
-            commands.spawn((
-                Mesh3d(line.clone()),
-                MeshMaterial3d(paint_mat.clone()),
-                Transform::from_xyz(x, 0.006, z).with_rotation(Quat::from_rotation_y(std::f32::consts::FRAC_PI_2)),
-            ));
+            lines.push(art::part(Cuboid::new(4.5, 0.005, 0.1), Transform::from_xyz(x, 0.006, z), Color::WHITE));
         }
     }
+    // One mesh for all the lines: one draw.
+    commands.spawn((Mesh3d(meshes.add(art::combine(lines))), MeshMaterial3d(paint_mat), Transform::default()));
     for (x, z) in [(-13.2, 7.6), (13.2, 7.6), (-13.2, 26.4)] {
         commands.spawn((
-            PointLight { intensity: 250_000.0, range: 16.0, color: Color::srgb(1.0, 0.82, 0.55), ..default() },
+            PointLight { intensity: 200_000.0, range: 10.0, color: Color::srgb(1.0, 0.82, 0.55), ..default() },
             Transform::from_xyz(x, 3.6, z),
+            crate::look::Far(25.0),
         ));
     }
     // Warm lamps inside (at most 8 per room); a cold moon outside, the only shadow caster.
