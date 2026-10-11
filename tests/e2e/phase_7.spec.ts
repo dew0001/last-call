@@ -238,6 +238,12 @@ test('sound: effects, ambience and the jukebox start on the first key and play w
     return Object.keys(sfx).length;
   });
   expect(played).toBeGreaterThan(10);
+  // The recorded samples load and decode.
+  await expect
+    .poll(() => host.evaluate(() => Object.values((window as any).__lcSamples ?? {}).filter((l: any) => l.length).length), {
+      timeout: 15_000,
+    })
+    .toBeGreaterThan(15);
   expect(errors).toEqual([]);
   await host.context().close();
 });

@@ -32,5 +32,10 @@ self-hosted in `web/assets/fonts` (Latin subsets from Google Fonts).
 
 ## Sound
 
-Every sound is synthesized in the browser (`web/sfx.js`); there are no
-sound files.
+- Footsteps, glass, chips, cards, coins, punches, the bell and the door are
+  from [Kenney](https://kenney.nl)'s Casino Audio, Impact Sounds, Interface
+  Sounds and RPG Audio packs, released under
+  [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/)
+  (`web/assets/sfx`, converted to MP3).
+- The ambience, the jukebox's songs and the stings are synthesized in the
+  browser (`web/sfx.js`).

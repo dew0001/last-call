@@ -12,6 +12,8 @@
   online are meshopt-compressed and quantized, which Bevy cannot read: they
   are decoded with glTF-Transform and repacked with gltfpack (no quantizing).
 - web/assets/sky/night.jpg: a Poly Haven sky (CC0), darkened for night.
+- web/assets/sfx/: chosen sounds from Kenney's CC0 audio packs, as MP3
+  (Safari plays MP3 everywhere; Ogg only lately). Needs ffmpeg.
 
 Floors and walls use textures generated in code (crates/client/src/look.rs).
 The results are committed, so builds and CI need no network. Needs git, npx
@@ -46,6 +48,53 @@ PEOPLE_DIR = "public/models"
 PEOPLE = ["casual_2", "w_casual", "casual_hoodie", "w_formal", "suit", "w_suit", "worker", "beach"]
 
 SKY = "qwantani_moonrise_puresky"
+
+# Kenney audio packs, and the takes the game plays: (pack, file, name).
+KENNEY_PACKS = ["casino-audio", "impact-sounds", "interface-sounds", "rpg-audio"]
+SOUNDS = (
+    [("impact-sounds", f"footstep_{kind}_00{i}", f"step-{kind}-{i}") for kind in ("wood", "concrete", "carpet") for i in range(5)]
+    + [("impact-sounds", f"impactGlass_light_00{i}", f"clink-{i}") for i in range(3)]
+    + [("casino-audio", f"chips-stack-{i + 1}", f"chips-{i}") for i in range(3)]
+    + [("casino-audio", f"card-place-{i + 1}", f"card-{i}") for i in range(3)]
+    + [
+        ("impact-sounds", "impactGlass_heavy_000", "glass-break"),
+        ("impact-sounds", "impactPunch_medium_000", "punch-0"),
+        ("impact-sounds", "impactPunch_medium_001", "punch-1"),
+        ("impact-sounds", "impactSoft_heavy_000", "thud"),
+        ("impact-sounds", "impactBell_heavy_000", "bell"),
+        ("rpg-audio", "handleCoins", "coins-0"),
+        ("rpg-audio", "handleCoins2", "coins-1"),
+        ("casino-audio", "card-shuffle", "shuffle"),
+        ("casino-audio", "card-slide-1", "card-slide"),
+        ("casino-audio", "dice-throw-1", "dice"),
+        ("rpg-audio", "doorOpen_1", "door"),
+        ("interface-sounds", "click_002", "click"),
+        ("interface-sounds", "confirmation_001", "confirm"),
+        ("interface-sounds", "error_004", "error"),
+    ]
+)
+
+
+def fetch_sounds(force):
+    import re
+    import zipfile
+
+    out = os.path.join(ASSETS, "sfx")
+    if not force and all(os.path.exists(os.path.join(out, f"{n}.mp3")) for _, _, n in SOUNDS):
+        return
+    os.makedirs(out, exist_ok=True)
+    with tempfile.TemporaryDirectory() as tmp:
+        for pack in KENNEY_PACKS:
+            page = get(f"https://kenney.nl/assets/{pack}").decode("utf-8", "replace")
+            url = re.search(r"https://kenney\.nl/media/pages/assets/[^\"]+\.zip", page).group(0)
+            zipfile.ZipFile(io.BytesIO(get(url))).extractall(os.path.join(tmp, pack))
+        for pack, file, name in SOUNDS:
+            src = os.path.join(tmp, pack, "Audio", f"{file}.ogg")
+            subprocess.run(
+                ["ffmpeg", "-loglevel", "error", "-y", "-i", src, "-ac", "1", "-ar", "44100", "-b:a", "80k", os.path.join(out, f"{name}.mp3")],
+                check=True,
+            )
+        print(f"{len(SOUNDS)} sounds")
 
 
 def sparse_checkout(repo, path, dest):
@@ -113,6 +162,7 @@ def main():
     fetch_kaykit(force)
     fetch_people(force)
     fetch_sky(force)
+    fetch_sounds(force)
 
 
 if __name__ == "__main__":

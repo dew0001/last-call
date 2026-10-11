@@ -1,5 +1,6 @@
-// Sound: effects, ambience and the jukebox, all synthesized with WebAudio
-// (no sound files to download).
+// Sound: recorded effects (Kenney's CC0 audio packs, web/assets/sfx) where
+// they fit, and synthesized WebAudio for the rest: ambience, the jukebox,
+// bells and stings.
 //
 // The game status (`window.__lastCall`, 20 updates a second) is compared
 // with the last one to find what just happened: a step, a pour, a sale, a
@@ -27,6 +28,59 @@ function start() {
   for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
   startAmbience();
   startJukebox();
+  loadSamples();
+}
+
+// ---------- recorded samples ----------
+
+// Groups of interchangeable takes (a random one plays each time).
+const SAMPLES = {
+  'step-wood': 5,
+  'step-concrete': 5,
+  'step-carpet': 5,
+  clink: 3,
+  chips: 3,
+  card: 3,
+  coins: 2,
+  punch: 2,
+  'glass-break': 1,
+  thud: 1,
+  bell: 1,
+  shuffle: 1,
+  'card-slide': 1,
+  dice: 1,
+  door: 1,
+  click: 1,
+  confirm: 1,
+  error: 1,
+};
+const buffers = {};
+window.__lcSamples = buffers;
+function loadSamples() {
+  for (const [group, n] of Object.entries(SAMPLES)) {
+    buffers[group] = [];
+    for (let i = 0; i < n; i++) {
+      const file = n === 1 ? group : `${group}-${i}`;
+      fetch(`assets/sfx/${file}.mp3`)
+        .then((r) => r.arrayBuffer())
+        .then((b) => ctx.decodeAudioData(b))
+        .then((buf) => buffers[group].push(buf))
+        .catch(() => {});
+    }
+  }
+}
+/** Play a random take from a group; false if none is loaded (the caller
+ * synthesizes instead). */
+function sample(group, { vol = 0.5, rate = 1, at = 0 } = {}) {
+  const list = buffers[group];
+  if (!ctx || !list?.length) return false;
+  const src = ctx.createBufferSource();
+  src.buffer = list[Math.floor(Math.random() * list.length)];
+  src.playbackRate.value = rate * (0.94 + Math.random() * 0.12);
+  const g = gain(sfxBus, vol);
+  src.connect(g);
+  src.start(now() + at);
+  return true;
 }
 // Browsers start audio only after a click or a key.
 for (const ev of ['pointerdown', 'keydown']) addEventListener(ev, () => { start(); ctx?.resume(); }, { capture: true });
@@ -78,15 +132,18 @@ function burst({ at = 0, dur = 0.08, vol = 0.3, freq = 800, q = 1, type = 'lowpa
 
 export const sfx = {
   step(surface) {
+    if (sample(`step-${surface === 'outside' ? 'concrete' : surface === 'carpet' ? 'carpet' : 'wood'}`, { vol: 0.35 })) return;
     const hard = surface === 'outside';
     burst({ dur: 0.07, vol: 0.22, freq: hard ? 1800 : 520, q: 0.8 });
     ping(hard ? 140 : 95, { dur: 0.06, vol: 0.12, slide: 0.6 });
   },
   clink() {
+    if (sample('clink', { vol: 0.5 })) return;
     ping(2650 + Math.random() * 200, { dur: 0.35, vol: 0.12 });
     ping(4100 + Math.random() * 300, { at: 0.01, dur: 0.25, vol: 0.06 });
   },
   coin() {
+    if (sample('coins', { vol: 0.5 })) return;
     ping(1760, { dur: 0.12, vol: 0.12, type: 'square' });
     ping(2350, { at: 0.07, dur: 0.35, vol: 0.12, type: 'square' });
   },
@@ -95,12 +152,17 @@ export const sfx = {
     for (const [f, at] of [[2093, 0.06], [2637, 0.06], [3136, 0.06], [4186, 0.08]]) ping(f, { at, dur: 0.9, vol: 0.08 });
   },
   bell(times = 1, freq = 880) {
+    if (buffers.bell?.length) {
+      for (let i = 0; i < times; i++) sample('bell', { vol: 0.45, at: i * 0.5, rate: freq / 880 });
+      return;
+    }
     for (let i = 0; i < times; i++) {
       ping(freq, { at: i * 0.45, dur: 1.4, vol: 0.18 });
       ping(freq * 2.76, { at: i * 0.45, dur: 0.6, vol: 0.05 });
     }
   },
   doorbell() {
+    sample('door', { vol: 0.5 });
     ping(988, { dur: 0.9, vol: 0.2 });
     ping(784, { at: 0.35, dur: 1.2, vol: 0.2 });
   },
@@ -118,6 +180,7 @@ export const sfx = {
     [523, 659, 784, 1047].forEach((f, i) => ping(f, { at: i * 0.09, dur: 0.4, vol: 0.14, type: 'triangle' }));
   },
   thud() {
+    if (sample('thud', { vol: 0.7 })) return;
     ping(70, { dur: 0.35, vol: 0.5, slide: 0.5 });
     burst({ dur: 0.2, vol: 0.3, freq: 300 });
   },
@@ -126,6 +189,7 @@ export const sfx = {
     ping(260, { at: 0.18, dur: 0.12, vol: 0.12, slide: 0.5 });
   },
   click() {
+    if (sample('click', { vol: 0.4 })) return;
     burst({ dur: 0.03, vol: 0.12, freq: 4000, type: 'highpass' });
   },
 };
@@ -309,7 +373,9 @@ function watch() {
     if (d < 2) stepDist += d;
     if (stepDist > 0.7) {
       stepDist = 0;
-      sfx.step(outdoors(pos) ? 'outside' : 'inside');
+      // The back room is carpeted.
+      const carpet = pos[0] > -2 && pos[0] < 6 && pos[2] > -15 && pos[2] < -7;
+      sfx.step(outdoors(pos) ? 'outside' : carpet ? 'carpet' : 'inside');
     }
   }
   lastPos = pos;
@@ -334,6 +400,18 @@ function watch() {
       ]?.();
     }
     if (g.drunk?.passedOut && !lg.drunk?.passedOut) sfx.thud();
+    // The tables: cards dealt, chips down, the wheel's ball, a shuffle.
+    const cards = (c) =>
+      (c?.blackjack?.dealerCards?.length ?? 0) +
+      (c?.blackjack?.seats ?? []).reduce((a, st) => a + st.hands.reduce((b, h) => b + (h[0]?.length ?? 0), 0), 0);
+    const dealt = cards(g.casino) - cards(lg.casino);
+    for (let i = 0; i < Math.min(dealt, 4); i++) sample('card', { vol: 0.45, at: i * 0.12 });
+    const bets = (c) =>
+      (c?.blackjack?.seats ?? []).reduce((a, st) => a + (st.bet ?? 0), 0) + (c?.roulette?.bets?.length ?? 0);
+    if (bets(g.casino) > bets(lg.casino)) sample('chips', { vol: 0.5 });
+    if (g.casino?.roulette?.spinning && !lg.casino?.roulette?.spinning) sample('dice', { vol: 0.4, rate: 0.8 });
+    // The fight pit: hits land.
+    if ((g.games?.pit?.shots ?? 0) > (lg.games?.pit?.shots ?? 0) && g.games?.pit?.lastHit) sample('punch', { vol: 0.5 });
     const slots = g.casino?.slots ?? [];
     slots.forEach((m, i) => {
       const was = lg.casino?.slots?.[i];
