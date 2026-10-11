@@ -207,12 +207,16 @@ fn mark_own_player(
 ///
 /// A tap is held for [`TAP_TICKS`] ticks: the host drops an input that
 /// arrives after its tick, and a one-tick press could be that one. The host
-/// acts on the press edge, so a longer tap is still one press.
+/// acts on the press edge, so a longer tap is still one press. R (drink, use)
+/// and Q (drop) do nothing while held, so their taps last [`ONE_SHOT_TICKS`]:
+/// long enough to outlast a browser stall of a few hundred milliseconds.
 #[derive(Resource, Default)]
 pub struct TapLatch(pub u16, [u8; 16]);
 
 /// How many ticks a latched tap stays down (about 60 ms).
 pub const TAP_TICKS: u8 = 4;
+/// How many ticks a latched R or Q tap stays down (about 375 ms).
+pub const ONE_SHOT_TICKS: u8 = 24;
 
 fn write_input(
     local: Res<LocalInput>,
@@ -223,7 +227,8 @@ fn write_input(
     let new = latch.0;
     for (bit, left) in latch.1.iter_mut().enumerate() {
         if new & (1 << bit) != 0 {
-            *left = TAP_TICKS;
+            let one_shot = (1 << bit) & (crate::movement::buttons::USE | crate::movement::buttons::DROP) != 0;
+            *left = if one_shot { ONE_SHOT_TICKS } else { TAP_TICKS };
         }
         if *left > 0 {
             input.buttons |= 1 << bit;
