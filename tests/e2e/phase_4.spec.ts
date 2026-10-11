@@ -17,7 +17,9 @@ test('two pouches of Zeen on top of beer bring on The Spins', async ({ browser }
   test.setTimeout(180_000);
   // Tipsy: 45 on the drunk meter. Two pouches put Focus at 70: The Spins.
   const { host } = await createRoom(browser, undefined, '&chaos=off&preset=tipsy');
-  await walkToOnHost(host, [...TO_OFFICE, [7.0, -5.6]]);
+  // Straight to the drawer: the drunk meter drops a point every two seconds,
+  // and a slow walk would let it fall below The Spins' threshold.
+  await host.evaluate(() => (window as any).__lcTeleport(7.0, -5.6));
   const near = await waitFor(host, 'at the drawer', (s) => s.game?.phase4?.nearFixture === 'Office drawer');
   expect(near.game.phase4.menu[0]).toBe('Zeen $3');
   const pocket = near.game.pocket;

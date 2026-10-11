@@ -372,6 +372,7 @@ pub fn add(app: &mut App, cfg: OnlineConfig) {
             dress_customers,
             place_customers,
             animate_gait,
+            crate::look::cull_far,
             dress_puddles,
             follow_camera.in_set(CameraSet),
             post_effects,
@@ -1150,6 +1151,10 @@ fn dress_props(
             MeshMaterial3d(mat.clone()),
             Transform::default(),
         ));
+        // Bottles, glasses and chips are a few pixels across the room.
+        if matches!(kind, PropKind::Bottle | PropKind::Glass | PropKind::Chip) {
+            commands.entity(entity).insert(crate::look::Far(14.0));
+        }
     }
 }
 

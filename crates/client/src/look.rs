@@ -239,11 +239,39 @@ pub const DECOR: &[Decor] = &[
     d("lifebuoy", 3.9, 0.9, 41.0, -QUARTER),
 ];
 
+/// Set dressing hides beyond this many metres from the camera: every drawn
+/// mesh costs CPU time each frame, and across the map nobody sees a till.
+pub const FAR: f32 = 22.0;
+
+/// A model that hides when the camera is farther from it than this (metres).
+#[derive(Component)]
+pub struct Far(pub f32);
+
+/// Hide far set dressing (five times a second is plenty).
+pub fn cull_far(
+    mut tick: Local<u32>,
+    cam: Query<&GlobalTransform, With<Camera3d>>,
+    mut items: Query<(&Transform, &Far, &mut Visibility)>,
+) {
+    *tick = tick.wrapping_add(1);
+    if !tick.is_multiple_of(12) {
+        return;
+    }
+    let Ok(cam) = cam.single() else { return };
+    let eye = cam.translation();
+    for (t, far, mut v) in &mut items {
+        let want = if t.translation.distance(eye) > far.0 { Visibility::Hidden } else { Visibility::Inherited };
+        v.set_if_neq(want);
+    }
+}
+
 /// Spawn the set dressing.
 pub fn spawn_decor(commands: &mut Commands, assets: &AssetServer) {
     for item in DECOR {
         let scene = assets.load(GltfAssetLabel::Scene(0).from_asset(format!("models/{0}/{0}.gltf", item.model)));
         commands.spawn((
+            Far(FAR),
+            Visibility::default(),
             bevy::world_serialization::WorldAssetRoot(scene),
             Transform::from_translation(Vec3::from(item.at))
                 .with_rotation(Quat::from_rotation_y(item.yaw))

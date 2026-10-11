@@ -155,6 +155,8 @@ fn setup_fixtures(
     let model = |commands: &mut Commands, name: &str, at: Vec3, yaw: f32| {
         let scene = assets.load(GltfAssetLabel::Scene(0).from_asset(format!("models/{name}/{name}.gltf")));
         commands.spawn((
+            crate::look::Far(crate::look::FAR),
+            Visibility::default(),
             bevy::world_serialization::WorldAssetRoot(scene),
             Transform::from_translation(at).with_rotation(Quat::from_rotation_y(yaw)),
         ));

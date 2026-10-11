@@ -85,7 +85,7 @@ pub fn build_app(mode: Mode) -> App {
         Mode::Title(cam) => {
             app.insert_resource(TitleCam(cam))
                 .add_systems(Startup, online::setup_bar)
-                .add_systems(Update, (title_camera, online::graphics_preset));
+                .add_systems(Update, (title_camera, online::graphics_preset, look::cull_far));
         }
         Mode::Cube => {
             app.add_systems(Startup, setup_backdrop).add_systems(Update, spin);
