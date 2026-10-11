@@ -360,7 +360,7 @@ pub fn add(app: &mut App, cfg: OnlineConfig) {
     crate::casino::add(app);
     crate::chaos::add(app);
     crate::games::add(app);
-    app.add_systems(Startup, (setup_bar, setup_hud, crate::outside::setup_outside));
+    app.add_systems(Startup, (setup_bar, setup_hud, crate::outside::setup_outside, crate::dressing::setup_dressing));
     app.add_systems(
         Update,
         (
