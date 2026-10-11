@@ -18,6 +18,21 @@ Date: 2026-10-10. Branch: `main-ygr4w2`.
 - **Soak, wasm in headless Chromium** (`SOAK_SECS=3600`, `tests/e2e/phase_7.spec.ts`): run twice, 230,400 ticks each. Mean 1.17 and 1.16 ms, p99 2.1 ms. Each run had 4 to 6 ticks over 10 ms (worst 26 and 32 ms), all at different ticks in the two runs, with the same end state: no tick was over 10 ms in both. The sim is deterministic, so a tick that is slow in its own right is slow every run; the others are the VM stalling the browser (a C busy loop alongside saw a 29.6 ms stall). The browser has no thread CPU clock, so the test checks the ticks slow in both runs.
 - CI runs the wasm soak for two minutes on every push.
 
+## Quality pass (2026-10-11)
+
+After the first release the game was reworked to look and play like a finished game:
+
+- **Play.** First-person camera with locked mouse look and a crosshair. A pause menu (resume, open the bar, invite link, settings, save, quit) and full settings: graphics, audio, controls with rebindable keys. The host opens the bar when everyone is ready (O). Save on demand.
+- **HUD.** The page draws all game text as styled cards: shift and clock, money and debt, drunk meter, context prompts, the table, fixture and minigame cards with keycaps, a pulsing chaos banner, the pour gauge and a neon end-of-run screen.
+- **Look.** Poly Haven CC0 textures on every floor and wall, CC0 models for furniture, a night-sky panorama. Code-built art for the rest:
+  - casino: pedestal tables with padded rails and printed felt, a wheel in a bowl, slot cabinets with real reel symbols and a lit topper, card faces with pips;
+  - the bar: a back bar with a mirror and three lit shelves of bottles, a beer tap tower, neon signs;
+  - outside: open sea to the horizon, a lit harbor skyline, the bar's building with windows and a big sign, side streets with parked cars, pier pilings;
+  - side rooms: kitchen hood, prep counter, fridge and pans; a back-room lounge; a basement keg rack, boiler, pipes and workbench;
+  - people: jointed figures that walk, sit on the stools, and wear varied outfits; beer-mug order markers.
+- **Sound.** Synthesized effects, ambience and a procedural jukebox (WebAudio).
+- **Speed.** Release builds use `opt-level = 3`: the worst room went from 7.0 to 5.2 ms of main-thread CPU per frame (budget 8 ms). Far culling hides set dressing and lamps out of range. See `docs/DECISIONS.md`.
+
 ## Tests
 
 - `tests/e2e/phase_7.spec.ts`: the load test, a crash report accepted and a bad one refused, settings persisted and the panel opening on Esc, an achievement toast and the chosen hat reaching the next room, the tutorial's first prompts, a joining player's hat, and the wasm soak.
