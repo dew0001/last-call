@@ -721,6 +721,23 @@ pub fn back_bar(z: f32, spans: &[(f32, f32)]) -> BackBar {
     BackBar { wood: combine(w), bottles: combine(b), glow: combine(g), mirror: combine(m) }
 }
 
+/// The order marker: a frothy beer mug, about 0.25 m tall, centered.
+pub fn order_mug() -> Mesh {
+    let beer = Color::srgb(1.0, 0.68, 0.12);
+    let foam = Color::srgb(1.0, 0.98, 0.92);
+    combine(vec![
+        part(tube(0.08, 0.16, 12), at(0.0, -0.03, 0.0), beer),
+        part(tube(0.085, 0.03, 12), at(0.0, 0.065, 0.0), foam),
+        part(ball(0.045), at(-0.03, 0.085, 0.02), foam),
+        part(ball(0.05), at(0.03, 0.09, -0.01), foam),
+        part(
+            Torus::new(0.035, 0.055).mesh().minor_resolution(6).major_resolution(10).build(),
+            Transform::from_xyz(0.1, -0.02, 0.0).with_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2)),
+            Color::srgb(0.95, 0.75, 0.3),
+        ),
+    ])
+}
+
 /// A beer tap tower for the counter top, centered on its foot: a drip
 /// tray, a chrome column, a T bar with three faucets and colored handles.
 pub fn tap_tower() -> Mesh {

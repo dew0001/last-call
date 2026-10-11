@@ -3,6 +3,7 @@
 //   top left:     week and shift, the phase and its clock
 //   top right:    the house pool, your pocket, the debt and this week's due
 //   bottom left:  the drunk meter
+//   bottom right: the table you stand at (blackjack, roulette, slots)
 // The pour gauge and the end-of-run screen stay in the game.
 
 const PHASES = { SETUP: 'Setup', OPEN: 'Open', 'LAST CALL': 'Last call', PAYMENT: 'Payment' };
@@ -35,6 +36,28 @@ function prompt(s) {
   return '';
 }
 
+const esc = (t) => t.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
+
+/**
+ * The table card from the game's panel text (crates/client/src/casino.rs):
+ * the first line is the title, then the table's state, then (after a blank
+ * line) the keys, drawn as keycaps.
+ */
+function tableCard(text) {
+  const [head, ...rest] = text.split('\n');
+  const gap = rest.indexOf('');
+  const body = gap < 0 ? rest : rest.slice(0, gap);
+  const keys = gap < 0 ? [] : rest.slice(gap + 1);
+  const m = head.match(/^(\S+)\s*(.*)$/) ?? [head, head, ''];
+  const caps = (line) =>
+    esc(line).replace(/(^|\s)(Enter|[A-Z0-9]|[A-Z]\/[A-Z])(?=\s|$)/g, (_, pre, k) => `${pre}<kbd>${k}</kbd>`);
+  return (
+    `<div class="hud-table-title"><span>${esc(m[1])}</span><small>${esc(m[2])}</small></div>` +
+    body.filter((l) => l.trim()).map((l) => `<div class="hud-table-row">${esc(l)}</div>`).join('') +
+    (keys.length ? `<div class="hud-table-keys">${keys.map(caps).join('<br>')}</div>` : '')
+  );
+}
+
 const money = (v) => `${v < 0 ? '-' : ''}$${Math.abs(v).toLocaleString('en-US')}`;
 const clock = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
@@ -56,6 +79,7 @@ export function mountHud() {
       <div class="hud-small" id="hud-due"></div>
     </div>
     <div class="hud-prompt" id="hud-prompt" hidden></div>
+    <div class="hud-card hud-table" id="hud-table" hidden></div>
     <div class="hud-card hud-drunk">
       <div class="hud-row"><span class="hud-label">Drunk</span><span id="hud-tier"></span></div>
       <div class="hud-meter"><div class="hud-meter-fill" id="hud-drunk-fill"></div></div>
@@ -93,6 +117,14 @@ export function mountHud() {
     const line = prompt(s);
     $('hud-prompt').hidden = !line;
     set('hud-prompt', line);
+
+    const panel = s.tablePanel ?? '';
+    const table = $('hud-table');
+    table.hidden = !panel;
+    if (panel && table.dataset.text !== panel) {
+      table.dataset.text = panel;
+      table.innerHTML = tableCard(panel);
+    }
 
     const d = g.drunk;
     const level = d?.level ?? 0;

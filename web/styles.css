@@ -260,6 +260,47 @@ body.locked #settings-open, body.locked #audit-export { display: none; }
 .hud-shift { top: 0.75rem; left: 0.75rem; min-width: 11rem; }
 .hud-money { top: 0.75rem; right: 3rem; min-width: 14rem; }
 .hud-drunk { bottom: 0.75rem; left: 0.75rem; min-width: 13rem; }
+.hud-table {
+  bottom: 3rem;
+  right: 0.75rem;
+  max-width: min(26rem, 46vw);
+  font-size: 0.85rem;
+  line-height: 1.35;
+  border-color: rgba(120, 220, 150, 0.35);
+  background: linear-gradient(180deg, rgba(8, 40, 22, 0.88), rgba(4, 20, 11, 0.88));
+}
+.hud-table-title {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin-bottom: 0.3rem;
+}
+.hud-table-title span {
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: #9ff0b8;
+}
+.hud-table-title small { opacity: 0.7; }
+.hud-table-row { white-space: pre-wrap; }
+.hud-table-keys {
+  margin-top: 0.45rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid rgba(160, 240, 190, 0.2);
+  font-size: 0.78rem;
+  opacity: 0.92;
+}
+.hud-table kbd {
+  display: inline-block;
+  min-width: 1.2em;
+  padding: 0 0.3em;
+  margin: 0 0.1em;
+  border-radius: 0.25em;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.1);
+  font: inherit;
+  font-weight: 700;
+  text-align: center;
+}
 .hud-label { font-size: 0.72rem; letter-spacing: 0.14em; text-transform: uppercase; opacity: 0.75; }
 .hud-row, .hud-money-row { display: flex; justify-content: space-between; align-items: baseline; gap: 0.75rem; }
 .hud-phase {

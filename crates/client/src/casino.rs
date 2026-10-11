@@ -22,6 +22,7 @@ use crate::online::{NetStatus, NoDraw};
 
 pub fn add(app: &mut App) {
     app.init_resource::<RouletteChoice>();
+    app.init_resource::<TablePanelText>();
     app.add_systems(Startup, (setup_tables, setup_panel));
     app.add_systems(
         Update,
@@ -353,8 +354,13 @@ fn table_keys(
 #[derive(Component)]
 struct TablePanel;
 
+/// The table panel's text: native draws it with `bevy_ui`; the browser page
+/// shows it as a styled card (web/hud.js reads `tablePanel`).
+#[derive(Resource, Default)]
+pub struct TablePanelText(pub String);
+
 fn setup_panel(mut commands: Commands, nodraw: Option<Res<NoDraw>>) {
-    if nodraw.is_some() {
+    if nodraw.is_some() || cfg!(target_arch = "wasm32") {
         return;
     }
     commands.spawn((
@@ -380,10 +386,10 @@ fn update_panel(
     status: Res<NetStatus>,
     choice: Res<RouletteChoice>,
     mut panel: Query<(&mut Text, &mut Visibility), With<TablePanel>>,
+    mut shown: ResMut<TablePanelText>,
     upgrades: Query<&RoomUpgrades>,
 ) {
     let up = upgrades.single().map(|u| u.0).unwrap_or_default();
-    let Ok((mut text, mut vis)) = panel.single_mut() else { return };
     let c = &status.game.casino;
     let me = status.player_id.map(|id| format!("p:{id:016x}"));
     let pos = status.own_pos.unwrap_or_default();
@@ -479,6 +485,10 @@ fn update_panel(
         }
         _ => String::new(),
     };
+    if shown.0 != line {
+        shown.0.clone_from(&line);
+    }
+    let Ok((mut text, mut vis)) = panel.single_mut() else { return };
     vis.set_if_neq(if line.is_empty() { Visibility::Hidden } else { Visibility::Inherited });
     if text.0 != line {
         text.0 = line;

@@ -372,6 +372,7 @@ pub fn add(app: &mut App, cfg: OnlineConfig) {
             dress_customers,
             place_customers,
             animate_gait,
+            bob_markers,
             crate::look::cull_far,
             dress_puddles,
             follow_camera.in_set(CameraSet),
@@ -1245,7 +1246,7 @@ fn dress_puddles(
 #[derive(Component)]
 struct DressedCustomer;
 
-/// The yellow marker over a customer who is waiting for a beer.
+/// The beer mug that bobs over a customer who is waiting for a beer.
 #[derive(Component)]
 struct OrderMarker;
 
@@ -1265,10 +1266,10 @@ fn dress_customers(
         .get_or_insert_with(|| {
             (
                 materials.add(StandardMaterial { base_color: Color::WHITE, perceptual_roughness: 0.75, ..default() }),
-                meshes.add(Sphere::new(0.12)),
+                meshes.add(crate::art::order_mug()),
                 materials.add(StandardMaterial {
-                    base_color: Color::srgb(1.0, 0.85, 0.2),
-                    emissive: LinearRgba::rgb(1.5, 1.2, 0.2),
+                    base_color: Color::WHITE,
+                    emissive: LinearRgba::rgb(0.5, 0.35, 0.1),
                     ..default()
                 }),
             )
@@ -1290,18 +1291,46 @@ fn dress_customers(
     }
 }
 
+/// Order markers bob and turn so they catch the eye.
+fn bob_markers(time: Res<Time>, mut markers: Query<&mut Transform, With<OrderMarker>>) {
+    let s = time.elapsed_secs();
+    for mut t in &mut markers {
+        t.translation.y = 1.2 + 0.05 * (s * 3.0).sin();
+        t.rotation = Quat::from_rotation_y(s * 1.5);
+    }
+}
+
 fn place_customers(
     mut customers: Query<(&Customer, &NpcPose, &mut Transform, &Children, Option<&mut Gait>), With<DressedCustomer>>,
     mut markers: Query<&mut Visibility, With<OrderMarker>>,
+    stools: Query<(&PropKind, &PropPose)>,
 ) {
     use shared::customers::Mood;
+    // Upright stools near the counter, for seated customers to sit on.
+    let seats: Vec<Vec3> = stools
+        .iter()
+        .filter(|(k, p)| **k == PropKind::Stool && p.pos.y < 0.6 && (p.rot * Vec3::Y).y > 0.9)
+        .map(|(_, p)| p.pos)
+        .collect();
     for (c, pose, mut t, children, gait) in &mut customers {
         // Waiting or drinking at the counter: sitting on a stool.
+        let mut at = pose.pos;
         if let Some(mut gait) = gait {
             let at_counter = (pose.pos.z - (bar::COUNTER.1 + bar::COUNTER.3 + 0.8)).abs() < 0.6;
             gait.seated = at_counter && matches!(c.mood, Mood::Waiting | Mood::Drinking);
+            // The host seats a customer at a spot by the counter; the stools
+            // are physics props and drift. Sit on the nearest one (drawing
+            // only) so nobody hovers beside an empty stool.
+            if gait.seated
+                && let Some(s) = seats.iter().min_by(|a, b| {
+                    a.xz().distance_squared(pose.pos.xz()).total_cmp(&b.xz().distance_squared(pose.pos.xz()))
+                })
+                && s.xz().distance(pose.pos.xz()) < 0.8
+            {
+                at = Vec3::new(s.x, pose.pos.y, s.z);
+            }
         }
-        t.translation = pose.pos + Vec3::Y * (bar::PLAYER_HEIGHT / 2.0);
+        t.translation = at + Vec3::Y * (bar::PLAYER_HEIGHT / 2.0);
         t.rotation = Quat::from_rotation_y(pose.yaw);
         let shown = if c.mood == shared::customers::Mood::Waiting { Visibility::Inherited } else { Visibility::Hidden };
         for child in children.iter() {

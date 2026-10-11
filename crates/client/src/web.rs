@@ -222,7 +222,12 @@ fn read_settings(mut settings: ResMut<crate::online::Settings>) {
     }
 }
 
-fn publish_status(status: Res<RenderStatus>, net: Option<Res<NetStatus>>, mut frame: Local<u32>) {
+fn publish_status(
+    status: Res<RenderStatus>,
+    net: Option<Res<NetStatus>>,
+    panel: Option<Res<crate::casino::TablePanelText>>,
+    mut frame: Local<u32>,
+) {
     // Building the JS objects is not free: publish every third frame (20 Hz at 60 fps).
     *frame = frame.wrapping_add(1);
     if !frame.is_multiple_of(3) {
@@ -258,6 +263,7 @@ fn publish_status(status: Res<RenderStatus>, net: Option<Res<NetStatus>>, mut fr
         set("rttMs", JsValue::from_f64(f64::from(net.rtt_ms)));
         set("jitterMs", JsValue::from_f64(f64::from(net.jitter_ms)));
         set("tick", JsValue::from_f64(f64::from(net.tick)));
+        set("tablePanel", JsValue::from_str(panel.as_ref().map_or("", |p| p.0.as_str())));
         let ser = serde_wasm_bindgen::Serializer::json_compatible();
         set("game", serde::Serialize::serialize(&net.game, &ser).unwrap_or(JsValue::NULL));
     }
