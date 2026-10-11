@@ -1152,9 +1152,16 @@ fn dress_props(
             MeshMaterial3d(mat.clone()),
             Transform::default(),
         ));
-        // Bottles, glasses and chips are a few pixels across the room.
-        if matches!(kind, PropKind::Bottle | PropKind::Glass | PropKind::Chip) {
-            commands.entity(entity).insert(crate::look::Far(14.0));
+        // Bottles and glasses are a few pixels across the room, chips (3.6 cm,
+        // a hundred of them) at a few metres.
+        match kind {
+            PropKind::Bottle | PropKind::Glass => {
+                commands.entity(entity).insert(crate::look::Far(14.0));
+            }
+            PropKind::Chip => {
+                commands.entity(entity).insert(crate::look::Far(6.0));
+            }
+            _ => {}
         }
     }
 }

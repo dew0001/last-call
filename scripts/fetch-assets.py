@@ -257,6 +257,37 @@ def fetch_sky(force):
     print(f"sky {SKY}")
 
 
+def no_transmission(mid):
+    """Glass with KHR_materials_transmission makes Bevy copy the whole screen
+    every frame for the transmissive pass: draw it as plain alpha-blended
+    glass instead."""
+    path = os.path.join(OUT_MODELS, mid, f"{mid}.gltf")
+    gltf = json.load(open(path))
+    changed = False
+    for m in gltf.get("materials", []):
+        ext = m.get("extensions", {})
+        t = ext.pop("KHR_materials_transmission", None)
+        ext.pop("KHR_materials_volume", None)
+        if t is not None:
+            pbr = m.setdefault("pbrMetallicRoughness", {})
+            color = pbr.get("baseColorFactor", [1, 1, 1, 1])
+            color[3] = round(1.0 - 0.75 * t.get("transmissionFactor", 1.0), 3)
+            pbr["baseColorFactor"] = color
+            m["alphaMode"] = "BLEND"
+            changed = True
+        if not ext:
+            m.pop("extensions", None)
+    if changed:
+        for key in ("extensionsUsed", "extensionsRequired"):
+            if key in gltf:
+                gltf[key] = [e for e in gltf[key] if e not in ("KHR_materials_transmission", "KHR_materials_volume")]
+                if not gltf[key]:
+                    del gltf[key]
+        with open(path, "w") as f:
+            json.dump(gltf, f, separators=(",", ":"))
+        print(f"no transmission: {mid}")
+
+
 def main():
     force = "--force" in sys.argv
     os.makedirs(OUT_TEX, exist_ok=True)
@@ -266,6 +297,7 @@ def main():
     for mid in MODELS:
         fetch_model(mid, force)
         simplify(mid)
+        no_transmission(mid)
     fetch_sky(force)
 
 
