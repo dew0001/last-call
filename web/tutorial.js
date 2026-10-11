@@ -44,6 +44,8 @@ export function startTutorial() {
     if (!start) {
       start = structuredClone(s);
       showStep();
+      // From here the first step measures the walk (tests wait for this).
+      box.dataset.ready = '1';
     }
     if (STEPS[step].done(s, start)) {
       step += 1;

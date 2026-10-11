@@ -160,6 +160,7 @@ test('the tutorial walks a new player through the first shift', async ({ browser
   await expect(host.locator('#tutorial')).toContainText('WASD');
   // Walk across open floor (straight ahead can end at the counter after a
   // step): the first prompt moves on.
+  await expect(host.locator('#tutorial[data-ready]')).toBeAttached({ timeout: 30_000 });
   await walkTo(host, [[4.0, -1.5], [0, 3.4]]);
   await expect(host.locator('#tutorial')).toContainText('tap', { timeout: 30_000 });
   expect((await status(host)).game?.shift?.phase).toBe('SETUP');
