@@ -180,12 +180,16 @@ fn drive(
                 }
                 Some(_) => {
                     let t = clock.0 - step.1;
-                    if t < 16 {
-                        // Face the body (toward -Z) and grab.
+                    // E stays down while backing away: a grab the host sees
+                    // late (a loaded machine) still lands. Holding E while
+                    // dragging does nothing more.
+                    if t < 40 {
+                        // Face the body (toward -Z) and grab, standing still
+                        // for half a second.
                         PlayerInput::new(Vec2::ZERO, 0.0, 0.0, if t >= 8 { INTERACT } else { 0 })
-                    } else if t < 16 + 96 {
-                        // Back away for 1.5 s, still facing it.
-                        PlayerInput::new(Vec2::new(0.0, -1.0), 0.0, 0.0, 0)
+                    } else if t < 40 + 128 {
+                        // Back away for 2 s, still facing it.
+                        PlayerInput::new(Vec2::new(0.0, -1.0), 0.0, 0.0, INTERACT)
                     } else {
                         PlayerInput::default()
                     }
