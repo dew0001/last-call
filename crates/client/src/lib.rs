@@ -16,6 +16,7 @@ pub mod chaos;
 pub mod games;
 pub mod look;
 pub mod online;
+pub mod outside;
 #[cfg(target_arch = "wasm32")]
 mod web;
 
@@ -84,7 +85,7 @@ pub fn build_app(mode: Mode) -> App {
         }
         Mode::Title(cam) => {
             app.insert_resource(TitleCam(cam))
-                .add_systems(Startup, (online::setup_bar, casino::setup_tables))
+                .add_systems(Startup, (online::setup_bar, casino::setup_tables, outside::setup_outside))
                 .add_systems(Update, (title_camera, online::graphics_preset, look::cull_far));
         }
         Mode::Cube => {

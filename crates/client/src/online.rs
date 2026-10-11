@@ -360,7 +360,7 @@ pub fn add(app: &mut App, cfg: OnlineConfig) {
     crate::casino::add(app);
     crate::chaos::add(app);
     crate::games::add(app);
-    app.add_systems(Startup, (setup_bar, setup_hud));
+    app.add_systems(Startup, (setup_bar, setup_hud, crate::outside::setup_outside));
     app.add_systems(
         Update,
         (
@@ -794,17 +794,6 @@ pub(crate) fn setup_bar(
         }
         look::spawn_decor(&mut commands, assets);
     }
-    // The harbor around the pier.
-    let pier = shared::world::area_of(Room::Pier);
-    commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(60.0, 0.05, pier.z1 - pier.z0 + 10.0))),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.03, 0.1, 0.22),
-            perceptual_roughness: 0.15,
-            ..default()
-        })),
-        Transform::from_xyz(0.0, -0.6, (pier.z0 + pier.z1) / 2.0 + 5.0),
-    ));
     // A neon strip per room in its accent color (bloom makes them glow).
     for a in AREAS.iter().filter(|a| a.room != Room::Bar && !a.room.outdoors()) {
         let accent = art::palette(a.room).1;
@@ -846,7 +835,8 @@ pub(crate) fn setup_bar(
             emissive: LinearRgba::rgb(1.0, 4.0, 9.0),
             ..default()
         })),
-        Transform::from_xyz(0.0, 2.75, bar::HALF_Z + 0.14).with_rotation(Quat::from_rotation_y(std::f32::consts::PI)),
+        // The strokes read right from +Z, the lot.
+        Transform::from_xyz(0.0, 2.75, bar::HALF_Z + 0.14),
     ));
     commands.spawn((
         PointLight { intensity: 60_000.0, range: 6.0, color: Color::srgb(0.3, 0.75, 1.0), ..default() },
