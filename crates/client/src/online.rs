@@ -879,12 +879,16 @@ pub(crate) fn setup_bar(
         ));
     }
     // Warm lamps inside (at most 8 per room); a cold moon outside, the only shadow caster.
+    // Each lamp hangs from a holder that far culling hides (CPU light
+    // clustering costs per light in view); the outage hides the lamp itself.
     for (_, x, z) in shared::world::lamps() {
-        commands.spawn((
-            RoomLamp,
-            PointLight { intensity: 300_000.0, range: 14.0, color: Color::srgb(1.0, 0.78, 0.5), ..default() },
-            Transform::from_xyz(x, shared::world::LAMP_Y, z),
-        ));
+        commands
+            .spawn((Transform::from_xyz(x, shared::world::LAMP_Y, z), Visibility::default(), crate::look::Far(18.0)))
+            .with_child((
+                RoomLamp,
+                PointLight { intensity: 300_000.0, range: 14.0, color: Color::srgb(1.0, 0.78, 0.5), ..default() },
+                Transform::default(),
+            ));
     }
     // Two cascades out to 40 m at 1024 px: the moon only shades the outdoors.
     commands.insert_resource(bevy::light::DirectionalLightShadowMap { size: 1024 });
