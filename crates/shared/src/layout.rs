@@ -62,11 +62,12 @@ pub const PIECES: &[Piece] = &[
     p("kk/furniture/pictureframe_large_B", [9.9, 1.9, -0.6], -QUARTER, F, NONE),
     p("kk/furniture/pictureframe_medium", [-9.9, 1.8, 5.2], QUARTER, F, NONE),
     // ---- Office (x 6..10, z -7..-2; door x 7.6..8.8 on z = -2) ----
-    // The desk along the east wall, its chair facing it.
-    p("kk/furniture/table_medium_long", [9.4, 0.0, -4.5], -QUARTER, [0.5, 0.75, 0.42], [0.42, 0.75]),
-    p("kk/furniture/chair_A_wood", [8.5, 0.0, -4.5], -QUARTER, F, NONE),
-    p("kk/furniture/book_set", [9.45, 0.82, -5.0], -QUARTER, F, NONE),
-    p("kk/furniture/lamp_table", [9.45, 0.75, -3.95], 0.0, [0.4, 0.4, 0.4], NONE),
+    // The desk along the east wall, its chair facing it (clear of the path
+    // from the door to the safe in the far corner).
+    p("kk/furniture/table_medium_long", [9.4, 0.0, -3.9], -QUARTER, [0.5, 0.75, 0.42], [0.42, 0.75]),
+    p("kk/furniture/chair_A_wood", [8.5, 0.0, -3.9], -QUARTER, F, NONE),
+    p("kk/furniture/book_set", [9.45, 0.82, -4.4], -QUARTER, F, NONE),
+    p("kk/furniture/lamp_table", [9.45, 0.75, -3.35], 0.0, [0.4, 0.4, 0.4], NONE),
     // ---- Kitchen (x -10..-2, z -15..-7; door from the bar x -7.2..-5.2) ----
     // A row on the north wall: fridge, stove under its hood, sink, counter.
     p("kk/restaurant/fridge_A_decorated", [-9.0, 0.0, -14.48], 0.0, [0.9, 0.8, 0.4], [0.9, 0.45]),
