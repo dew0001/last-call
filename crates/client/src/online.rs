@@ -373,6 +373,7 @@ pub fn add(app: &mut App, cfg: OnlineConfig) {
             place_customers,
             animate_gait,
             bob_markers,
+            hide_page_panels,
             crate::look::cull_far,
             dress_puddles,
             follow_camera.in_set(CameraSet),
@@ -436,6 +437,21 @@ struct OutcomeScreen;
 #[derive(Component)]
 struct OutcomeText;
 
+/// A game text the browser page draws itself, under this key
+/// (`tablePanel`-style, in `window.__lastCall.panels`; web/hud.js). In the
+/// browser the `bevy_ui` node is hidden; the native client shows it.
+#[derive(Component)]
+pub struct PagePanel(pub &'static str);
+
+/// In the browser, hide the `bevy_ui` nodes the page draws instead.
+fn hide_page_panels(mut nodes: Query<&mut Node, Added<PagePanel>>) {
+    if cfg!(target_arch = "wasm32") {
+        for mut n in &mut nodes {
+            n.display = Display::None;
+        }
+    }
+}
+
 fn setup_hud(mut commands: Commands, nodraw: Option<Res<NoDraw>>) {
     if nodraw.is_some() {
         return;
@@ -452,6 +468,7 @@ fn setup_hud(mut commands: Commands, nodraw: Option<Res<NoDraw>>) {
     commands
         .spawn((
             PourPanel,
+            PagePanel("pour"),
             Visibility::Hidden,
             Node {
                 position_type: PositionType::Absolute,
@@ -489,6 +506,7 @@ fn setup_hud(mut commands: Commands, nodraw: Option<Res<NoDraw>>) {
     commands
         .spawn((
             OutcomeScreen,
+            PagePanel("outcome-screen"),
             Visibility::Hidden,
             BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.75)),
             Node {
@@ -502,6 +520,7 @@ fn setup_hud(mut commands: Commands, nodraw: Option<Res<NoDraw>>) {
         ))
         .with_child((
             OutcomeText,
+            PagePanel("outcome"),
             Text::new(""),
             font(40.0),
             TextColor(Color::WHITE),

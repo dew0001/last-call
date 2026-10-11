@@ -308,6 +308,7 @@ fn setup_panels(mut commands: Commands, nodraw: Option<Res<NoDraw>>) {
     let font = |size: f32| TextFont { font_size: bevy::text::FontSize::Px(size), ..default() };
     commands.spawn((
         FixturePanel,
+        crate::online::PagePanel("fixture"),
         Text::new(""),
         font(15.0),
         TextColor(Color::srgb(0.85, 1.0, 0.9)),
@@ -323,6 +324,7 @@ fn setup_panels(mut commands: Commands, nodraw: Option<Res<NoDraw>>) {
     ));
     commands.spawn((
         ChaosBanner,
+        crate::online::PagePanel("chaos"),
         Text::new(""),
         font(20.0),
         TextColor(Color::srgb(1.0, 0.35, 0.3)),
@@ -331,6 +333,7 @@ fn setup_panels(mut commands: Commands, nodraw: Option<Res<NoDraw>>) {
     ));
     commands.spawn((
         FocusText,
+        crate::online::PagePanel("focus"),
         Text::new(""),
         font(16.0),
         TextColor(Color::srgb(0.5, 0.9, 1.0)),

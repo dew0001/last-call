@@ -129,6 +129,25 @@ test('the host opens the bar, and saves on demand', async ({ browser }) => {
   await context.close();
 });
 
+test('the page draws the game panels: a fixture card, a table card with keycaps', async ({ browser }) => {
+  // A drawing tab (the panels come from the drawn game), kept small.
+  const context = await browser.newContext({ viewport: { width: 480, height: 270 } });
+  const page = await context.newPage();
+  await page.goto('/?create&autostart&gpu=webgl2&novoice&name=Host&chaos=off');
+  await waitFor(page, 'joined', (s) => !!s.playerId, 90_000);
+  await page.evaluate(() => (window as any).__lcTeleport(6.6, -5.6));
+  await waitFor(page, 'the drawer panel', (s) => !!s.panels?.fixture, 60_000);
+  await expect(page.locator('#hud-fixture')).toContainText('OFFICE DRAWER');
+  await expect(page.locator('#hud-fixture kbd').first()).toHaveText('1');
+  // A bettor's spot at blackjack.
+  await page.evaluate(() => (window as any).__lcTeleport(-6.0, 2.0));
+  await waitFor(page, 'the blackjack panel', (s) => (s.tablePanel ?? '').startsWith('BLACKJACK'), 60_000);
+  await expect(page.locator('#hud-fixture')).toBeHidden();
+  await expect(page.locator('#hud-table')).toContainText('BLACKJACK');
+  await expect(page.locator('#hud-table kbd', { hasText: 'H' }).first()).toBeVisible();
+  await context.close();
+});
+
 test('an achievement unlocks a hat that the next room shows', async ({ browser }) => {
   const context = await browser.newContext({ viewport: { width: 160, height: 90 } });
   const page = await context.newPage();

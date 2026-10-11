@@ -545,6 +545,7 @@ fn update_panel(
     let Ok((mut text, mut vis)) = panel.single_mut() else {
         commands.spawn((
             GamePanel,
+            crate::online::PagePanel("game"),
             Text::new(""),
             TextFont { font_size: bevy::text::FontSize::Px(15.0), ..default() },
             TextColor(Color::srgb(0.9, 0.95, 1.0)),

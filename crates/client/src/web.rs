@@ -226,6 +226,7 @@ fn publish_status(
     status: Res<RenderStatus>,
     net: Option<Res<NetStatus>>,
     panel: Option<Res<crate::casino::TablePanelText>>,
+    texts: Query<(&crate::online::PagePanel, &Text, &InheritedVisibility)>,
     mut frame: Local<u32>,
 ) {
     // Building the JS objects is not free: publish every third frame (20 Hz at 60 fps).
@@ -264,6 +265,14 @@ fn publish_status(
         set("jitterMs", JsValue::from_f64(f64::from(net.jitter_ms)));
         set("tick", JsValue::from_f64(f64::from(net.tick)));
         set("tablePanel", JsValue::from_str(panel.as_ref().map_or("", |p| p.0.as_str())));
+        // Texts the page draws: shown ones only.
+        let panels = Object::new();
+        for (key, text, vis) in &texts {
+            if vis.get() && !text.0.is_empty() {
+                let _ = Reflect::set(&panels, &key.0.into(), &JsValue::from_str(&text.0));
+            }
+        }
+        set("panels", panels.into());
         let ser = serde_wasm_bindgen::Serializer::json_compatible();
         set("game", serde::Serialize::serialize(&net.game, &ser).unwrap_or(JsValue::NULL));
     }

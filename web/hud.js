@@ -3,7 +3,9 @@
 //   top left:     week and shift, the phase and its clock
 //   top right:    the house pool, your pocket, the debt and this week's due
 //   bottom left:  the drunk meter
-//   bottom right: the table you stand at (blackjack, roulette, slots)
+//   bottom right: the table, fixture or minigame you stand at
+//   top center:   chaos events; bottom center: the pour gauge
+//   full screen:  the end of a run
 // The pour gauge and the end-of-run screen stay in the game.
 
 const PHASES = { SETUP: 'Setup', OPEN: 'Open', 'LAST CALL': 'Last call', PAYMENT: 'Payment' };
@@ -48,12 +50,15 @@ function tableCard(text) {
   const gap = rest.indexOf('');
   const body = gap < 0 ? rest : rest.slice(0, gap);
   const keys = gap < 0 ? [] : rest.slice(gap + 1);
-  const m = head.match(/^(\S+)\s*(.*)$/) ?? [head, head, ''];
+  // The name runs to a double space or a bracket: "BLACKJACK  (round 2)".
+  const m = head.match(/^(.+?)(?:\s{2,}|\s(?=\()|$)(.*)$/) ?? [head, head, ''];
   const caps = (line) =>
     esc(line).replace(/(^|\s)(Enter|[A-Z0-9]|[A-Z]\/[A-Z])(?=\s|$)/g, (_, pre, k) => `${pre}<kbd>${k}</kbd>`);
+  // Menu lines start with their key: "1  Buy a pouch", "U  use".
+  const row = (l) => esc(l).replace(/^([0-9A-Z])  /, '<kbd>$1</kbd> ');
   return (
     `<div class="hud-table-title"><span>${esc(m[1])}</span><small>${esc(m[2])}</small></div>` +
-    body.filter((l) => l.trim()).map((l) => `<div class="hud-table-row">${esc(l)}</div>`).join('') +
+    body.filter((l) => l.trim()).map((l) => `<div class="hud-table-row">${row(l)}</div>`).join('') +
     (keys.length ? `<div class="hud-table-keys">${keys.map(caps).join('<br>')}</div>` : '')
   );
 }
@@ -79,7 +84,19 @@ export function mountHud() {
       <div class="hud-small" id="hud-due"></div>
     </div>
     <div class="hud-prompt" id="hud-prompt" hidden></div>
-    <div class="hud-card hud-table" id="hud-table" hidden></div>
+    <div class="hud-cards">
+      <div class="hud-card hud-table" id="hud-game" hidden></div>
+      <div class="hud-card hud-table hud-fixture" id="hud-fixture" hidden></div>
+      <div class="hud-card hud-table" id="hud-table" hidden></div>
+    </div>
+    <div class="hud-chaos" id="hud-chaos" hidden></div>
+    <div class="hud-focus" id="hud-focus" hidden></div>
+    <div class="hud-pour" id="hud-pour" hidden>
+      <div class="hud-label">Pour · let go in the green</div>
+      <div class="hud-pour-track"><div class="hud-pour-green"></div><div class="hud-pour-fill" id="hud-pour-fill"></div></div>
+      <div class="hud-pour-foam"><div id="hud-pour-foam"></div></div>
+    </div>
+    <div class="hud-outcome" id="hud-outcome" hidden></div>
     <div class="hud-card hud-drunk">
       <div class="hud-row"><span class="hud-label">Drunk</span><span id="hud-tier"></span></div>
       <div class="hud-meter"><div class="hud-meter-fill" id="hud-drunk-fill"></div></div>
@@ -118,13 +135,44 @@ export function mountHud() {
     $('hud-prompt').hidden = !line;
     set('hud-prompt', line);
 
-    const panel = s.tablePanel ?? '';
-    const table = $('hud-table');
-    table.hidden = !panel;
-    if (panel && table.dataset.text !== panel) {
-      table.dataset.text = panel;
-      table.innerHTML = tableCard(panel);
+    const panels = s.panels ?? {};
+    const card = (id, text) => {
+      const el = $(id);
+      el.hidden = !text;
+      if (text && el.dataset.text !== text) {
+        el.dataset.text = text;
+        el.innerHTML = tableCard(text);
+      }
+    };
+    card('hud-table', s.tablePanel ?? '');
+    card('hud-fixture', panels.fixture ?? '');
+    card('hud-game', panels.game ?? '');
+
+    // Chaos: one block per event, its name over its hint.
+    const chaos = panels.chaos ?? '';
+    const ch = $('hud-chaos');
+    ch.hidden = !chaos;
+    if (chaos && ch.dataset.text !== chaos) {
+      ch.dataset.text = chaos;
+      const lines = chaos.split('\n');
+      ch.innerHTML = lines
+        .map((l, i) => (i % 2 === 0 ? `<div class="hud-chaos-name">${esc(l)}</div>` : `<div class="hud-chaos-hint">${esc(l)}</div>`))
+        .join('');
     }
+    const focus = panels.focus ?? '';
+    $('hud-focus').hidden = !focus;
+    set('hud-focus', focus);
+
+    const pour = g.pour;
+    $('hud-pour').hidden = !pour;
+    if (pour) {
+      $('hud-pour-fill').style.width = `${Math.min(100, pour[0])}%`;
+      $('hud-pour-foam').style.width = `${Math.min(100, pour[1])}%`;
+    }
+
+    const outcome = panels.outcome ?? '';
+    $('hud-outcome').hidden = !outcome;
+    set('hud-outcome', outcome);
 
     const d = g.drunk;
     const level = d?.level ?? 0;
