@@ -149,13 +149,22 @@ fn link_players(
 fn choose_clips(
     mut commands: Commands,
     people: Option<Res<People>>,
+    cam: Query<&GlobalTransform, With<Camera3d>>,
+    bodies: Query<&GlobalTransform, Without<Camera3d>>,
     mut persons: Query<(&mut Person, &ChildOf)>,
     motions: Query<&Motion>,
     mut players: Query<(&mut AnimationPlayer, Option<&mut AnimationTransitions>, Has<AnimationGraphHandle>)>,
 ) {
     let Some(people) = people else { return };
+    let eye = cam.single().map(|c| c.translation()).ok();
     for (mut p, parent) in &mut persons {
         let Some(player) = p.player else { continue };
+        // Far away the motion cannot be seen: stop animating (it costs CPU
+        // every frame for every bone).
+        let far = match (eye, bodies.get(parent.parent())) {
+            (Some(e), Ok(b)) => b.translation().distance(e) > ANIMATE_WITHIN,
+            _ => false,
+        };
         let Some((graph, nodes)) = &people.0[p.kind].graph else { continue };
         let Ok((mut anim, transitions, has_graph)) = players.get_mut(player) else { continue };
         if !has_graph {
@@ -163,6 +172,13 @@ fn choose_clips(
             continue;
         }
         let Some(mut transitions) = transitions else { continue };
+        if far != anim.all_paused() {
+            if far {
+                anim.pause_all();
+            } else {
+                anim.resume_all();
+            }
+        }
         let m = motions.get(parent.parent()).copied().unwrap_or_default();
         let want = if m.seated {
             0
@@ -179,6 +195,9 @@ fn choose_clips(
         }
     }
 }
+
+/// Characters farther than this from the camera (metres) stop animating.
+const ANIMATE_WITHIN: f32 = 20.0;
 
 /// How far a seated character's hips drop from standing to the stool seat.
 const SIT_DROP: f32 = 0.3;
