@@ -647,6 +647,104 @@ pub fn wheel_bowl() -> Mesh {
     ])
 }
 
+/// The back bar's parts, each one mesh: wood (cabinets, shelf brackets),
+/// bottles (glass, painted), glow (the warm strips under the shelves) and
+/// mirror (the panels behind the shelves).
+pub struct BackBar {
+    pub wood: Mesh,
+    pub bottles: Mesh,
+    pub glow: Mesh,
+    pub mirror: Mesh,
+}
+
+/// A back bar against a wall at `z` (the wall's face; the bar stands toward
+/// +Z), along each `(x0, x1)` span: a low cabinet, a mirror, three glass
+/// shelves full of bottles, a warm strip under each shelf.
+pub fn back_bar(z: f32, spans: &[(f32, f32)]) -> BackBar {
+    let wood = Color::srgb(0.22, 0.12, 0.06);
+    let top = Color::srgb(0.45, 0.28, 0.14);
+    let colors = [
+        Color::srgb(0.55, 0.3, 0.08),
+        Color::srgb(0.1, 0.35, 0.12),
+        Color::srgb(0.85, 0.85, 0.82),
+        Color::srgb(0.45, 0.12, 0.1),
+        Color::srgb(0.15, 0.3, 0.6),
+        Color::srgb(0.7, 0.55, 0.15),
+        Color::srgb(0.08, 0.08, 0.08),
+    ];
+    let (mut w, mut b, mut g, mut m) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    let mut seed = 17u32;
+    let mut rnd = || {
+        seed = seed.wrapping_mul(1_103_515_245).wrapping_add(12_345);
+        (seed >> 16) as f32 / 65_536.0
+    };
+    let mut bottle = |x: f32, y: f32, z: f32, rnd: &mut dyn FnMut() -> f32| {
+        let c = colors[(rnd() * colors.len() as f32) as usize % colors.len()];
+        let h = 0.18 + rnd() * 0.12;
+        let r = 0.03 + rnd() * 0.012;
+        b.push(part(tube(r, h * 0.65, 6), at(x, y + h * 0.325, z), c));
+        b.push(part(tube(r * 0.4, h * 0.35, 5), at(x, y + h * 0.825, z), c));
+        b.push(part(tube(r * 0.45, 0.02, 5), at(x, y + h + 0.01, z), Color::srgb(0.8, 0.7, 0.4)));
+    };
+    for &(x0, x1) in spans {
+        let (cx, len) = ((x0 + x1) / 2.0, x1 - x0);
+        // The cabinet with a top and door lines.
+        w.push(part(boxy(len, 0.95, 0.45), at(cx, 0.475, z + 0.225), wood));
+        w.push(part(boxy(len + 0.04, 0.05, 0.5), at(cx, 0.975, z + 0.25), top));
+        let doors = (len / 0.6).floor().max(1.0) as usize;
+        for i in 1..doors {
+            let x = x0 + len * i as f32 / doors as f32;
+            w.push(part(boxy(0.015, 0.8, 0.01), at(x, 0.48, z + 0.455), Color::srgb(0.1, 0.05, 0.03)));
+        }
+        // The mirror, framed.
+        m.push(part(boxy(len - 0.1, 1.2, 0.01), at(cx, 1.68, z + 0.012), Color::WHITE));
+        w.push(part(boxy(len, 0.06, 0.04), at(cx, 2.31, z + 0.02), wood));
+        // Shelves: glass on brackets, a strip of light under each, bottles on top.
+        for (k, y) in [1.3f32, 1.68, 2.06].into_iter().enumerate() {
+            w.push(part(boxy(len - 0.12, 0.02, 0.24), at(cx, y, z + 0.13), Color::srgb(0.55, 0.6, 0.6)));
+            g.push(part(boxy(len - 0.16, 0.012, 0.02), at(cx, y - 0.018, z + 0.22), Color::WHITE));
+            let mut x = x0 + 0.12 + rnd() * 0.04;
+            while x < x1 - 0.12 {
+                bottle(x, y + 0.01, z + 0.13 + (rnd() - 0.5) * 0.06, &mut rnd);
+                x += 0.085 + rnd() * 0.05 + if k == 1 { 0.02 } else { 0.0 };
+            }
+        }
+        // A few bottles and glasses on the cabinet top.
+        let mut x = x0 + 0.3;
+        while x < x1 - 0.3 {
+            if rnd() < 0.5 {
+                bottle(x, 1.0, z + 0.3, &mut rnd);
+            }
+            x += 0.35;
+        }
+    }
+    BackBar { wood: combine(w), bottles: combine(b), glow: combine(g), mirror: combine(m) }
+}
+
+/// A beer tap tower for the counter top, centered on its foot: a drip
+/// tray, a chrome column, a T bar with three faucets and colored handles.
+pub fn tap_tower() -> Mesh {
+    let chrome = Color::srgb(0.8, 0.8, 0.82);
+    let mut parts = vec![
+        part(boxy(0.5, 0.02, 0.16), at(0.0, 0.01, 0.12), Color::srgb(0.15, 0.15, 0.16)),
+        part(tube(0.05, 0.42, 12), at(0.0, 0.21, 0.0), chrome),
+        part(
+            tube(0.04, 0.5, 12),
+            Transform::from_xyz(0.0, 0.42, 0.0).with_rotation(Quat::from_rotation_z(std::f32::consts::FRAC_PI_2)),
+            chrome,
+        ),
+    ];
+    for (i, c) in
+        [Color::srgb(0.9, 0.7, 0.1), Color::srgb(0.1, 0.1, 0.1), Color::srgb(0.75, 0.1, 0.1)].into_iter().enumerate()
+    {
+        let x = -0.17 + i as f32 * 0.17;
+        parts.push(part(tube(0.012, 0.08, 6), at(x, 0.36, 0.05), chrome));
+        parts.push(part(boxy(0.035, 0.16, 0.035), at(x, 0.54, 0.02), c));
+        parts.push(part(ball(0.022), at(x, 0.63, 0.02), c));
+    }
+    combine(parts)
+}
+
 /// A plain block (walls, the safe) with a darker skirting.
 pub fn block(b: &bar::Block, color: Color) -> Mesh {
     let (w, d, h) = (b.hx * 2.0, b.hz * 2.0, b.height);
@@ -679,6 +777,14 @@ mod tests {
             let t = triangles(&m);
             assert!(t > 0 && t < 300, "{name}: {t} triangles");
         }
+    }
+
+    #[test]
+    fn the_back_bar_fits_the_budget() {
+        let b = back_bar(-7.0, &[(-5.0, 0.8), (3.2, 5.8)]);
+        let t = triangles(&b.bottles) + triangles(&b.wood) + triangles(&b.glow) + triangles(&b.mirror);
+        assert!(t < 30_000, "{t}");
+        assert!(triangles(&tap_tower()) < 600);
     }
 
     #[test]

@@ -56,7 +56,6 @@ TEXTURES = [
 # Props and furniture.
 MODELS = [
     "bar_chair_round_01",
-    "wine_bottles_01",
     "CashRegister_01",
     "hanging_industrial_lamp",
     "dartboard",
@@ -177,7 +176,6 @@ def fetch_model(mid, force):
 # keeping texture coordinates. Plan section 9 allows 250k on screen.
 TRIANGLES = {
     "bar_chair_round_01": 1200,
-    "wine_bottles_01": 700,
     "potted_plant_01": 3000,
     "fire_hydrant": 1500,
     "street_lamp_01": 2000,

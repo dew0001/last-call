@@ -181,24 +181,16 @@ use std::f32::consts::{FRAC_PI_2 as QUARTER, PI as HALF};
 /// Where every model stands. Positions are against walls or in corners
 /// (see the room bounds in `shared::world::AREAS`).
 pub const DECOR: &[Decor] = &[
-    // Main bar: shelves of bottles behind the counter, the till, lamps over
+    // Main bar (the back bar and the tap are built in art.rs): the till, lamps over
     // the counter, a dartboard and pictures, plants by the door.
-    ds("steel_frame_shelves_01", -2.6, 0.0, -6.7, 0.0, 0.1),
-    ds("steel_frame_shelves_01", 2.6, 0.0, -6.7, 0.0, 0.1),
-    d("wine_bottles_01", -3.0, 1.12, -6.7, 0.0),
-    d("wine_bottles_01", -2.3, 1.12, -6.7, 0.4),
-    d("wine_bottles_01", 2.2, 1.12, -6.7, 0.0),
-    d("wine_bottles_01", 3.0, 1.12, -6.7, 1.0),
-    d("wine_bottles_01", -2.7, 1.62, -6.7, 2.0),
-    d("wine_bottles_01", 2.7, 1.62, -6.7, 0.7),
     d("CashRegister_01", -4.2, 1.1, -4.0, HALF),
-    d("hanging_industrial_lamp", -3.0, 3.2, -4.0, 0.0),
-    d("hanging_industrial_lamp", 0.0, 3.2, -4.0, 0.0),
-    d("hanging_industrial_lamp", 3.0, 3.2, -4.0, 0.0),
+    // Lamps clear of the neon sign in the middle.
+    d("hanging_industrial_lamp", -3.4, 3.2, -4.0, 0.0),
+    d("hanging_industrial_lamp", 3.4, 3.2, -4.0, 0.0),
     d("dartboard", 9.95, 1.73, 3.0, -QUARTER),
     d("hanging_picture_frame_01", -9.95, 2.0, -3.0, QUARTER),
     d("hanging_picture_frame_01", 9.95, 2.0, 0.5, -QUARTER),
-    d("wall_clock", 0.0, 2.65, -6.95, 0.0),
+    d("wall_clock", -4.0, 2.65, -6.95, 0.0),
     d("potted_plant_01", -9.4, 0.0, 6.4, 0.0),
     d("potted_plant_01", 6.5, 0.0, 6.4, 1.0),
     d("WetFloorSign_01", -6.5, 0.0, -6.4, 0.6),

@@ -811,6 +811,32 @@ pub(crate) fn setup_bar(
                 .with_rotation(Quat::from_rotation_z(std::f32::consts::FRAC_PI_2)),
         ));
     }
+    // The back bar behind the counter (either side of the back room door)
+    // and the beer tap on the counter.
+    {
+        let back = art::back_bar(-bar::HALF_Z + 0.1, &[(-5.0, 0.8), (3.2, 5.8)]);
+        let glass = materials.add(StandardMaterial { perceptual_roughness: 0.12, reflectance: 0.7, ..default() });
+        let glow = materials.add(StandardMaterial {
+            base_color: Color::srgb(1.0, 0.8, 0.5),
+            emissive: LinearRgba::rgb(6.0, 3.6, 1.4),
+            ..default()
+        });
+        let mirror = materials.add(StandardMaterial {
+            base_color: Color::srgb(0.12, 0.1, 0.09),
+            perceptual_roughness: 0.05,
+            metallic: 1.0,
+            ..default()
+        });
+        for (mesh, mat) in [(back.wood, paint.clone()), (back.bottles, glass), (back.glow, glow), (back.mirror, mirror)]
+        {
+            commands.spawn((Mesh3d(meshes.add(mesh)), MeshMaterial3d(mat), Transform::default()));
+        }
+        commands.spawn((
+            Mesh3d(meshes.add(art::tap_tower())),
+            MeshMaterial3d(gloss.clone()),
+            Transform::from_xyz(bar::TAP.0, bar::COUNTER_HEIGHT, bar::TAP.1),
+        ));
+    }
     // The bar's neon sign on the back wall, over the shelves, with a pink
     // light so it glows on the bricks around it.
     commands.spawn((
