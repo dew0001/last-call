@@ -221,7 +221,8 @@ jobs:
           set -o pipefail
           npx wrangler pages deploy dist --project-name last-call --branch "${GITHUB_REF_NAME}" --commit-dirty=true | tee pages.log
           url=$(grep -oE 'https://[a-z0-9]+\.[a-z0-9-]+\.pages\.dev' pages.log | head -1)
-          alias=$(grep -oE 'alias URL: https://[^ ]+' pages.log | sed 's/alias URL: //' | head -1)
+          # Not every wrangler version prints a branch alias.
+          alias=$(grep -oE 'alias URL: https://[^ ]+' pages.log | sed 's/alias URL: //' | head -1 || true)
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "### Deployed" >> "$GITHUB_STEP_SUMMARY"
           echo "- Client: $url (branch alias: ${alias:-none})" >> "$GITHUB_STEP_SUMMARY"
