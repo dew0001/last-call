@@ -249,6 +249,16 @@ impl HostSim {
         self.app.world_mut().resource_mut::<chaos::ForcedChaos>().0.push(kind);
     }
 
+    /// Move every player to (x, z) (tests: a drawing tab on a machine with
+    /// no GPU walks too slowly to tour the map).
+    pub fn teleport_players(&mut self, x: f32, z: f32) {
+        let world = self.app.world_mut();
+        let mut q = world.query_filtered::<&mut shared::protocol::PlayerPos, With<shared::protocol::Player>>();
+        for mut pos in q.iter_mut(world) {
+            pos.0 = Vec3::new(x, 0.0, z);
+        }
+    }
+
     /// The host starts the shift: a waiting Setup ends on the next tick.
     pub fn start_shift(&mut self) {
         self.app.world_mut().resource_mut::<shift::StartShift>().0 = true;

@@ -236,6 +236,27 @@ def simplify(mid):
     print(f"simplified {mid}: {tris} -> {triangles(simple)} triangles")
 
 
+# The night sky around the map: a pure-sky panorama (no ground), darkened
+# from Poly Haven's brightened JPG to a night blue, 2048 x 1024.
+SKY = "qwantani_moonrise_puresky"
+OUT_SKY = os.path.join(ROOT, "web", "assets", "sky")
+
+
+def fetch_sky(force):
+    from PIL import ImageEnhance
+
+    path = os.path.join(OUT_SKY, "night.jpg")
+    if not force and os.path.exists(path):
+        return
+    os.makedirs(OUT_SKY, exist_ok=True)
+    url = json.loads(get(API + SKY))["tonemapped"]["url"]
+    img = Image.open(io.BytesIO(get(url))).convert("RGB").resize((2048, 1024), Image.LANCZOS)
+    img = ImageEnhance.Brightness(img).enhance(0.38)
+    img = ImageEnhance.Contrast(img).enhance(1.25)
+    img.save(path, "JPEG", quality=85, optimize=True)
+    print(f"sky {SKY}")
+
+
 def main():
     force = "--force" in sys.argv
     os.makedirs(OUT_TEX, exist_ok=True)
@@ -245,6 +266,7 @@ def main():
     for mid in MODELS:
         fetch_model(mid, force)
         simplify(mid)
+    fetch_sky(force)
 
 
 if __name__ == "__main__":

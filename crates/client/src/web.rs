@@ -46,6 +46,9 @@ struct StartConfig {
     /// Title screen only: the renderer-check cube instead of the bar (tests).
     #[serde(default)]
     cube: bool,
+    /// Title screen only: a fixed camera, x, y, z, yaw (screenshots).
+    #[serde(default)]
+    cam: Option<[f32; 4]>,
 }
 
 fn parse_uuid(hex: &str) -> [u8; 16] {
@@ -85,7 +88,7 @@ pub fn client_start(config: JsValue) -> Result<(), JsValue> {
     let mode = match online {
         Some(cfg) => crate::Mode::Online(cfg),
         None if cube => crate::Mode::Cube,
-        None => crate::Mode::Title,
+        None => crate::Mode::Title(cfg.cam),
     };
     let mut app = crate::build_app(mode);
     if let Some(bridge) = app.world().get_resource::<NetBridge>() {

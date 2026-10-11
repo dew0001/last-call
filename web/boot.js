@@ -358,6 +358,8 @@ function startHostWorker() {
   worker.onerror = (e) => console.error('host worker error', e.message);
   // Tests start a chaos event on the host: `__forceChaos('Outage')`.
   window.__forceChaos = (kind) => worker.postMessage({ t: 'chaos', kind });
+  // Tests move the players across the map: `__lcTeleport(x, z)`.
+  window.__lcTeleport = (x, z) => worker.postMessage({ t: 'teleport', x, z });
   // The host's controls (the Start shift button and the pause menu's Save).
   window.__lcHost = {
     startShift: () => worker.postMessage({ t: 'start' }),
@@ -514,7 +516,9 @@ async function runTitle() {
     const code = parseRoomCode(document.getElementById('join-code').value);
     if (code) location.search = `?room=${code}`;
   });
-  runClient(mod, { online: false, cube: params.has('cube'), nodraw: params.has('nodraw') });
+  // `?cam=x,y,z,yaw`: a fixed title camera, for screenshots of the map.
+  const cam = params.get('cam')?.split(',').map(Number);
+  runClient(mod, { online: false, cube: params.has('cube'), nodraw: params.has('nodraw'), cam: cam?.length === 4 ? cam : undefined });
 }
 
 // In a room, clicking the game locks the mouse to it for mouse look

@@ -40,8 +40,9 @@ struct Spinner;
 pub enum Mode {
     /// Join a room.
     Online(online::OnlineConfig),
-    /// The title screen: the bar, empty, with a slow camera drift.
-    Title,
+    /// The title screen: the bar, empty, with a slow camera drift, or a
+    /// fixed camera (x, y, z, yaw) for screenshots of the map (`?cam=`).
+    Title(Option<[f32; 4]>),
     /// A spinning cube: the renderer check (tests, `?cube`).
     Cube,
 }
@@ -81,8 +82,10 @@ pub fn build_app(mode: Mode) -> App {
         Mode::Online(cfg) => {
             online::add(&mut app, cfg);
         }
-        Mode::Title => {
-            app.add_systems(Startup, online::setup_bar).add_systems(Update, (title_camera, online::graphics_preset));
+        Mode::Title(cam) => {
+            app.insert_resource(TitleCam(cam))
+                .add_systems(Startup, online::setup_bar)
+                .add_systems(Update, (title_camera, online::graphics_preset));
         }
         Mode::Cube => {
             app.add_systems(Startup, setup_backdrop).add_systems(Update, spin);
@@ -117,9 +120,16 @@ fn setup_backdrop(
     ));
 }
 
+#[derive(Resource)]
+struct TitleCam(Option<[f32; 4]>);
+
 /// The title screen's camera drifts slowly along the bar.
-fn title_camera(time: Res<Time>, mut cam: Query<&mut Transform, With<Camera3d>>) {
+fn title_camera(time: Res<Time>, fixed: Res<TitleCam>, mut cam: Query<&mut Transform, With<Camera3d>>) {
     let Ok(mut t) = cam.single_mut() else { return };
+    if let Some([x, y, z, yaw]) = fixed.0 {
+        *t = Transform::from_xyz(x, y, z).with_rotation(Quat::from_rotation_y(yaw));
+        return;
+    }
     let s = time.elapsed_secs() * 0.06;
     let eye = Vec3::new(6.5 * s.sin(), 1.9 + 0.2 * (s * 1.7).sin(), 3.2 + 1.2 * s.cos());
     *t = Transform::from_translation(eye).looking_at(Vec3::new(0.8 * s.sin(), 1.3, -4.5), Vec3::Y);

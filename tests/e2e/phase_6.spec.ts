@@ -3,7 +3,7 @@
 // upper bound on draw calls), triangles on screen, and main-thread CPU time
 // per frame. Screenshots of each room are attached to the report.
 import { expect, test, type Page } from '@playwright/test';
-import { status, waitFor, walkToOnHost } from './helpers';
+import { status, waitFor } from './helpers';
 
 const BUDGET = { drawCalls: 400, triangles: 250_000, frameCpuMs: 8 };
 
@@ -60,17 +60,19 @@ test('every room draws within the budgets', async ({ browser, browserName }) => 
   await waitFor(host, 'joined', (s) => !!s.playerId && (s.propsSeen ?? 0) > 100, 90_000);
   // Warm up: SwiftShader compiles each new shader pipeline on first use.
   for (let i = 0; i < 3; i++) console.log('warming', JSON.stringify(await frameStats(host)));
-  const stops: [string, [number, number][]][] = [
-    ['bar', [[0, 3.4]]],
-    ['office', [[8.2, 3.0], [8.2, -1.0], [8.2, -3.0], [8.5, -5.0]]],
-    ['roof', [[8.2, 3.4], [11.5, 3.4], [16, 2]]],
-    ['lot', [[11.5, 3.4], [8.2, 3.4], [0, 3.4], [0, 8.5], [0, 15]]],
-    ['pier', [[0, 26], [0, 40]]],
+  // A drawing tab with no GPU draws a few frames a second: too few to walk
+  // the map, so the host moves the player to each room.
+  const stops: [string, [number, number]][] = [
+    ['bar', [0, 3.4]],
+    ['office', [8.5, -5.0]],
+    ['roof', [16, 2]],
+    ['lot', [0, 15]],
+    ['pier', [0, 40]],
   ];
   const worst = { meshes: 0, triangles: 0, p50: 0, p95: 0, cpuMs: 0 };
-  for (const [room, route] of stops) {
-    // Only the room matters here, not the exact spot.
-    await walkToOnHost(host, route, 5, 1.0);
+  for (const [room, [x, z]] of stops) {
+    await host.evaluate(([x, z]) => (window as any).__lcTeleport(x, z), [x, z]);
+    await waitFor(host, `at the ${room}`, (s) => !!s.ownPos && Math.hypot(s.ownPos[0] - x, s.ownPos[2] - z) < 0.5, 60_000);
     const s: any = await frameStats(host);
     if (browserName === 'chromium') Object.assign(s, await cpuPerFrame(host));
     console.log(room, JSON.stringify(s));

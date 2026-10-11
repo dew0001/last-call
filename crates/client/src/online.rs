@@ -769,6 +769,21 @@ pub(crate) fn setup_bar(
         }
     }
     if let Some(assets) = &assets {
+        // The night sky: a panorama on the inside of a big sphere, unlit.
+        let sky = Sphere::new(450.0).mesh().uv(48, 24);
+        commands.spawn((
+            Mesh3d(meshes.add(sky)),
+            MeshMaterial3d(materials.add(StandardMaterial {
+                base_color_texture: Some(assets.load("sky/night.jpg")),
+                unlit: true,
+                cull_mode: None,
+                fog_enabled: false,
+                ..default()
+            })),
+            // Seen from inside: mirror it so the panorama is not reversed.
+            Transform::from_xyz(0.0, -20.0, 0.0).with_scale(Vec3::new(-1.0, 1.0, 1.0)),
+            bevy::light::NotShadowCaster,
+        ));
         for (surface, parts) in surfaces {
             commands.spawn((
                 Mesh3d(meshes.add(art::combine(parts))),
@@ -790,7 +805,7 @@ pub(crate) fn setup_bar(
         Transform::from_xyz(0.0, -0.6, (pier.z0 + pier.z1) / 2.0 + 5.0),
     ));
     // A neon strip per room in its accent color (bloom makes them glow).
-    for a in AREAS.iter().filter(|a| a.room != Room::Bar) {
+    for a in AREAS.iter().filter(|a| a.room != Room::Bar && !a.room.outdoors()) {
         let accent = art::palette(a.room).1;
         let lum = accent.to_linear();
         let neon = materials.add(StandardMaterial {
@@ -821,6 +836,46 @@ pub(crate) fn setup_bar(
         PointLight { intensity: 40_000.0, range: 4.0, color: Color::srgb(1.0, 0.25, 0.65), ..default() },
         Transform::from_xyz(0.0, 2.6, -bar::HALF_Z + 0.6),
     ));
+    // Outside: OPEN in blue neon over the front door, facing the lot.
+    commands.spawn((
+        Mesh3d(meshes.add(art::neon_text("OPEN", 0.38, Color::WHITE))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: Color::srgb(0.3, 0.8, 1.0),
+            emissive: LinearRgba::rgb(1.0, 4.0, 9.0),
+            ..default()
+        })),
+        Transform::from_xyz(0.0, 2.75, bar::HALF_Z + 0.14).with_rotation(Quat::from_rotation_y(std::f32::consts::PI)),
+    ));
+    commands.spawn((
+        PointLight { intensity: 60_000.0, range: 6.0, color: Color::srgb(0.3, 0.75, 1.0), ..default() },
+        Transform::from_xyz(0.0, 2.6, bar::HALF_Z + 0.8),
+    ));
+    // The parking lot: painted bays along both sides, and light under the
+    // street lamps (crates/client/src/look.rs places the posts).
+    let lot = shared::world::area_of(Room::ParkingLot);
+    let line = meshes.add(Cuboid::new(0.1, 0.005, 4.5));
+    let paint_mat = materials.add(StandardMaterial {
+        base_color: Color::srgba(0.95, 0.92, 0.8, 0.85),
+        perceptual_roughness: 0.6,
+        alpha_mode: AlphaMode::Blend,
+        ..default()
+    });
+    for i in 0..6 {
+        let z = lot.z0 + 5.0 + i as f32 * 2.7;
+        for x in [lot.x0 + 2.25, lot.x1 - 2.25] {
+            commands.spawn((
+                Mesh3d(line.clone()),
+                MeshMaterial3d(paint_mat.clone()),
+                Transform::from_xyz(x, 0.006, z).with_rotation(Quat::from_rotation_y(std::f32::consts::FRAC_PI_2)),
+            ));
+        }
+    }
+    for (x, z) in [(-13.2, 7.6), (13.2, 7.6), (-13.2, 26.4)] {
+        commands.spawn((
+            PointLight { intensity: 250_000.0, range: 16.0, color: Color::srgb(1.0, 0.82, 0.55), ..default() },
+            Transform::from_xyz(x, 3.6, z),
+        ));
+    }
     // Warm lamps inside (at most 8 per room); a cold moon outside, the only shadow caster.
     for (_, x, z) in shared::world::lamps() {
         commands.spawn((

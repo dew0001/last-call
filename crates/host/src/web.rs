@@ -127,6 +127,12 @@ pub fn host_force_chaos(kind: &str) {
     with_state(|s| s.sim.force_chaos(k));
 }
 
+/// Move every player to (x, z) (tests only, `window.__lcTeleport`).
+#[wasm_bindgen]
+pub fn host_teleport(x: f32, z: f32) {
+    with_state(|s| s.sim.teleport_players(x, z));
+}
+
 /// The host starts the shift (the Start shift button).
 #[wasm_bindgen]
 pub fn host_start_shift() {

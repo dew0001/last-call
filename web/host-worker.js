@@ -9,6 +9,7 @@
 //   { t: 'chaos', kind }           start a chaos event (tests), e.g. 'Outage'
 //   { t: 'start' }                 the host starts the shift
 //   { t: 'save' }                  the host saves the run now
+//   { t: 'teleport', x, z }        move every player (tests)
 // Worker -> page messages:
 //   { t: 'tick', tick, tps }       once per second
 //   { t: 'out', items: [[peer, ArrayBuffer], ...] }  bytes for players
@@ -22,6 +23,7 @@ import init, {
   host_force_chaos,
   host_start_shift,
   host_save_now,
+  host_teleport,
 } from './pkg/host.js';
 import { append, newRun, prune } from './audit.js';
 import { latest, store } from './saves.js';
@@ -92,6 +94,9 @@ function handle(msg) {
       break;
     case 'save':
       host_save_now();
+      break;
+    case 'teleport':
+      host_teleport(msg.x, msg.z);
       break;
     case 'local':
       localPort = msg.port;
