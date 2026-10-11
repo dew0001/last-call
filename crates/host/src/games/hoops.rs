@@ -44,14 +44,15 @@ pub fn run(
         let me = who(player);
         let on_roof = room_at(pos.0.x, pos.0.z) == Some(Room::Roof);
         match *action {
-            GameAction::JoinHoops { mode } if on_roof => {
+            GameAction::JoinHoops { mode, fun } if on_roof => {
                 let contest = host.contest.get_or_insert_with(|| Contest::new(mode));
+                let fee = contest.fee(fun, hoops::ENTRY);
                 if contest.mode == mode
                     && !contest.started
-                    && charge(&mut pocket, hoops::ENTRY)
-                    && !contest.join(me, hoops::ENTRY)
+                    && (fee == 0 || charge(&mut pocket, fee))
+                    && !contest.join(me, fee)
                 {
-                    pocket.0 += hoops::ENTRY;
+                    pocket.0 += fee;
                 }
             }
             GameAction::StartHoops => {

@@ -103,6 +103,6 @@ fn a_glass_in_front_of_a_waiting_customer_is_served() {
     let house = world.query::<(&RunLedger, &RoomState)>().single(world).unwrap().0.ledger.house;
     assert_eq!(house - house0, 8, "into the house pool");
     let pocket = world.query::<(&Player, &Pocket)>().iter(world).find(|(p, _)| p.id == bot).unwrap().1.0;
-    assert_eq!(pocket, 2, "a perfect pour tips 2");
+    assert_eq!(pocket, shared::economy::STARTING_POCKET + 2, "a perfect pour tips 2");
     assert!(glasses(room.host.world_mut()).is_empty(), "the customer took the glass");
 }

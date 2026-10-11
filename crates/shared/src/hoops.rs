@@ -129,14 +129,22 @@ pub struct Contest {
     pub spot: Option<([f32; 2], usize)>,
     pub pot: i64,
     pub started: bool,
+    /// Played for fun: no fees, no pot.
+    pub fun: bool,
 }
 
 /// Letters in HORSE.
 pub const HORSE: &str = "HORSE";
 
 impl Contest {
+    /// What joining costs: nothing in a game played for fun. The first
+    /// entrant decides; a fun game earns nobody anything.
+    pub fn fee(&self, fun: bool, fee: i64) -> i64 {
+        if self.fun || (self.entrants.is_empty() && fun) { 0 } else { fee }
+    }
+
     pub fn new(mode: Mode) -> Self {
-        Self { mode, entrants: Vec::new(), turn: 0, spot: None, pot: 0, started: false }
+        Self { mode, entrants: Vec::new(), turn: 0, spot: None, pot: 0, started: false, fun: false }
     }
 
     pub fn max_entrants(&self) -> usize {
@@ -157,6 +165,9 @@ impl Contest {
     pub fn join(&mut self, who: Who, fee: i64) -> bool {
         if self.started || self.entrants.len() >= self.max_entrants() || self.entrants.iter().any(|e| e.who == who) {
             return false;
+        }
+        if self.entrants.is_empty() {
+            self.fun = fee == 0;
         }
         self.entrants.push(Entrant::new(who));
         self.pot += fee;

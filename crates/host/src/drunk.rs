@@ -107,7 +107,7 @@ fn drink(
         let b = action.0.buttons;
         let pressed = b & buttons::USE != 0 && clock.prev_buttons & buttons::USE == 0;
         clock.prev_buttons = b;
-        if !pressed || drunk.passed_out || pocket.0 < shared::customers::PLAYER_BEER_COST {
+        if !pressed || drunk.passed_out {
             continue;
         }
         let Some(glass) = hands.held else { continue };
@@ -117,7 +117,10 @@ fn drink(
         }
         commands.entity(glass).despawn();
         hands.held = None;
-        pocket.0 -= shared::customers::PLAYER_BEER_COST;
+        // Paid from the pocket; a player who cannot pay drinks on the house.
+        if pocket.0 >= shared::customers::PLAYER_BEER_COST {
+            pocket.0 -= shared::customers::PLAYER_BEER_COST;
+        }
         drunk.level = drunk::after_beer(drunk.level);
         if drunk.level >= 100 {
             pass_out(&mut commands, entity, &mut drunk, &mut clock);

@@ -21,6 +21,7 @@ pub mod fixtures;
 pub mod gauntlet;
 pub mod hoops;
 pub mod kicks;
+pub mod layout;
 pub mod math;
 pub mod minigame;
 pub mod movement;

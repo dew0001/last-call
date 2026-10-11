@@ -213,9 +213,17 @@ pub struct Round {
     pub ticks_left: u32,
     pub started: bool,
     pub pot: i64,
+    /// Played for fun: no fees, no pot.
+    pub fun: bool,
 }
 
 impl Round {
+    /// What joining costs: nothing in a game played for fun. The first
+    /// entrant decides; a fun game earns nobody anything.
+    pub fn fee(&self, fun: bool, fee: i64) -> i64 {
+        if self.fun || (self.fighters.is_empty() && fun) { 0 } else { fee }
+    }
+
     pub fn new() -> Self {
         Self {
             fighters: Vec::new(),
@@ -223,12 +231,16 @@ impl Round {
             ticks_left: ROUND_SECS * crate::TICK_HZ,
             started: false,
             pot: 0,
+            fun: false,
         }
     }
 
     pub fn join(&mut self, who: Who, fee: i64, vote_teams: bool) -> bool {
         if self.started || self.fighters.len() >= crate::MAX_PLAYERS || self.fighters.iter().any(|f| f.who == who) {
             return false;
+        }
+        if self.fighters.is_empty() {
+            self.fun = fee == 0;
         }
         self.fighters.push(Fighter {
             who,

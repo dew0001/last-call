@@ -76,9 +76,10 @@ pub fn penalties(
         let me = who(player);
         let in_lot = room_at(pos.0.x, pos.0.z) == Some(Room::ParkingLot);
         match *action {
-            GameAction::JoinShootout if in_lot && host.goalie.is_none_or(|g| g.0 != *e) => {
-                if charge(&mut pocket, kicks::ENTRY) && !host.shootout.join(me, kicks::ENTRY) {
-                    pocket.0 += kicks::ENTRY;
+            GameAction::JoinShootout { fun } if in_lot && host.goalie.is_none_or(|g| g.0 != *e) => {
+                let fee = host.shootout.fee(fun, kicks::ENTRY);
+                if (fee == 0 || charge(&mut pocket, fee)) && !host.shootout.join(me, fee) {
+                    pocket.0 += fee;
                 }
             }
             GameAction::TakeGoal
@@ -158,8 +159,11 @@ pub fn penalties(
             }
         }
         house(&mut room, to_house);
-        // A player goalie earns his keep: a save is worth the entry fee.
+        // A player goalie earns their keep: a save in a paid shootout is
+        // worth the entry fee (practice kicks and fun shootouts pay nothing).
         if result == KickResult::Saved
+            && f.counts
+            && !host.shootout.fun
             && let Some((_, id)) = host.goalie
         {
             pay(&mut players, id, kicks::ENTRY);
@@ -204,8 +208,9 @@ pub fn field_goals(
         let Ok((_, player, pos, _, mut pocket, drunk, focus)) = players.get_mut(*e) else { continue };
         if !near(&pos, kicks::TEE, kicks::SPOT_REACH)
             || !kicks::FIELD_GOALS.iter().any(|(y, _)| *y == yards)
-            || stake > STAKE_MAX
-            || !charge(&mut pocket, stake)
+            || !(0..=STAKE_MAX).contains(&stake)
+            // A stake of 0 is a kick for fun: nothing won or lost.
+            || (stake > 0 && !charge(&mut pocket, stake))
         {
             continue;
         }
@@ -251,9 +256,10 @@ pub fn gauntlet(
         match *action {
             GameAction::Run { stake }
                 if host.runner.is_none()
-                    && stake <= STAKE_MAX
+                    && (0..=STAKE_MAX).contains(&stake)
                     && near(&pos, (gauntlet::LANE_MID, gauntlet::START_Z), 2.0)
-                    && charge(&mut pocket, stake) =>
+                    // A stake of 0 is a run for fun.
+                    && (stake == 0 || charge(&mut pocket, stake)) =>
             {
                 let mut d = rngs.gauntlet.at(tick.0, &mut audit.0);
                 host.run = Some(Run::start(timer.calendar.week, &mut d));

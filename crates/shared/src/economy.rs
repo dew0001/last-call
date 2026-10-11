@@ -14,6 +14,9 @@ pub const PAYMENTS: [i64; 6] = [8_000, 11_000, 15_000, 20_000, 26_000, 40_000];
 /// Paid-so-far thresholds for debt tiers 0 to 6 (plan section 4.5).
 pub const TIER_THRESHOLDS: [i64; 7] = [0, 8_000, 19_000, 34_000, 54_000, 80_000, 120_000];
 
+/// What each player has in their pocket when a new run starts.
+pub const STARTING_POCKET: i64 = 100;
+
 /// Dollars moved from a pocket to the house pool per press at the office safe.
 pub const SAFE_DEPOSIT: i64 = 100;
 

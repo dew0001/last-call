@@ -29,6 +29,7 @@ export const ACTIONS = [
 const DEFAULT_KEYS = Object.fromEntries(ACTIONS.map(([a, , k]) => [a, k]));
 const DEFAULTS = {
   sensitivity: 1,
+  fov: 80,
   invertY: false,
   volume: 1,
   sfx: 0.9,
@@ -133,6 +134,9 @@ export function mountSettings() {
               <option value="low">Low (faster)</option>
             </select>
           </label>
+          <label>Field of view <span class="value" id="fov-value"></span>
+            <input name="fov" type="range" min="60" max="110" step="1">
+          </label>
         </div>
         <div data-pane="audio" hidden>
           <label>Master volume <input name="volume" type="range" min="0" max="1" step="0.05"></label>
@@ -168,6 +172,9 @@ export function mountSettings() {
   form.elements.music.value = s.music;
   form.elements.voice.value = s.voice;
   form.elements.sensitivity.value = s.sensitivity;
+  form.elements.fov.value = s.fov ?? DEFAULTS.fov;
+  const showFov = () => (menu.querySelector('#fov-value').textContent = `${form.elements.fov.value}°`);
+  showFov();
   form.elements.invertY.checked = !!s.invertY;
   const update = (patch) => {
     window.__lcSettings = { ...window.__lcSettings, ...patch };
@@ -183,7 +190,9 @@ export function mountSettings() {
       voice: form.elements.voice.value,
       sensitivity: Number(form.elements.sensitivity.value),
       invertY: form.elements.invertY.checked,
+      fov: Number(form.elements.fov.value),
     });
+    showFov();
   });
   for (const tab of form.querySelectorAll('[data-tab]')) {
     tab.addEventListener('click', () => {

@@ -504,3 +504,17 @@ The Chromium budget test (main-thread CPU per frame at most 8 ms) failed on CI b
 | `opt-level = 3` | 5.15 ms | 10.47 MB | 25.33 MB |
 
 Both sizes stay inside the plan's budgets (12 MB per client wasm, 40 MB first load). A local release build takes about 15 minutes instead of 3. Room lamps also became distance-culled (18 m): with no shadows on Low they lit through walls anyway, and CPU light clustering costs per light in view.
+
+### Playtest fixes, controls and a cartoony art direction (2026-10-11)
+
+A playtest found the game hard to play: drinking did nothing, the music could not be changed, no minigame worked, furniture had no collision, the goal and the field goal stood on top of each other, seated customers floated. Causes and changes:
+
+- **Money gates.** Every pocket started at $0; drinking, entries and stakes all failed silently. Players now start a run with $100 (`STARTING_POCKET`); a player who cannot pay drinks on the house.
+- **Play for fun.** Every minigame can be played with no stake and no winnings (the user's request): 0 toggles it; a contest's first entrant decides whether it is a fun one (free for all, no pot), a field goal or gauntlet run with stake 0 wins nothing, and a goalie's save pays only in a paid shootout.
+- **Lost input.** A tap shorter than a tick could fall between two ticks: taps now latch until the next tick sends them (`shared::client::TapLatch`). A fast click could press and release within one frame and never reach the engine: the page counts clicks on the canvas and the game reads the counts (`Clicks`). Keys reach the game only while its canvas has focus: a click on it, or locking the pointer, focuses it. The old tests drove scripted input and missed all of this; `tests/e2e/phase_8.spec.ts` presses real keys and the real mouse.
+- **One control scheme** (the user chose it): E uses or takes the thing in front of you, the left mouse button is the main action (hold to charge), the right one the second, 1 to 4 bet or pick, 0 plays for fun, the mouse wheel picks a roulette bet. Each station's card shows its keys as keycaps.
+- **Jukebox.** Anyone can pick a song (the upgrade keeps its patience bonus); the page plays five distinct generated songs and follows the host's pick.
+- **Layout.** The field goal moved to the middle of the lot (tee at (0, 10), uprights at (0, 26.6)), clear of the penalty goal on the west side and the gauntlet lane on the east.
+- **Art direction** (the user chose cartoony low-poly, like the co-op games they named): one consistent style instead of photo-scanned textures beside toy figures. KayKit CC0 furniture, kitchen and street pieces; Quaternius CC0 rigged and animated people (idle, walk, run; a seated pose bent in code); stylized floor and wall textures generated in code; the rest built in code in the same flat style. The Poly Haven models and textures are gone (the night sky stays).
+- **Furniture in one list** (`shared::layout`): the client draws each piece and movement collides with its footprint, so what you see is what blocks you. Tests keep doors, stations and fixtures reachable.
+- **FOV setting** (Graphics tab, 60 to 110 degrees horizontal).

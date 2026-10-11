@@ -144,7 +144,7 @@ test('the page draws the game panels: a fixture card, a table card with keycaps'
   await waitFor(page, 'the blackjack panel', (s) => (s.tablePanel ?? '').startsWith('BLACKJACK'), 60_000);
   await expect(page.locator('#hud-fixture')).toBeHidden();
   await expect(page.locator('#hud-table')).toContainText('BLACKJACK');
-  await expect(page.locator('#hud-table kbd', { hasText: 'H' }).first()).toBeVisible();
+  await expect(page.locator('#hud-table kbd', { hasText: 'LMB' }).first()).toBeVisible();
   await context.close();
 });
 

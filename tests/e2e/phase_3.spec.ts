@@ -256,7 +256,7 @@ test('customers gamble at every game, and the audit log replays in the browser',
   await host.context().close();
 });
 
-test('table keys: T takes the deal, digits bet', async ({ browser }) => {
+test('table keys: E takes the deal, digits bet, the left mouse button deals', async ({ browser }) => {
   test.setTimeout(180_000);
   const { host, room } = await createRoom(browser, undefined, '&preset=casino');
   const player = await openTab(browser, `${room.link}&gpu=webgl2&name=Punter`, 'player');
@@ -264,18 +264,20 @@ test('table keys: T takes the deal, digits bet', async ({ browser }) => {
   await Promise.all([walkToOnHost(host, TO_DEALER), walkTo(player, toSeat(...BJ_SEAT))]);
   // Scripted input stays on (standing still); keys still reach the table.
   await host.locator('#bevy').focus();
-  await host.keyboard.press('KeyT');
+  await host.keyboard.press('KeyE');
   const dealer = await me(host);
-  await waitFor(host, 'T took the deal', (s) => s.game?.casino?.blackjack?.dealer === dealer, 10_000);
+  await waitFor(host, 'E took the deal', (s) => s.game?.casino?.blackjack?.dealer === dealer, 10_000);
   await player.locator('#bevy').focus();
   await player.keyboard.press('Digit2');
   await waitFor(player, '2 bet $20', (s) => {
     const b = s.game?.casino?.blackjack;
     return b?.mySeat != null && b.seats[b.mySeat].bet === 20;
   }, 10_000);
-  await host.keyboard.press('Enter');
+  // The left mouse button deals. The tab is tiny and the page's buttons
+  // cover most of it, so the press goes straight to the canvas.
+  await host.locator('#bevy').dispatchEvent('pointerdown', { button: 0 });
   // A natural blackjack settles at once, so a finished round counts too.
-  await waitFor(player, 'Enter dealt', (s) => {
+  await waitFor(player, 'the click dealt', (s) => {
     const b = s.game?.casino?.blackjack;
     return (b?.rounds ?? 0) > 0 || (b?.seats ?? []).some((x: any) => x.hands.length > 0);
   }, 10_000);

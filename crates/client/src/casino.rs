@@ -23,6 +23,7 @@ use crate::online::{NetStatus, NoDraw};
 pub fn add(app: &mut App) {
     app.init_resource::<RouletteChoice>();
     app.init_resource::<TablePanelText>();
+    app.init_resource::<LastPull>();
     app.add_systems(Startup, (setup_tables, setup_panel));
     app.add_systems(
         Update,
@@ -251,9 +252,22 @@ fn buttons_for(amounts: &[i64], table_max: i64, tier: Tier, time: f32) -> Vec<i6
     casino::bet_buttons(&a, tier, time as u64)
 }
 
+/// The amount the left mouse button pulls a slot machine for (the last one
+/// picked with a number key).
+#[derive(Resource, Default)]
+pub struct LastPull(pub usize);
+
+/// Keys at a table, one scheme with the side games: E takes or leaves the
+/// dealer's or croupier's spot; the left mouse button is the main action
+/// (hit, deal, spin, pull), the right one the second (stand, rake); 1 to 4
+/// bet; the mouse wheel (or Z and X) picks a roulette bet.
 #[allow(clippy::too_many_arguments)]
 fn table_keys(
     keys: Res<ButtonInput<KeyCode>>,
+    clicks: Res<crate::online::Clicks>,
+    scroll: Res<bevy::input::mouse::AccumulatedMouseScroll>,
+    settings: Res<crate::online::Settings>,
+    mut last_pull: ResMut<LastPull>,
     time: Res<Time>,
     session: Res<Session>,
     status: Res<NetStatus>,
@@ -269,7 +283,8 @@ fn table_keys(
     let t = time.elapsed_secs();
     let mut send = |action: TableAction| out.0.push(TableRequest { table, action });
     let at_role = casino::at_role_spot(table, pos.x, pos.z);
-    if keys.just_pressed(KeyCode::KeyT) {
+    let (lmb, rmb) = (clicks.left, clicks.right);
+    if at_role && keys.just_pressed(settings.keys.interact) {
         let mine = match table {
             TableId::Blackjack => status.game.casino.blackjack.as_ref().and_then(|b| b.dealer.clone()),
             TableId::Roulette => status.game.casino.roulette.as_ref().and_then(|r| r.croupier.clone()),
@@ -281,14 +296,16 @@ fn table_keys(
     match table {
         TableId::Blackjack => {
             if at_role {
-                if keys.just_pressed(KeyCode::Enter) {
-                    send(TableAction::Deal);
-                }
+                // The left button does the dealer's next job: deal a round,
+                // or hit or stand as the house rules say.
                 let should = bj.iter().next().and_then(|v| v.dealer_should);
-                if keys.just_pressed(KeyCode::KeyH) {
-                    send(TableAction::Dealer(should.filter(|a| *a == Action::Hit).unwrap_or(Action::Hit)));
+                if lmb {
+                    send(match should {
+                        Some(a) => TableAction::Dealer(a),
+                        None => TableAction::Deal,
+                    });
                 }
-                if keys.just_pressed(KeyCode::KeyG) {
+                if rmb {
                     send(TableAction::Dealer(Action::Stand));
                 }
                 return;
@@ -299,12 +316,16 @@ fn table_keys(
                     send(TableAction::Bet(*amount));
                 }
             }
+            if lmb {
+                send(TableAction::Play(Action::Hit));
+            }
+            if rmb {
+                send(TableAction::Play(Action::Stand));
+            }
             for (key, action) in [
                 (KeyCode::Digit0, TableAction::Bet(0)),
-                (KeyCode::KeyH, TableAction::Play(Action::Hit)),
-                (KeyCode::KeyG, TableAction::Play(Action::Stand)),
-                (KeyCode::KeyJ, TableAction::Play(Action::Double)),
-                (KeyCode::KeyK, TableAction::Play(Action::Split)),
+                (KeyCode::KeyX, TableAction::Play(Action::Double)),
+                (KeyCode::KeyC, TableAction::Play(Action::Split)),
                 (KeyCode::KeyY, TableAction::Insure(true)),
                 (KeyCode::KeyN, TableAction::Insure(false)),
             ] {
@@ -315,19 +336,19 @@ fn table_keys(
         }
         TableId::Roulette => {
             if at_role {
-                if keys.just_pressed(KeyCode::Enter) {
+                if lmb {
                     send(TableAction::Spin);
                 }
-                if keys.just_pressed(KeyCode::KeyK) {
+                if rmb {
                     send(TableAction::Rake);
                 }
                 return;
             }
             let n = roulette_choices().len();
-            if keys.just_pressed(KeyCode::KeyX) {
+            if keys.just_pressed(KeyCode::KeyX) || scroll.delta.y < 0.0 {
                 choice.0 = (choice.0 + 1) % n;
             }
-            if keys.just_pressed(KeyCode::KeyZ) {
+            if keys.just_pressed(KeyCode::KeyZ) || scroll.delta.y > 0.0 {
                 choice.0 = (choice.0 + n - 1) % n;
             }
             let bet = roulette_choices()[choice.0 % n];
@@ -340,10 +361,15 @@ fn table_keys(
         }
         TableId::Slot(_) => {
             let amounts = buttons_for(&SLOT_BUTTONS, up.table_max(casino::SLOT_MAX), tier, t);
-            for (key, amount) in DIGITS.iter().zip(&amounts) {
+            for (i, (key, amount)) in DIGITS.iter().zip(&amounts).enumerate() {
                 if keys.just_pressed(*key) {
+                    last_pull.0 = i;
                     send(TableAction::Pull(*amount));
                 }
+            }
+            // The left button pulls again for the last amount.
+            if lmb && let Some(amount) = amounts.get(last_pull.0).or(amounts.first()) {
+                send(TableAction::Pull(*amount));
             }
         }
     }
@@ -401,7 +427,7 @@ fn update_panel(
             let mut s = format!("BLACKJACK  (round {})\n", b.rounds);
             s += &format!(
                 "Dealer: {}  {}\n",
-                b.dealer.as_ref().map_or("nobody (stand behind the table, T)".into(), |d| {
+                b.dealer.as_ref().map_or("nobody (stand behind the table, press E)".into(), |d| {
                     if Some(d) == me.as_ref() { "YOU".into() } else { d.clone() }
                 }),
                 b.dealer_cards.join(" ")
@@ -423,7 +449,7 @@ fn update_panel(
                 s += &format!("Marked deck: the hole card is {card}\n");
             }
             if casino::at_role_spot(TableId::Blackjack, pos.x, pos.z) {
-                s += "\nT take/leave the deal   Enter deal   H hit   G stand";
+                s += "\nE take/leave the deal   LMB deal / the house's move   RMB stand";
                 if let Some(a) = b.dealer_should {
                     s += &format!("\nThe house must {}", a.to_uppercase());
                 }
@@ -431,7 +457,7 @@ fn update_panel(
                 let amounts = buttons_for(&BLACKJACK_BUTTONS, up.table_max(casino::BLACKJACK_MAX), tier, t);
                 let keys: Vec<String> = amounts.iter().enumerate().map(|(i, a)| format!("{} ${a}", i + 1)).collect();
                 s += &format!(
-                    "\nBet: {}   0 stand up\nH hit   G stand   J double   K split   Y/N insurance",
+                    "\nBet: {}   0 stand up\nLMB hit   RMB stand   X double   C split   Y/N insurance",
                     keys.join("  ")
                 );
             }
@@ -443,10 +469,9 @@ fn update_panel(
                 "ROULETTE  (spin {})  last: {}\nCroupier: {}\n",
                 r.spins,
                 r.last.map_or("-".into(), |n| n.to_string()),
-                r.croupier.as_ref().map_or(
-                    "nobody (stand behind the table, T)".into(),
-                    |d| if Some(d) == me.as_ref() { "YOU".into() } else { d.clone() }
-                )
+                r.croupier.as_ref().map_or("nobody (stand behind the table, press E)".into(), |d| {
+                    if Some(d) == me.as_ref() { "YOU".into() } else { d.clone() }
+                })
             );
             if r.spinning {
                 s += &format!("Spinning... {} s\n", r.seconds_left);
@@ -459,13 +484,13 @@ fn update_panel(
                 s += &format!("  {name}: ${amount} on {label}\n");
             }
             if casino::at_role_spot(TableId::Roulette, pos.x, pos.z) {
-                s += "\nT take/leave the wheel   Enter spin   K rake";
+                s += "\nE take/leave the wheel   LMB spin   RMB rake";
             } else {
                 let choices = roulette_choices();
                 let bet = choices[choice.0 % choices.len()];
                 let amounts = buttons_for(&ROULETTE_BUTTONS, up.table_max(casino::ROULETTE_MAX), tier, t);
                 let keys: Vec<String> = amounts.iter().enumerate().map(|(i, a)| format!("{} ${a}", i + 1)).collect();
-                s += &format!("\nZ/X pick: {} (pays {} to 1)\n{}", bet.label(), bet.odds(), keys.join("  "));
+                s += &format!("\nWheel or Z/X: {} (pays {} to 1)\n{}", bet.label(), bet.odds(), keys.join("  "));
             }
             s
         }
@@ -475,7 +500,7 @@ fn update_panel(
             let amounts = buttons_for(&SLOT_BUTTONS, up.table_max(casino::SLOT_MAX), tier, t);
             let keys: Vec<String> = amounts.iter().enumerate().map(|(i, a)| format!("{} ${a}", i + 1)).collect();
             format!(
-                "SLOTS  (pull {})\n{}\nLast: ${} back on ${}\nPull: {}\n7 7 7 pays 150, BAR x3 50, bells 10, lemons 8,\ncherries 5, two cherries 2, one cherry 1",
+                "SLOTS  (pull {})\n{}\nLast: ${} back on ${}\n\nPull: {}   LMB pull again\n7 7 7 pays 150, BAR x3 50, bells 10, lemons 8,\ncherries 5, two cherries 2, one cherry 1",
                 m.pulls,
                 if m.spinning { "spinning...".into() } else { m.line.join(" | ") },
                 m.last_return,

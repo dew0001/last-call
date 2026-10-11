@@ -3,13 +3,9 @@
 //! and gray-box visuals (the hoop and the ball's flight, the goal, the
 //! uprights, the tacklers, the pit's racks and tracers, the bobbers).
 //!
-//! Keys at a station: hold C to charge and let go to cast, shoot or kick;
-//! B strikes at a bite; hold N to reel. 1 and 2 enter a contest, Enter
-//! starts it. At the goal: G stands in goal; 4, 5, 6 dive left, center,
-//! right; 7 and 8 bet $10 on goal or miss. At the tee, 1 to 3 pick the
-//! distance. In the lane: 1 starts a run, double-tap A or D to dodge, G to
-//! stiff-arm. In the pit: 1 or 2 enter (free for all or teams), 3 takes the
-//! rack's weapon, the left mouse button fires.
+//! Keys at a station: see [`game_keys`]. One scheme for every game: the
+//! left mouse button charges and acts, the right one is the second action,
+//! E starts or takes, digits join or pick, 0 plays for fun.
 
 use bevy::input::mouse::MouseButton;
 use bevy::prelude::*;
@@ -27,7 +23,7 @@ use shared::world::{Room, room_at};
 use crate::online::{Look, NetStatus, NoDraw};
 
 pub fn add(app: &mut App) {
-    app.init_resource::<Charge>().init_resource::<FieldGoalPick>();
+    app.init_resource::<Charge>().init_resource::<FieldGoalPick>().init_resource::<ForFun>();
     app.add_systems(Startup, setup_stations);
     app.add_systems(
         Update,
@@ -362,19 +358,33 @@ impl Default for FieldGoalPick {
 
 /// Seconds of holding for a full charge.
 const FULL_CHARGE: f32 = 1.5;
-/// Stake for a field goal, a run or a bet from the keys.
+/// Stake for a field goal or a run, and a spectator's bet, from the keys.
 const KEY_STAKE: i64 = 20;
 const KEY_BET: i64 = 10;
 
+/// Play the station's game for fun (no stake, no winnings): 0 toggles it.
+#[derive(Resource, Default)]
+pub struct ForFun(pub bool);
+
+/// The keys at a station, one scheme for every game:
+/// - hold the left mouse button to charge, let go to cast, shoot or kick
+///   (in the pit it fires; with a line out it reels in);
+/// - the right mouse button strikes at a bite, or stiff-arms in the lane;
+/// - E (the interact key) starts a game, takes the goal, takes a weapon;
+/// - 1 to 3 join or pick (a contest, a distance, a dive), 7 and 8 bet as a
+///   spectator, 0 toggles playing for fun.
 #[allow(clippy::too_many_arguments)]
 fn game_keys(
     keys: Res<ButtonInput<KeyCode>>,
     mouse: Option<Res<ButtonInput<MouseButton>>>,
+    clicks: Res<crate::online::Clicks>,
+    settings: Res<crate::online::Settings>,
     time: Res<Time>,
     status: Res<NetStatus>,
     look: Res<Look>,
     mut charge: ResMut<Charge>,
     mut pick: ResMut<FieldGoalPick>,
+    mut fun: ResMut<ForFun>,
     mut out: ResMut<OutgoingGame>,
 ) {
     let Some(pos) = status.own_pos else { return };
@@ -384,10 +394,46 @@ fn game_keys(
     };
     let t = time.elapsed_secs();
     let pressed = |k: KeyCode| keys.just_pressed(k);
+    let lmb = mouse.as_ref().is_some_and(|m| m.pressed(MouseButton::Left));
+    let rmb = clicks.right;
+    let use_key = pressed(settings.keys.interact);
     let mut send = |a: GameAction| out.0.push(a);
+    if pressed(KeyCode::Digit0) {
+        fun.0 = !fun.0;
+    }
+    let stake = if fun.0 { 0 } else { KEY_STAKE };
+    let me = status.player_id.map(|id| format!("{id:016x}"));
 
-    // Charge with C; let go to act.
-    if keys.pressed(KeyCode::KeyC) {
+    // Fishing with a line out: hold the button to reel instead of charging.
+    let line_out = match st {
+        Station::Fishing(spot) => status
+            .game
+            .games
+            .fishing
+            .get(usize::from(spot))
+            .is_some_and(|f| f.fisher.is_some() && f.fisher == me && f.phase != "idle"),
+        _ => false,
+    };
+    if let Station::Fishing(spot) = st {
+        if line_out {
+            if lmb != charge.reeling {
+                charge.reeling = lmb;
+                send(GameAction::Reel { held: lmb });
+            }
+            if rmb {
+                send(GameAction::Hook);
+            }
+        }
+        if pressed(KeyCode::Digit7) {
+            send(GameAction::BetCatch { spot, side: Side::Lands, amount: KEY_BET });
+        }
+        if pressed(KeyCode::Digit8) {
+            send(GameAction::BetCatch { spot, side: Side::Snaps, amount: KEY_BET });
+        }
+    }
+
+    // Charge with the left button; let go to act. (The pit fires instead.)
+    if st != Station::Pit && !line_out && lmb {
         *charge.held.get_or_insert(0.0) += time.delta_secs();
     } else if let Some(held) = charge.held.take() {
         let frac = (held / FULL_CHARGE).min(1.0);
@@ -406,62 +452,50 @@ fn game_keys(
                 send(GameAction::Kick { kick: Kick { aim, power, curve } });
             }
             Station::Tee => {
-                let aim = (-look.yaw.sin() / 0.35).clamp(-1.0, 1.0);
-                send(GameAction::FieldGoal { yards: pick.0, stake: KEY_STAKE, kick: Kick { aim, power, curve } });
+                let to_posts = shared::math::atan2(-(kicks::UPRIGHTS.0 - pos.x), -(kicks::UPRIGHTS.1 - pos.z));
+                let aim = ((to_posts - look.yaw) / 0.35).clamp(-1.0, 1.0);
+                send(GameAction::FieldGoal { yards: pick.0, stake, kick: Kick { aim, power, curve } });
             }
             _ => {}
         }
     }
     match st {
-        Station::Fishing(spot) => {
-            if pressed(KeyCode::KeyB) {
-                send(GameAction::Hook);
-            }
-            let reel = keys.pressed(KeyCode::KeyN);
-            if reel != charge.reeling {
-                charge.reeling = reel;
-                send(GameAction::Reel { held: reel });
-            }
-            if pressed(KeyCode::Digit7) {
-                send(GameAction::BetCatch { spot, side: Side::Lands, amount: KEY_BET });
-            }
-            if pressed(KeyCode::Digit8) {
-                send(GameAction::BetCatch { spot, side: Side::Snaps, amount: KEY_BET });
-            }
-        }
+        Station::Fishing(_) => {}
         Station::Court => {
             if pressed(KeyCode::Digit1) {
-                send(GameAction::JoinHoops { mode: Mode::ThreeOfFive });
+                send(GameAction::JoinHoops { mode: Mode::ThreeOfFive, fun: fun.0 });
             }
             if pressed(KeyCode::Digit2) {
-                send(GameAction::JoinHoops { mode: Mode::Horse });
+                send(GameAction::JoinHoops { mode: Mode::Horse, fun: fun.0 });
             }
-            if pressed(KeyCode::Enter) {
+            if use_key {
                 send(GameAction::StartHoops);
             }
         }
-        Station::Penalty | Station::Goal => {
+        Station::Penalty => {
             if pressed(KeyCode::Digit1) {
-                send(GameAction::JoinShootout);
+                send(GameAction::JoinShootout { fun: fun.0 });
             }
-            if pressed(KeyCode::Enter) {
+            if use_key {
                 send(GameAction::StartShootout);
-            }
-            if pressed(KeyCode::KeyG) {
-                send(GameAction::TakeGoal);
-            }
-            for (k, dive) in
-                [(KeyCode::Digit4, Dive::Left), (KeyCode::Digit5, Dive::Center), (KeyCode::Digit6, Dive::Right)]
-            {
-                if pressed(k) {
-                    send(GameAction::Dive { dive });
-                }
             }
             if pressed(KeyCode::Digit7) {
                 send(GameAction::BetKick { goal: true, amount: KEY_BET });
             }
             if pressed(KeyCode::Digit8) {
                 send(GameAction::BetKick { goal: false, amount: KEY_BET });
+            }
+        }
+        Station::Goal => {
+            if use_key {
+                send(GameAction::TakeGoal);
+            }
+            for (k, dive) in
+                [(KeyCode::Digit1, Dive::Left), (KeyCode::Digit2, Dive::Center), (KeyCode::Digit3, Dive::Right)]
+            {
+                if pressed(k) {
+                    send(GameAction::Dive { dive });
+                }
             }
         }
         Station::Tee => {
@@ -472,10 +506,10 @@ fn game_keys(
             }
         }
         Station::Lane => {
-            if pressed(KeyCode::Digit1) {
-                send(GameAction::Run { stake: KEY_STAKE });
+            if use_key {
+                send(GameAction::Run { stake });
             }
-            if pressed(KeyCode::KeyG) {
+            if rmb {
                 send(GameAction::StiffArm);
             }
             if pressed(KeyCode::KeyA) {
@@ -493,22 +527,19 @@ fn game_keys(
         }
         Station::Pit => {
             if pressed(KeyCode::Digit1) {
-                send(GameAction::JoinPit { teams: false });
+                send(GameAction::JoinPit { teams: false, fun: fun.0 });
             }
             if pressed(KeyCode::Digit2) {
-                send(GameAction::JoinPit { teams: true });
+                send(GameAction::JoinPit { teams: true, fun: fun.0 });
             }
-            if pressed(KeyCode::Enter) {
-                send(GameAction::StartPit);
-            }
-            if pressed(KeyCode::Digit3)
-                && let Some((w, ..)) =
-                    pit::RACKS.iter().find(|(_, x, z)| (pos.x - x).hypot(pos.z - z) <= pit::RACK_REACH)
-            {
-                send(GameAction::Pick { weapon: *w });
+            if use_key {
+                match pit::RACKS.iter().find(|(_, x, z)| (pos.x - x).hypot(pos.z - z) <= pit::RACK_REACH) {
+                    Some((w, ..)) => send(GameAction::Pick { weapon: *w }),
+                    None => send(GameAction::StartPit),
+                }
             }
             // Hold to fire (the host keeps each weapon's rate).
-            if mouse.as_ref().is_some_and(|m| m.pressed(MouseButton::Left)) {
+            if lmb {
                 send(GameAction::Fire { yaw: look.yaw, pitch: look.pitch, view_tick: 0 });
             }
         }
@@ -533,7 +564,13 @@ fn fill_view_ticks(mut out: ResMut<OutgoingGame>, timeline: Option<Res<Interpola
 #[derive(Component)]
 struct GamePanel;
 
+/// The fee line on a game's card: what it costs, or that it is for fun.
+fn fee_hint(fun: bool, fee: i64) -> String {
+    if fun { "0 for fun: ON (no stake, no winnings)".into() } else { format!("${fee} to play   0 play for fun") }
+}
+
 fn update_panel(
+    fun: Res<ForFun>,
     status: Res<NetStatus>,
     nodraw: Option<Res<NoDraw>>,
     mut commands: Commands,
@@ -586,7 +623,7 @@ fn update_panel(
             if let Some((who, c)) = &f.last {
                 s += &format!("Last: {} {}\n", name(&Some(who.clone())), c);
             }
-            s + "\nHold C, let go: cast   B strike   hold N: reel\n7 bet $10 lands it   8 bet $10 snaps"
+            s + "\nLMB hold, let go: cast   RMB strike at a bite   LMB hold: reel\n7 bet $10 it lands   8 bet $10 it snaps"
         }
         Some("Court") => {
             let h = &g.hoops;
@@ -607,7 +644,10 @@ fn update_panel(
             if h.crowd_secs > 0 {
                 s += &format!("A crowd! Drinks sell 20% better for {} s\n", h.crowd_secs);
             }
-            s + "\n1 join 3 of 5 ($20)   2 join HORSE ($20)   Enter start\nHold C, let go: shoot (aim with the look)"
+            s + &format!(
+                "\n1 join 3 of 5   2 join HORSE   E start   {}\nLMB hold, let go: shoot (aim with the look)",
+                fee_hint(fun.0, hoops::ENTRY)
+            )
         }
         Some("Penalty") | Some("Goal") => {
             let p = &g.penalties;
@@ -622,7 +662,14 @@ fn update_panel(
             if let Some((who, r)) = &p.last {
                 s += &format!("Last kick: {} {}\n", name(&Some(who.clone())), r.to_uppercase());
             }
-            s + "\n1 join ($20)  Enter start  G stand in goal  4/5/6 dive L/C/R\nHold C, let go: kick (A/D at release curves)  7/8 bet $10 goal/miss"
+            if g.station.as_deref() == Some("Goal") {
+                s + "\nE stand in goal\n1 dive left   2 stay in the middle   3 dive right"
+            } else {
+                s + &format!(
+                    "\n1 join   E start   {}\nLMB hold, let go: kick (hold A or D to curve)\n7 bet $10 goal   8 bet $10 miss",
+                    fee_hint(fun.0, kicks::ENTRY)
+                )
+            }
         }
         Some("Tee") => {
             let f = &g.field_goal;
@@ -638,7 +685,7 @@ fn update_panel(
                     if *good { "GOOD" } else { "no good" }
                 );
             }
-            s + "\n1/2/3: 20/30/40 yards   Hold C, let go: kick"
+            s + &format!("\n1 20 yd   2 30 yd   3 40 yd   {}\nLMB hold, let go: kick", fee_hint(fun.0, KEY_STAKE))
         }
         Some("Lane") => {
             let r = &g.gauntlet;
@@ -646,7 +693,7 @@ fn update_panel(
             if let Some((who, e)) = &r.last {
                 s += &format!("Last run: {} {}\n", name(&Some(who.clone())), e.to_uppercase());
             }
-            s + "\n1 run ($20, double your money)  double-tap A/D dodge  G stiff arm"
+            s + &format!("\nE run   {}\nDouble-tap A or D: dodge   RMB stiff arm", fee_hint(fun.0, KEY_STAKE))
         }
         Some("Pit") => {
             let p = &g.pit;
@@ -666,7 +713,10 @@ fn update_panel(
                     if *down { "  DOWN" } else { "" }
                 );
             }
-            s + "\n1 join ($25)  2 join, vote teams  Enter start  3 take the rack's weapon\nLeft mouse: fire"
+            s + &format!(
+                "\n1 join   2 join, vote teams   E start (at a rack: take its weapon)   {}\nLMB fire",
+                fee_hint(fun.0, pit::ENTRY)
+            )
         }
         _ => String::new(),
     };
@@ -727,12 +777,19 @@ fn setup_stations(
         );
     }
     post(&mut commands, Vec3::new(kicks::GOAL_HALF_WIDTH * 2.0, 0.12, 0.12), Vec3::new(gx, kicks::BAR, gz), &white);
-    // The uprights, at the lot's north end opposite the tee.
-    let (tx, _) = kicks::TEE;
+    // The uprights, at the lot's north end straight up from the tee: a
+    // post, the crossbar, two uprights.
+    let (ux, uz) = kicks::UPRIGHTS;
+    post(&mut commands, Vec3::new(0.15, kicks::CROSSBAR, 0.15), Vec3::new(ux, kicks::CROSSBAR / 2.0, uz), &orange);
+    post(&mut commands, Vec3::new(kicks::UPRIGHT_HALF * 2.0, 0.1, 0.1), Vec3::new(ux, kicks::CROSSBAR, uz), &orange);
     for side in [-1.0, 1.0] {
-        post(&mut commands, Vec3::new(0.1, 6.0, 0.1), Vec3::new(tx + 2.0 + side * 1.5, 3.0, 26.5), &orange);
+        post(
+            &mut commands,
+            Vec3::new(0.1, 6.0, 0.1),
+            Vec3::new(ux + side * kicks::UPRIGHT_HALF, kicks::CROSSBAR + 3.0, uz),
+            &orange,
+        );
     }
-    post(&mut commands, Vec3::new(3.0, 0.1, 0.1), Vec3::new(tx + 2.0, kicks::CROSSBAR, 26.5), &orange);
     // Gauntlet lane end zone, fishing spots, pit racks.
     post(
         &mut commands,

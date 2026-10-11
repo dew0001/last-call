@@ -11,6 +11,7 @@ use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
 use shared::bar;
 use shared::world::Room;
+use std::f32::consts::FRAC_PI_2;
 
 /// Paint every vertex of `mesh` one color, then move it into place.
 pub fn part(mesh: impl Into<Mesh>, at: Transform, color: Color) -> Mesh {
@@ -760,6 +761,208 @@ pub fn tap_tower() -> Mesh {
         parts.push(part(ball(0.022), at(x, 0.63, 0.02), c));
     }
     combine(parts)
+}
+
+// ---------- Small props (the cartoony set: flat colors, chunky shapes) ----------
+
+const CHROME: Color = Color::srgb(0.78, 0.8, 0.84);
+const DARK: Color = Color::srgb(0.1, 0.1, 0.12);
+
+/// A bar stool around its physics body's center (0.38 m up): a round red
+/// cushion on a chrome post, a foot ring and a heavy base.
+pub fn bar_stool() -> Mesh {
+    let red = Color::srgb(0.78, 0.12, 0.14);
+    combine(vec![
+        part(tube(0.21, 0.03, 16), at(0.0, -0.365, 0.0), DARK),
+        part(tube(0.035, 0.66, 10), at(0.0, -0.05, 0.0), CHROME),
+        part(
+            Torus::new(0.14, 0.17).mesh().minor_resolution(6).major_resolution(16).build(),
+            at(0.0, -0.12, 0.0),
+            CHROME,
+        ),
+        part(tube(0.2, 0.04, 16), at(0.0, 0.27, 0.0), DARK),
+        part(tube(0.21, 0.09, 16), at(0.0, 0.33, 0.0), red),
+    ])
+}
+
+/// A pendant lamp hanging from its origin (the ceiling): a cord, a green
+/// enamel shade. The bulb is separate (it glows).
+pub fn pendant_lamp() -> (Mesh, Mesh) {
+    let shade = Color::srgb(0.1, 0.35, 0.22);
+    let body = combine(vec![
+        part(tube(0.01, 0.7, 6), at(0.0, -0.35, 0.0), DARK),
+        part(tube(0.05, 0.08, 10), at(0.0, -0.72, 0.0), Color::srgb(0.75, 0.6, 0.3)),
+        part(Cone::new(0.28, 0.22).mesh().resolution(16).build(), at(0.0, -0.85, 0.0), shade),
+    ]);
+    (body, part(ball(0.08), at(0.0, -0.95, 0.0), Color::WHITE))
+}
+
+/// A dartboard facing +Z: black rim, alternating rings, a bullseye.
+pub fn dartboard() -> Mesh {
+    let flat = |r: f32, d: f32, c: Color| {
+        part(tube(r, d, 20), Transform::from_xyz(0.0, 0.0, d / 2.0).with_rotation(Quat::from_rotation_x(FRAC_PI_2)), c)
+    };
+    combine(vec![
+        flat(0.25, 0.04, DARK),
+        flat(0.22, 0.045, Color::srgb(0.85, 0.15, 0.12)),
+        flat(0.18, 0.05, Color::srgb(0.95, 0.9, 0.75)),
+        flat(0.12, 0.055, Color::srgb(0.15, 0.55, 0.25)),
+        flat(0.07, 0.06, Color::srgb(0.95, 0.9, 0.75)),
+        flat(0.025, 0.065, Color::srgb(0.85, 0.15, 0.12)),
+    ])
+}
+
+/// A wall clock facing +Z at ten past ten.
+pub fn wall_clock() -> Mesh {
+    let rot_x = Quat::from_rotation_x(FRAC_PI_2);
+    combine(vec![
+        part(tube(0.22, 0.05, 24), Transform::from_xyz(0.0, 0.0, 0.025).with_rotation(rot_x), DARK),
+        part(
+            tube(0.19, 0.055, 24),
+            Transform::from_xyz(0.0, 0.0, 0.03).with_rotation(rot_x),
+            Color::srgb(0.97, 0.95, 0.88),
+        ),
+        part(
+            boxy(0.02, 0.13, 0.01),
+            Transform::from_xyz(-0.05, 0.04, 0.06).with_rotation(Quat::from_rotation_z(1.0)),
+            DARK,
+        ),
+        part(
+            boxy(0.02, 0.17, 0.01),
+            Transform::from_xyz(0.06, 0.06, 0.06).with_rotation(Quat::from_rotation_z(-0.6)),
+            DARK,
+        ),
+    ])
+}
+
+/// A till for the counter top, facing +Z.
+pub fn register() -> Mesh {
+    let body = Color::srgb(0.3, 0.32, 0.36);
+    combine(vec![
+        part(boxy(0.45, 0.12, 0.4), at(0.0, 0.06, 0.0), body),
+        part(
+            boxy(0.42, 0.14, 0.25),
+            Transform::from_xyz(0.0, 0.17, -0.05).with_rotation(Quat::from_rotation_x(-0.35)),
+            body,
+        ),
+        part(
+            boxy(0.36, 0.08, 0.02),
+            Transform::from_xyz(0.0, 0.2, 0.07).with_rotation(Quat::from_rotation_x(-0.35)),
+            Color::srgb(0.85, 0.85, 0.8),
+        ),
+        part(boxy(0.2, 0.1, 0.03), at(0.0, 0.32, -0.15), Color::srgb(0.1, 0.5, 0.25)),
+    ])
+}
+
+/// A yellow wet-floor sign.
+pub fn wet_floor_sign() -> Mesh {
+    let yellow = Color::srgb(1.0, 0.8, 0.1);
+    combine(vec![
+        part(
+            boxy(0.32, 0.6, 0.02),
+            Transform::from_xyz(0.0, 0.3, 0.1).with_rotation(Quat::from_rotation_x(-0.32)),
+            yellow,
+        ),
+        part(
+            boxy(0.32, 0.6, 0.02),
+            Transform::from_xyz(0.0, 0.3, -0.1).with_rotation(Quat::from_rotation_x(0.32)),
+            yellow,
+        ),
+        part(
+            boxy(0.12, 0.12, 0.03),
+            Transform::from_xyz(0.0, 0.32, 0.115).with_rotation(Quat::from_rotation_x(-0.32)),
+            DARK,
+        ),
+    ])
+}
+
+/// A TV on a low stand, facing +Z. The screen is separate (it glows).
+pub fn tv() -> (Mesh, Mesh) {
+    let wood = Color::srgb(0.35, 0.22, 0.13);
+    let body = combine(vec![
+        part(boxy(1.2, 0.5, 0.45), at(0.0, 0.25, 0.0), wood),
+        part(boxy(1.1, 0.04, 0.4), at(0.0, 0.52, 0.0), Color::srgb(0.45, 0.3, 0.18)),
+        part(boxy(0.2, 0.05, 0.15), at(0.0, 0.565, 0.0), DARK),
+        part(boxy(0.05, 0.12, 0.05), at(0.0, 0.64, 0.0), DARK),
+        part(boxy(1.05, 0.62, 0.07), at(0.0, 1.0, 0.0), DARK),
+    ]);
+    (body, part(boxy(0.95, 0.53, 0.01), at(0.0, 1.0, 0.04), Color::WHITE))
+}
+
+/// A wooden barrel with two iron bands.
+pub fn barrel() -> Mesh {
+    let wood = Color::srgb(0.48, 0.28, 0.14);
+    combine(vec![
+        part(tube(0.3, 0.9, 14), at(0.0, 0.45, 0.0), wood),
+        part(tube(0.31, 0.06, 14), at(0.0, 0.2, 0.0), DARK),
+        part(tube(0.31, 0.06, 14), at(0.0, 0.7, 0.0), DARK),
+        part(tube(0.27, 0.01, 14), at(0.0, 0.905, 0.0), Color::srgb(0.38, 0.22, 0.1)),
+    ])
+}
+
+/// A rooftop air conditioner, its fan facing +Z.
+pub fn aircon() -> Mesh {
+    let grey = Color::srgb(0.75, 0.77, 0.78);
+    combine(vec![
+        part(boxy(1.0, 0.75, 0.6), at(0.0, 0.42, 0.0), grey),
+        part(boxy(1.04, 0.05, 0.64), at(0.0, 0.0, 0.0), DARK),
+        part(
+            tube(0.25, 0.02, 16),
+            Transform::from_xyz(-0.15, 0.42, 0.31).with_rotation(Quat::from_rotation_x(FRAC_PI_2)),
+            DARK,
+        ),
+        part(boxy(0.2, 0.5, 0.02), at(0.3, 0.42, 0.31), Color::srgb(0.55, 0.57, 0.58)),
+    ])
+}
+
+/// A lifebuoy facing +Z: white with four red quarters.
+pub fn lifebuoy() -> Mesh {
+    let mut m = part(
+        Torus::new(0.17, 0.3).mesh().minor_resolution(8).major_resolution(24).build(),
+        Transform::from_rotation(Quat::from_rotation_x(FRAC_PI_2)),
+        Color::WHITE,
+    );
+    if let (Some(pos), Some(bevy::mesh::VertexAttributeValues::Float32x4(colors))) = (
+        m.attribute(Mesh::ATTRIBUTE_POSITION).and_then(|a| a.as_float3()).map(|p| p.to_vec()),
+        m.attribute_mut(Mesh::ATTRIBUTE_COLOR),
+    ) {
+        let red = Color::srgb(0.85, 0.1, 0.1).to_linear().to_f32_array();
+        for (c, p) in colors.iter_mut().zip(pos) {
+            let a = p[1].atan2(p[0]).rem_euclid(FRAC_PI_2);
+            if a < FRAC_PI_2 / 2.0 {
+                *c = red;
+            }
+        }
+    }
+    m
+}
+
+/// A laptop on its origin (a table top), facing +Z. The screen glows.
+pub fn laptop() -> (Mesh, Mesh) {
+    let body = combine(vec![
+        part(boxy(0.38, 0.02, 0.26), at(0.0, 0.01, 0.0), Color::srgb(0.25, 0.26, 0.3)),
+        part(
+            boxy(0.38, 0.26, 0.015),
+            Transform::from_xyz(0.0, 0.14, -0.14).with_rotation(Quat::from_rotation_x(-0.25)),
+            Color::srgb(0.25, 0.26, 0.3),
+        ),
+    ]);
+    let screen = part(
+        boxy(0.34, 0.21, 0.005),
+        Transform::from_xyz(0.0, 0.14, -0.13).with_rotation(Quat::from_rotation_x(-0.25)),
+        Color::WHITE,
+    );
+    (body, screen)
+}
+
+/// The basement breaker box on its wall, facing +Z.
+pub fn breaker_box() -> Mesh {
+    combine(vec![
+        part(boxy(0.5, 0.7, 0.15), at(0.0, 0.0, 0.075), Color::srgb(0.55, 0.58, 0.6)),
+        part(boxy(0.42, 0.6, 0.01), at(0.0, 0.0, 0.155), Color::srgb(0.5, 0.53, 0.55)),
+        part(boxy(0.05, 0.12, 0.03), at(0.15, 0.0, 0.17), DARK),
+        part(boxy(0.3, 0.06, 0.01), at(0.0, 0.25, 0.16), Color::srgb(1.0, 0.8, 0.1)),
+    ])
 }
 
 /// A plain block (walls, the safe) with a darker skirting.

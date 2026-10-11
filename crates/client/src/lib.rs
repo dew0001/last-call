@@ -18,6 +18,7 @@ pub mod games;
 pub mod look;
 pub mod online;
 pub mod outside;
+pub mod people;
 #[cfg(target_arch = "wasm32")]
 mod web;
 

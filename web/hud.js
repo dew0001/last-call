@@ -1,3 +1,5 @@
+import { toast } from './settings.js';
+
 // The in-game HUD, drawn by the page over the canvas from the game status
 // (`window.__lastCall`, published by the client 20 times a second):
 //   top left:     week and shift, the phase and its clock
@@ -8,6 +10,7 @@
 //   full screen:  the end of a run
 // The pour gauge and the end-of-run screen stay in the game.
 
+const TRACKS = ['Last Orders', 'Tide Out', 'Neon Rain', 'Loan Shark Blues', 'Closing Time'];
 const PHASES = { SETUP: 'Setup', OPEN: 'Open', 'LAST CALL': 'Last call', PAYMENT: 'Payment' };
 const DRUNK_COLORS = ['#6fd4ff', '#ffd25a', '#ff9a3c', '#ff4f6d', '#c04dff'];
 
@@ -53,7 +56,7 @@ function tableCard(text) {
   // The name runs to a double space or a bracket: "BLACKJACK  (round 2)".
   const m = head.match(/^(.+?)(?:\s{2,}|\s(?=\()|$)(.*)$/) ?? [head, head, ''];
   const caps = (line) =>
-    esc(line).replace(/(^|\s)(Enter|[A-Z0-9]|[A-Z]\/[A-Z])(?=\s|$)/g, (_, pre, k) => `${pre}<kbd>${k}</kbd>`);
+    esc(line).replace(/(^|\s)(LMB|RMB|Wheel|Enter|[A-Z0-9]|[A-Z]\/[A-Z])(?=\s|$)/g, (_, pre, k) => `${pre}<kbd>${k}</kbd>`);
   // Menu lines start with their key: "1  Buy a pouch", "U  use".
   const row = (l) => esc(l).replace(/^([0-9A-Z])  /, '<kbd>$1</kbd> ');
   return (
@@ -173,6 +176,12 @@ export function mountHud() {
     const outcome = panels.outcome ?? '';
     $('hud-outcome').hidden = !outcome;
     set('hud-outcome', outcome);
+
+    const track = g.phase4?.track;
+    if (track != null && String(track) !== hud.dataset.track) {
+      if (hud.dataset.track !== undefined) toast(`♪ Now playing: ${TRACKS[track] ?? 'a song'}`);
+      hud.dataset.track = String(track);
+    }
 
     const d = g.drunk;
     const level = d?.level ?? 0;

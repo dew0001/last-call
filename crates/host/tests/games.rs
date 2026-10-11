@@ -115,8 +115,8 @@ fn five_of_five_wins_the_pot_and_draws_a_crowd() {
     let (a, b) = (ps[0], ps[1]);
     put(&mut sim, a, (14.0, 2.0));
     put(&mut sim, b, (13.0, 0.0));
-    act(&mut sim, a, GameAction::JoinHoops { mode: Mode::ThreeOfFive });
-    act(&mut sim, b, GameAction::JoinHoops { mode: Mode::ThreeOfFive });
+    act(&mut sim, a, GameAction::JoinHoops { mode: Mode::ThreeOfFive, fun: false });
+    act(&mut sim, b, GameAction::JoinHoops { mode: Mode::ThreeOfFive, fun: false });
     let (pa, pb) = (pocket(&sim, a), pocket(&sim, b));
     assert_eq!(pa, 1000 - hoops::ENTRY);
     act(&mut sim, a, GameAction::StartHoops);
@@ -141,8 +141,8 @@ fn horse_takes_two() {
     let (a, b) = (ps[0], ps[1]);
     put(&mut sim, a, (14.0, 2.0));
     put(&mut sim, b, (14.0, 2.5));
-    act(&mut sim, a, GameAction::JoinHoops { mode: Mode::Horse });
-    act(&mut sim, b, GameAction::JoinHoops { mode: Mode::Horse });
+    act(&mut sim, a, GameAction::JoinHoops { mode: Mode::Horse, fun: false });
+    act(&mut sim, b, GameAction::JoinHoops { mode: Mode::Horse, fun: false });
     act(&mut sim, a, GameAction::StartHoops);
     let mut guard = 0;
     while view::<HoopsView>(&mut sim).contest.is_some() && guard < 100 {
@@ -167,8 +167,8 @@ fn a_shootout_against_the_npc_goalie_pays_the_best_kicker() {
     let (a, b) = (ps[0], ps[1]);
     put(&mut sim, a, kicks::PENALTY_SPOT);
     put(&mut sim, b, (kicks::PENALTY_SPOT.0 + 0.5, kicks::PENALTY_SPOT.1));
-    act(&mut sim, a, GameAction::JoinShootout);
-    act(&mut sim, b, GameAction::JoinShootout);
+    act(&mut sim, a, GameAction::JoinShootout { fun: false });
+    act(&mut sim, b, GameAction::JoinShootout { fun: false });
     act(&mut sim, a, GameAction::StartShootout);
     for _ in 0..5 {
         for (e, aim) in [(a, 0.9f32), (b, 1.0)] {
@@ -202,7 +202,9 @@ fn a_player_goalie_saves_with_an_early_dive_and_bettors_settle() {
     let v: PenaltyView = view(&mut sim);
     assert_eq!(v.last.unwrap().result, KickResult::Saved);
     assert_eq!(pocket(&sim, punter), 1000 - 40, "lost the bet");
-    assert_eq!(pocket(&sim, goalie), gp + kicks::ENTRY, "a save pays the goalie");
+    // A practice kick (no shootout): the save earns the goalie nothing; in a
+    // paid shootout it pays the entry fee.
+    assert_eq!(pocket(&sim, goalie), gp, "a practice save pays nothing");
 }
 
 #[test]
@@ -266,8 +268,8 @@ fn the_pit_rewinds_targets_to_what_the_shooter_saw() {
     let (a, b) = (ps[0], ps[1]);
     put(&mut sim, a, (-25.0, 0.0));
     put(&mut sim, b, (-25.0, -4.0));
-    act(&mut sim, a, GameAction::JoinPit { teams: false });
-    act(&mut sim, b, GameAction::JoinPit { teams: false });
+    act(&mut sim, a, GameAction::JoinPit { teams: false, fun: false });
+    act(&mut sim, b, GameAction::JoinPit { teams: false, fun: false });
     act(&mut sim, a, GameAction::StartPit);
     put(&mut sim, a, (-25.0, -5.0));
     act(&mut sim, a, GameAction::Pick { weapon: Weapon::Pistol });
@@ -312,8 +314,8 @@ fn rewinding_stops_at_200_ms() {
     let (a, b) = (ps[0], ps[1]);
     put(&mut sim, a, (-25.0, 0.0));
     put(&mut sim, b, (-25.0, -4.0));
-    act(&mut sim, a, GameAction::JoinPit { teams: false });
-    act(&mut sim, b, GameAction::JoinPit { teams: false });
+    act(&mut sim, a, GameAction::JoinPit { teams: false, fun: false });
+    act(&mut sim, b, GameAction::JoinPit { teams: false, fun: false });
     act(&mut sim, a, GameAction::StartPit);
     put(&mut sim, a, (-25.0, 5.0));
     act(&mut sim, a, GameAction::Pick { weapon: Weapon::Smg });

@@ -1,6 +1,6 @@
-//! Set dressing built in code for the side rooms: the kitchen's hood, prep
-//! counter, fridge and pans; the back room's rug, coffee table, crates and
-//! posters; the basement's keg rack, boiler, pipes, workbench and pallets.
+//! Set dressing built in code for the basement: the keg rack, boiler, pipes,
+//! workbench and pallets (the other rooms use KayKit furniture, see
+//! `shared::layout`, which also holds these pieces' footprints).
 //! Each room is one vertex-painted mesh (plus one for its metal), placed at
 //! the room's center so far culling can hide it. None of it collides: it
 //! stands against the walls, out of the walkways.
@@ -48,89 +48,6 @@ impl RoomDressing {
 const STEEL: Color = Color::srgb(0.75, 0.76, 0.78);
 const DARK_STEEL: Color = Color::srgb(0.35, 0.36, 0.38);
 const WOOD: Color = Color::srgb(0.4, 0.25, 0.13);
-
-pub fn kitchen() -> RoomDressing {
-    let mut d = RoomDressing::default();
-    // The hood over the stoves, with its duct to the ceiling.
-    d.metal(boxy(2.3, 0.45, 0.85), at(-8.0, 2.3, -14.5), STEEL);
-    d.metal(boxy(0.45, 0.7, 0.45), at(-8.0, 2.85, -14.6), STEEL);
-    // The prep counter along the west wall: a steel top, a sink, a board,
-    // pots and a shelf under it.
-    let (x, z0, z1) = (-9.62, -13.8, -8.4);
-    let (zc, len) = ((z0 + z1) / 2.0, z1 - z0);
-    d.metal(boxy(0.7, 0.05, len), at(x, 0.9, zc), STEEL);
-    d.metal(boxy(0.66, 0.04, len - 0.04), at(x, 0.25, zc), DARK_STEEL);
-    for z in [z0 + 0.03, zc, z1 - 0.03] {
-        for dx in [-0.3, 0.3] {
-            d.metal(boxy(0.04, 0.88, 0.04), at(x + dx, 0.44, z), DARK_STEEL);
-        }
-    }
-    d.metal(boxy(0.5, 0.02, 0.55), at(x, 0.93, -11.6), Color::srgb(0.15, 0.16, 0.17));
-    d.metal(tube(0.015, 0.3), at(x - 0.25, 1.08, -11.6), STEEL);
-    d.paint(boxy(0.35, 0.03, 0.5), at(x, 0.94, -10.4), Color::srgb(0.7, 0.5, 0.3));
-    d.paint(boxy(0.06, 0.03, 0.18), at(x + 0.05, 0.965, -10.3), Color::srgb(0.9, 0.2, 0.15));
-    d.metal(tube(0.16, 0.22), at(x, 1.03, -9.3), STEEL);
-    d.metal(tube(0.12, 0.16), at(x - 0.1, 1.0, -8.85), DARK_STEEL);
-    d.paint(boxy(0.3, 0.25, 0.4), at(x, 0.4, -12.8), Color::srgb(0.75, 0.62, 0.42));
-    d.paint(boxy(0.3, 0.25, 0.4), at(x, 0.4, -9.2), Color::srgb(0.75, 0.62, 0.42));
-    // The fridge in the corner by the back room wall.
-    d.metal(boxy(0.85, 2.0, 0.75), at(-2.5, 1.0, -8.0), Color::srgb(0.82, 0.83, 0.85));
-    d.metal(boxy(0.03, 0.6, 0.04), at(-2.95, 1.3, -7.75), DARK_STEEL);
-    d.metal(boxy(0.86, 0.02, 0.76), at(-2.5, 1.35, -8.0), DARK_STEEL);
-    // A pan rail on the east wall, four pans hanging.
-    let along_z = Quat::from_rotation_x(std::f32::consts::FRAC_PI_2);
-    d.metal(tube(0.015, 3.0), Transform::from_xyz(-2.1, 1.85, -11.5).with_rotation(along_z), DARK_STEEL);
-    for (i, r) in [0.14f32, 0.11, 0.16, 0.1].into_iter().enumerate() {
-        let z = -12.7 + i as f32 * 0.75;
-        d.metal(
-            tube(r, 0.03),
-            Transform::from_xyz(-2.12, 1.65 - r, z).with_rotation(Quat::from_rotation_z(std::f32::consts::FRAC_PI_2)),
-            Color::srgb(0.2, 0.2, 0.22),
-        );
-        d.metal(boxy(0.02, 0.2, 0.02), at(-2.12, 1.75, z), DARK_STEEL);
-    }
-    d
-}
-
-pub fn back_room() -> RoomDressing {
-    let mut d = RoomDressing::default();
-    // A worn rug in front of the sofa, with a border.
-    d.paint(boxy(3.2, 0.01, 2.2), at(2.0, 0.006, -12.9), Color::srgb(0.45, 0.08, 0.08));
-    d.paint(boxy(2.9, 0.012, 1.9), at(2.0, 0.008, -12.9), Color::srgb(0.6, 0.18, 0.12));
-    // A low coffee table with bottles and a pizza box.
-    d.paint(boxy(1.1, 0.06, 0.55), at(2.0, 0.42, -13.1), WOOD);
-    for (x, z) in [(-0.5, -0.24), (0.5, -0.24), (-0.5, 0.24), (0.5, 0.24)] {
-        d.paint(boxy(0.05, 0.4, 0.05), at(2.0 + x, 0.2, -13.1 + z), WOOD);
-    }
-    d.paint(boxy(0.4, 0.04, 0.4), at(1.75, 0.47, -13.1), Color::srgb(0.85, 0.75, 0.55));
-    for (i, c) in [Color::srgb(0.2, 0.45, 0.15), Color::srgb(0.5, 0.3, 0.08)].into_iter().enumerate() {
-        d.paint(tube(0.035, 0.22), at(2.3 + i as f32 * 0.12, 0.56, -13.05), c);
-    }
-    // Beer crates stacked in the corner.
-    let crate_colors = [Color::srgb(0.75, 0.55, 0.1), Color::srgb(0.15, 0.4, 0.2), Color::srgb(0.7, 0.12, 0.1)];
-    for (i, c) in crate_colors.into_iter().enumerate() {
-        let y = 0.16 + i as f32 * 0.32;
-        d.paint(
-            boxy(0.6, 0.3, 0.42),
-            Transform::from_xyz(5.4, y, -14.5).with_rotation(Quat::from_rotation_y(i as f32 * 0.08)),
-            c,
-        );
-    }
-    d.paint(boxy(0.6, 0.3, 0.42), at(4.7, 0.16, -14.5), crate_colors[1]);
-    // A floor lamp by the sofa.
-    d.metal(tube(0.18, 0.03), at(-1.4, 0.015, -14.4), DARK_STEEL);
-    d.metal(tube(0.02, 1.6), at(-1.4, 0.8, -14.4), DARK_STEEL);
-    d.paint(Cone::new(0.25, 0.3).mesh().resolution(12).build(), at(-1.4, 1.65, -14.4), Color::srgb(0.95, 0.8, 0.55));
-    // Gig posters on the west wall.
-    for (i, (c, z)) in
-        [(Color::srgb(0.9, 0.3, 0.5), -12.5), (Color::srgb(0.2, 0.6, 0.85), -10.5)].into_iter().enumerate()
-    {
-        d.paint(boxy(0.02, 0.9, 0.65), at(-1.93, 1.7, z), Color::srgb(0.08, 0.06, 0.05));
-        d.paint(boxy(0.025, 0.8, 0.55), at(-1.925, 1.7, z), c);
-        d.paint(boxy(0.03, 0.12, 0.45), at(-1.92, 1.85 - i as f32 * 0.2, z), Color::srgb(0.98, 0.95, 0.85));
-    }
-    d
-}
 
 pub fn basement() -> RoomDressing {
     let mut d = RoomDressing::default();
@@ -197,7 +114,7 @@ pub(crate) fn setup_dressing(
     }
     let paint = materials.add(StandardMaterial { perceptual_roughness: 0.8, ..default() });
     let metal = materials.add(StandardMaterial { perceptual_roughness: 0.35, metallic: 0.6, ..default() });
-    for (room, d) in [(Room::Kitchen, kitchen()), (Room::BackRoom, back_room()), (Room::Basement, basement())] {
+    for (room, d) in [(Room::Basement, basement())] {
         let a = area_of(room);
         let center = Vec3::new((a.x0 + a.x1) / 2.0, 0.0, (a.z0 + a.z1) / 2.0);
         // Far enough to cover the room from any corner of it.
@@ -235,16 +152,13 @@ mod tests {
 
     #[test]
     fn dressing_stays_inside_its_room() {
-        inside(Room::Kitchen, &kitchen());
-        inside(Room::BackRoom, &back_room());
         inside(Room::Basement, &basement());
     }
 
     #[test]
     fn dressing_is_cheap() {
-        for d in [kitchen(), back_room(), basement()] {
-            let t: usize = d.paint.iter().chain(&d.metal).map(crate::art::triangles).sum();
-            assert!(t < 12_000, "{t}");
-        }
+        let d = basement();
+        let t: usize = d.paint.iter().chain(&d.metal).map(crate::art::triangles).sum();
+        assert!(t < 12_000, "{t}");
     }
 }

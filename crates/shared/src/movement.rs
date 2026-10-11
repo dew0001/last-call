@@ -70,11 +70,11 @@ pub fn distance_to_tap(pos: [f32; 3]) -> f32 {
 }
 
 /// Keep a player inside the walls and out of every block (counter, office
-/// walls, safe). Two passes settle a player pushed from one block into another.
+/// walls, safe) and every solid piece of furniture ([`crate::layout`]). Two passes settle a player pushed from one block into another.
 pub fn collide(mut p: [f32; 3]) -> [f32; 3] {
     let r = PLAYER_RADIUS;
     for _ in 0..2 {
-        for b in BLOCKS.iter().chain(crate::world::walls()) {
+        for b in BLOCKS.iter().chain(crate::world::walls()).chain(crate::layout::solids()) {
             let (ox, oz) = (b.hx + r - (p[0] - b.cx).abs(), b.hz + r - (p[2] - b.cz).abs());
             if ox > 0.0 && oz > 0.0 {
                 // Push out along the axis of least overlap.

@@ -189,34 +189,49 @@ function startAmbience() {
 
 // ---------- jukebox ----------
 
-// A slow bar-room loop: Am F C G, a soft pad, a walking bass and brushed drums.
-const CHORDS = [
-  [57, 60, 64],
-  [53, 57, 60],
-  [48, 52, 55],
-  [55, 59, 62],
+// Five generated songs, one per jukebox track (crates/shared/src/fixtures.rs
+// TRACKS, in order). Each is a four-chord loop: a pad, a walking bass and
+// drums, with its own tempo, sound and swing. The host keeps the track; every
+// player hears the same one.
+const SONGS = [
+  // Last Orders: slow bar-room Am F C G.
+  { bpm: 84, pad: 'triangle', cut: 2200, chords: [[57, 60, 64], [53, 57, 60], [48, 52, 55], [55, 59, 62]], walk: [0, 7, 12, 7], kick: [0, 2], hat: 0.05 },
+  // Tide Out: dreamy, slow, wide Dmaj7 Gmaj7.
+  { bpm: 70, pad: 'sine', cut: 1500, chords: [[62, 66, 69, 73], [55, 59, 62, 66], [62, 66, 69, 73], [57, 61, 64, 68]], walk: [0, 0, 7, 0], kick: [0], hat: 0.02 },
+  // Neon Rain: driving synth, Em C G D.
+  { bpm: 118, pad: 'sawtooth', cut: 1800, chords: [[52, 55, 59], [48, 52, 55], [55, 59, 62], [50, 54, 57]], walk: [0, 12, 0, 12], kick: [0, 1, 2, 3], hat: 0.07 },
+  // Loan Shark Blues: shuffle in A, I IV I V.
+  { bpm: 96, pad: 'square', cut: 1300, chords: [[57, 61, 64, 67], [62, 66, 69, 72], [57, 61, 64, 67], [64, 68, 71, 74]], walk: [0, 4, 7, 9], kick: [0, 2], hat: 0.06 },
+  // Closing Time: gentle waltz feel, C Am F G.
+  { bpm: 76, pad: 'triangle', cut: 2600, chords: [[60, 64, 67], [57, 60, 64], [53, 57, 60], [55, 59, 62]], walk: [0, 4, 7, 4], kick: [0], hat: 0.03 },
 ];
 const hz = (m) => 440 * 2 ** ((m - 69) / 12);
 let jukeboxIn = null;
+/** The track the host's jukebox plays (0 until someone picks one). */
+const currentSong = () => SONGS[(window.__lastCall?.game?.phase4?.track ?? 0) % SONGS.length];
 function startJukebox() {
   jukeboxIn = gain(musicBus, 0);
   const lp = ctx.createBiquadFilter();
   lp.type = 'lowpass';
   lp.frequency.value = 2200;
   lp.connect(jukeboxIn);
-  const beat = 60 / 84;
   let next = now() + 0.2;
   let bar = 0;
   const schedule = () => {
     while (next < now() + 1.0) {
-      const chord = CHORDS[bar % 4];
+      // A new song starts on the next bar.
+      const song = currentSong();
+      const beat = 60 / song.bpm;
+      lp.frequency.setTargetAtTime(song.cut, next, 0.2);
+      const chord = song.chords[bar % 4];
       for (const m of chord) {
         const o = ctx.createOscillator();
-        o.type = 'triangle';
+        o.type = song.pad;
         o.frequency.value = hz(m);
         const g = ctx.createGain();
+        const level = song.pad === 'sawtooth' || song.pad === 'square' ? 0.018 : 0.05;
         g.gain.setValueAtTime(0.0001, next);
-        g.gain.linearRampToValueAtTime(0.05, next + 0.3);
+        g.gain.linearRampToValueAtTime(level, next + 0.3);
         g.gain.linearRampToValueAtTime(0.0001, next + beat * 4);
         o.connect(g).connect(lp);
         o.start(next);
@@ -224,7 +239,7 @@ function startJukebox() {
       }
       for (let b = 0; b < 4; b++) {
         const t = next + b * beat;
-        const root = chord[0] - 24 + [0, 7, 12, 7][b];
+        const root = chord[0] - 24 + song.walk[b];
         const o = ctx.createOscillator();
         o.type = 'sine';
         o.frequency.value = hz(root);
@@ -235,8 +250,7 @@ function startJukebox() {
         o.connect(g).connect(lp);
         o.start(t);
         o.stop(t + beat);
-        // Kick on 1 and 3, brush on every beat.
-        if (b % 2 === 0) {
+        if (song.kick.includes(b)) {
           const k = ctx.createOscillator();
           k.frequency.setValueAtTime(120, t);
           k.frequency.exponentialRampToValueAtTime(45, t + 0.12);
@@ -253,7 +267,7 @@ function startJukebox() {
         f.type = 'highpass';
         f.frequency.value = 5000;
         const bg = ctx.createGain();
-        bg.gain.setValueAtTime(b % 2 ? 0.05 : 0.025, t + beat / 2);
+        bg.gain.setValueAtTime(b % 2 ? song.hat : song.hat / 2, t + beat / 2);
         bg.gain.exponentialRampToValueAtTime(0.0001, t + beat / 2 + 0.12);
         src.connect(f).connect(bg).connect(lp);
         src.start(t + beat / 2, Math.random());

@@ -171,7 +171,7 @@ test('a perfect pour, carried to a waiting customer, is paid for and tipped', as
   const served = await waitFor(
     player,
     'customer served',
-    (s) => s.game?.money?.house === house0 + 8 && s.game.pocket === 2 && !s.game.beer,
+    (s) => s.game?.money?.house === house0 + 8 && s.game.pocket === 102 && !s.game.beer,
     10_000,
   );
   expect(served.game.customers.some((c: C) => c[1] === 'drinking')).toBe(true);

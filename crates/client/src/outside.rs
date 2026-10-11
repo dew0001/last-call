@@ -80,31 +80,6 @@ fn window_texture() -> Image {
     img
 }
 
-/// A toy car, nose toward -Z, standing on y = 0.
-fn car(paint: Color) -> Mesh {
-    let glass = Color::srgb(0.08, 0.1, 0.14);
-    let tire = Color::srgb(0.05, 0.05, 0.05);
-    let mut parts = vec![
-        art::part(Cuboid::new(1.8, 0.6, 4.2), Transform::from_xyz(0.0, 0.6, 0.0), paint),
-        art::part(Cuboid::new(1.6, 0.55, 2.2), Transform::from_xyz(0.0, 1.17, 0.25), glass),
-        art::part(Cuboid::new(1.64, 0.06, 2.0), Transform::from_xyz(0.0, 1.47, 0.25), paint),
-        art::part(Cuboid::new(1.82, 0.12, 4.24), Transform::from_xyz(0.0, 0.36, 0.0), Color::srgb(0.12, 0.12, 0.13)),
-        // Lights: pale at the front, red at the back.
-        art::part(Cuboid::new(0.35, 0.12, 0.04), Transform::from_xyz(-0.6, 0.7, -2.11), Color::srgb(1.0, 0.95, 0.8)),
-        art::part(Cuboid::new(0.35, 0.12, 0.04), Transform::from_xyz(0.6, 0.7, -2.11), Color::srgb(1.0, 0.95, 0.8)),
-        art::part(Cuboid::new(0.35, 0.1, 0.04), Transform::from_xyz(-0.6, 0.72, 2.11), Color::srgb(0.7, 0.02, 0.02)),
-        art::part(Cuboid::new(0.35, 0.1, 0.04), Transform::from_xyz(0.6, 0.72, 2.11), Color::srgb(0.7, 0.02, 0.02)),
-    ];
-    for (x, z) in [(-0.85, -1.35), (0.85, -1.35), (-0.85, 1.35), (0.85, 1.35)] {
-        parts.push(art::part(
-            Cylinder::new(0.34, 0.26).mesh().resolution(10).build(),
-            Transform::from_xyz(x, 0.34, z).with_rotation(Quat::from_rotation_z(std::f32::consts::FRAC_PI_2)),
-            tire,
-        ));
-    }
-    art::combine(parts)
-}
-
 pub(crate) fn setup_outside(
     mut commands: Commands,
     assets: Option<Res<AssetServer>>,
@@ -298,37 +273,30 @@ pub(crate) fn setup_outside(
         MeshMaterial3d(materials.add(look::material(&assets, Surface::Asphalt, false))),
         Transform::default(),
     ));
-    let paints = [
-        Color::srgb(0.55, 0.06, 0.06),
-        Color::srgb(0.1, 0.2, 0.45),
-        Color::srgb(0.8, 0.78, 0.7),
-        Color::srgb(0.12, 0.3, 0.18),
-        Color::srgb(0.1, 0.1, 0.11),
-        Color::srgb(0.75, 0.55, 0.15),
-    ];
-    let mut cars = Vec::new();
+    // KayKit cars, parked along the kerbs (toy-sized models: 4.8x is a
+    // 4.5 m car).
+    let models = ["car_sedan", "car_hatchback", "car_taxi", "car_stationwagon", "car_sedan", "car_police"];
     let mut k = 0;
     for side in [-1.0f32, 1.0] {
         let mut z = sz0 + 2.5;
         while z < sz1 - 2.5 {
             if rng.next() < 0.75 {
                 let flip = if rng.next() < 0.5 { 0.0 } else { std::f32::consts::PI };
-                cars.push(
-                    car(paints[k % paints.len()]).transformed_by(
-                        Transform::from_xyz(side * (STREET_IN + 1.4), 0.0, z)
-                            .with_rotation(Quat::from_rotation_y(flip + (rng.next() - 0.5) * 0.06)),
-                    ),
-                );
+                let name = models[k % models.len()];
+                let scene = assets.load(GltfAssetLabel::Scene(0).from_asset(format!("kk/city/{name}.gltf")));
+                commands.spawn((
+                    crate::look::Far(45.0),
+                    Visibility::default(),
+                    bevy::world_serialization::WorldAssetRoot(scene),
+                    Transform::from_xyz(side * (STREET_IN + 1.4), 0.3, z)
+                        .with_rotation(Quat::from_rotation_y(flip + (rng.next() - 0.5) * 0.06))
+                        .with_scale(Vec3::splat(4.8)),
+                ));
                 k += 1;
             }
             z += 5.2;
         }
     }
-    commands.spawn((
-        Mesh3d(meshes.add(art::combine(cars))),
-        MeshMaterial3d(materials.add(StandardMaterial { perceptual_roughness: 0.35, ..default() })),
-        Transform::default(),
-    ));
 }
 
 /// The side streets run from just past the lot's fences out to here (|x|, m).
@@ -346,10 +314,5 @@ mod tests {
         let warm = px.chunks(4).filter(|p| p[0] == 255).count();
         let dark = px.chunks(4).filter(|p| p[0] == 22).count();
         assert!(warm > 0 && dark > warm, "{warm} lit, {dark} dark");
-    }
-
-    #[test]
-    fn a_car_is_cheap() {
-        assert!(art::triangles(&car(Color::WHITE)) < 400);
     }
 }

@@ -29,9 +29,12 @@ pub const GOAL: (f32, f32) = (-7.0, 25.5);
 pub const PENALTY_SPOT: (f32, f32) = (-7.0, 14.5);
 /// Where the goalie stands.
 pub const GOALIE_SPOT: (f32, f32) = (-7.0, 25.0);
-/// The field goal tee, in the lot's south-west corner (the uprights are
-/// notional: the lot is shorter than 40 yards).
-pub const TEE: (f32, f32) = (-12.0, 9.5);
+/// The field goal tee, in the middle of the lot's south end, between the
+/// penalty goal (west) and the gauntlet lane (east).
+pub const TEE: (f32, f32) = (0.0, 10.0);
+/// The uprights, at the lot's north end straight up from the tee (the
+/// distance is notional: the lot is shorter than 40 yards).
+pub const UPRIGHTS: (f32, f32) = (0.0, 26.6);
 /// How close a kicker or goalie must stand to their spot.
 pub const SPOT_REACH: f32 = 1.5;
 /// Kicks per entrant in a shootout.
@@ -152,16 +155,27 @@ pub struct Shootout {
     pub goalie: Option<Who>,
     pub pot: i64,
     pub started: bool,
+    /// Played for fun: no fees, no pot.
+    pub fun: bool,
 }
 
 impl Shootout {
     pub fn new() -> Self {
-        Self { entrants: Vec::new(), turn: 0, goalie: None, pot: 0, started: false }
+        Self { entrants: Vec::new(), turn: 0, goalie: None, pot: 0, started: false, fun: false }
+    }
+
+    /// What joining costs: nothing in a game played for fun. The first
+    /// entrant decides; a fun game earns nobody anything.
+    pub fn fee(&self, fun: bool, fee: i64) -> i64 {
+        if self.fun || (self.entrants.is_empty() && fun) { 0 } else { fee }
     }
 
     pub fn join(&mut self, who: Who, fee: i64) -> bool {
         if self.started || self.goalie == Some(who) || self.entrants.iter().any(|e| e.who == who) {
             return false;
+        }
+        if self.entrants.is_empty() {
+            self.fun = fee == 0;
         }
         self.entrants.push(Entrant::new(who));
         self.pot += fee;

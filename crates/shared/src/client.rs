@@ -60,6 +60,7 @@ impl Plugin for ClientNetPlugin {
             app.add_plugins(crate::pipe::PipePlugin);
         }
         app.init_resource::<LocalInput>()
+            .init_resource::<TapLatch>()
             .init_resource::<Session>()
             .init_resource::<OutgoingTable>()
             .init_resource::<OutgoingTaps>()
@@ -199,10 +200,24 @@ fn mark_own_player(
     }
 }
 
-fn write_input(local: Res<LocalInput>, mut q: Query<&mut ActionState<PlayerInput>, With<InputMarker<PlayerInput>>>) {
+/// Buttons pressed since the last tick was written. A quick tap can go down
+/// and up between two ticks (the tick runs 64 times a second, the browser's
+/// frames are not in step with it): the app latches the press here and the
+/// next tick sends it, so no tap is lost.
+#[derive(Resource, Default)]
+pub struct TapLatch(pub u16);
+
+fn write_input(
+    local: Res<LocalInput>,
+    mut latch: ResMut<TapLatch>,
+    mut q: Query<&mut ActionState<PlayerInput>, With<InputMarker<PlayerInput>>>,
+) {
+    let mut input = local.0;
+    input.buttons |= latch.0;
     for mut action in &mut q {
-        action.0 = local.0;
+        action.0 = input;
     }
+    latch.0 = 0;
 }
 
 fn predict_movement(

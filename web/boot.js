@@ -522,6 +522,21 @@ async function runTitle() {
   runClient(mod, { online: false, cube: params.has('cube'), nodraw: params.has('nodraw'), cam: cam?.length === 5 ? cam : undefined });
 }
 
+// Clicks on the game, counted per button (left, right) for the game to read:
+// the browser can deliver a fast click's press and release in one frame,
+// and the game's input then never sees the button down.
+window.__lcClicks = [0, 0];
+document.getElementById('bevy')?.addEventListener('pointerdown', (e) => {
+  // Keys reach the game only while its canvas has the focus.
+  e.target.focus({ preventScroll: true });
+  if (e.button === 0) window.__lcClicks[0] += 1;
+  if (e.button === 2) window.__lcClicks[1] += 1;
+});
+document.getElementById('bevy')?.addEventListener('contextmenu', (e) => e.preventDefault());
+document.addEventListener('pointerlockchange', () => {
+  if (document.pointerLockElement) document.pointerLockElement.focus({ preventScroll: true });
+});
+
 // In a room, clicking the game locks the mouse to it for mouse look
 // (web/settings.js shows the crosshair; Esc frees it and pauses).
 document.getElementById('bevy')?.addEventListener('click', (e) => {

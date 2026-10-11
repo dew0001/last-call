@@ -177,9 +177,8 @@ fn use_fixtures(
                 }
             }
             (Fixture::Jukebox, FixtureAction::Track(n)) => {
-                if upgrades.0.has(shared::upgrades::UpgradeId::Jukebox)
-                    && usize::from(n) < shared::fixtures::TRACKS.len()
-                {
+                // Anyone can pick a song; the upgrade adds its patience bonus.
+                if usize::from(n) < shared::fixtures::TRACKS.len() {
                     jukebox.track = Some(n);
                 }
             }

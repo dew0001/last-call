@@ -97,6 +97,7 @@ pub fn client_start(config: JsValue) -> Result<(), JsValue> {
             PreUpdate,
             (read_scripted_input, read_table_requests, read_fixture_requests, read_game_requests, read_settings),
         );
+        app.add_systems(PreUpdate, (read_clicks, read_look_to));
         app.add_systems(Last, send_outgoing);
     } else {
         app.add_systems(PreUpdate, read_settings);
@@ -202,6 +203,7 @@ fn read_settings(mut settings: ResMut<crate::online::Settings>) {
     let sens = Reflect::get(&v, &"sensitivity".into()).ok().and_then(|x| x.as_f64()).unwrap_or(1.0) as f32;
     let low = Reflect::get(&v, &"graphics".into()).ok().and_then(|x| x.as_string()).is_some_and(|g| g == "low");
     let invert_y = Reflect::get(&v, &"invertY".into()).ok().and_then(|x| x.as_bool()).unwrap_or(false);
+    let fov = Reflect::get(&v, &"fov".into()).ok().and_then(|x| x.as_f64()).unwrap_or(80.0) as f32;
     // The mouse looks around only while it is locked to the game.
     let mouse_look = Reflect::get(&window, &"__lcLocked".into()).ok().and_then(|x| x.as_bool()).unwrap_or(false);
     let mut keys = crate::online::Keybinds::default();
@@ -215,10 +217,54 @@ fn read_settings(mut settings: ResMut<crate::online::Settings>) {
             }
         }
     }
-    let next =
-        crate::online::Settings { sensitivity: sens.clamp(0.1, 5.0), low_graphics: low, mouse_look, invert_y, keys };
+    let next = crate::online::Settings {
+        sensitivity: sens.clamp(0.1, 5.0),
+        low_graphics: low,
+        mouse_look,
+        invert_y,
+        fov: fov.clamp(60.0, 110.0),
+        keys,
+    };
     if *settings != next {
         *settings = next;
+    }
+}
+
+/// Test hook: `window.__lcLookTo = [yaw, pitch]` turns the view once (for
+/// screenshots from a chosen angle).
+fn read_look_to(mut look: ResMut<crate::online::Look>) {
+    let Some(window) = web_sys::window() else { return };
+    let Ok(v) = Reflect::get(&window, &"__lcLookTo".into()) else { return };
+    if !v.is_object() {
+        return;
+    }
+    let a: Array = v.unchecked_into();
+    look.yaw = a.get(0).as_f64().unwrap_or(0.0) as f32;
+    look.pitch = a.get(1).as_f64().unwrap_or(0.0) as f32;
+    let _ = Reflect::set(&window, &"__lcLookTo".into(), &JsValue::UNDEFINED);
+}
+
+/// Clicks this frame, from the page's counters (`window.__lcClicks`): the
+/// browser can deliver a fast click's press and release in one frame, and
+/// the engine's button state then misses it.
+fn read_clicks(mut clicks: ResMut<crate::online::Clicks>, mut seen: Local<[f64; 2]>) {
+    *clicks = crate::online::Clicks::default();
+    let Some(window) = web_sys::window() else { return };
+    let Ok(v) = Reflect::get(&window, &"__lcClicks".into()) else { return };
+    if !v.is_object() {
+        return;
+    }
+    let counts: Array = v.unchecked_into();
+    for i in 0..2 {
+        let n = counts.get(i as u32).as_f64().unwrap_or(0.0);
+        if n > seen[i] {
+            seen[i] = n;
+            if i == 0 {
+                clicks.left = true;
+            } else {
+                clicks.right = true;
+            }
+        }
     }
 }
 

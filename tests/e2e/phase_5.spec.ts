@@ -64,7 +64,7 @@ test('three of five on the roof: five perfect shots win the pot and draw a crowd
     [14.0, 2.0],
   ]);
   const start = await waitFor(host, 'on the court', (s) => s.game?.games?.station === 'Court');
-  await game(host, { JoinHoops: { mode: 'ThreeOfFive' } });
+  await game(host, { JoinHoops: { mode: 'ThreeOfFive', fun: false } });
   await waitFor(host, 'joined', (s) => s.game.games.hoops.entrants.length === 1);
   await game(host, 'StartHoops');
   await waitFor(host, 'started', (s) => s.game.games.hoops.started);
@@ -83,7 +83,7 @@ test('three of five on the roof: five perfect shots win the pot and draw a crowd
 test('the parking lot: a field goal, a penalty and a gauntlet run', async ({ browser }) => {
   test.setTimeout(180_000);
   const { host } = await createRoom(browser, undefined, '&chaos=off&preset=casino');
-  await walkToOnHost(host, [...OUT_FRONT, [-12, 9.5]]);
+  await walkToOnHost(host, [...OUT_FRONT, [0, 10]]);
   await waitFor(host, 'at the tee', (s) => s.game?.games?.station === 'Tee');
   const before = (await status(host)).game.pocket;
   await game(host, { FieldGoal: { yards: 20, stake: 10, kick: { aim: 0, power: 45, curve: 0 } } });
@@ -121,8 +121,8 @@ test('the fight pit: a hit from across the network, with lag compensation', asyn
   ];
   // The host takes the pistol from its rack; the target stands across the pit.
   await Promise.all([walkToOnHost(host, [...toPit, [-25, -4.9]]), walkTo(player, [...toPit, [-25, 3]])]);
-  await game(host, { JoinPit: { teams: false } });
-  await game(player, { JoinPit: { teams: false } });
+  await game(host, { JoinPit: { teams: false, fun: false } });
+  await game(player, { JoinPit: { teams: false, fun: false } });
   await waitFor(host, 'two fighters', (s) => s.game.games.pit.fighters.length === 2);
   await game(host, { Pick: { weapon: 'Pistol' } });
   await waitFor(host, 'armed', (s) => s.game.games.pit.fighters.some((f: any) => f[0] === s.playerId && f[4] === 'pistol'));

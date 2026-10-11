@@ -24,6 +24,7 @@ webgpu = ["bevy/webgpu"]
 shared.workspace = true
 bevy = { workspace = true, features = [
     "std",
+    "gltf_animation",
     "bevy_winit",
     "bevy_window",
     "bevy_render",

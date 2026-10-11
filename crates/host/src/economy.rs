@@ -48,7 +48,8 @@ impl Preset {
     /// Where a run starts with this preset.
     pub fn start(self) -> RunStart {
         match self {
-            Self::None => RunStart::default(),
+            // Some cash to start with: enough for a game or a few beers.
+            Self::None => RunStart { pocket: shared::economy::STARTING_POCKET, ..RunStart::default() },
             Self::LastWeek => RunStart {
                 ledger: Ledger { house: 45_000, paid: 80_000, ..Ledger::default() },
                 calendar: Calendar { week: 6, shift: 0 },

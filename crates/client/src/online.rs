@@ -52,12 +52,21 @@ pub struct Settings {
     pub mouse_look: bool,
     /// Pull the mouse toward you to look up.
     pub invert_y: bool,
+    /// Horizontal field of view, degrees.
+    pub fov: f32,
     pub keys: Keybinds,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { sensitivity: 1.0, low_graphics: false, mouse_look: true, invert_y: false, keys: Keybinds::default() }
+        Self {
+            sensitivity: 1.0,
+            low_graphics: false,
+            mouse_look: true,
+            invert_y: false,
+            fov: 80.0,
+            keys: Keybinds::default(),
+        }
     }
 }
 
@@ -340,7 +349,10 @@ pub fn add(app: &mut App, cfg: OnlineConfig) {
     app.init_resource::<Look>()
         .init_resource::<ScriptedInput>()
         .init_resource::<NetStatus>()
-        .init_resource::<Settings>();
+        .init_resource::<Settings>()
+        .init_resource::<Clicks>();
+    #[cfg(not(target_arch = "wasm32"))]
+    app.add_systems(PreUpdate, native_clicks.after(bevy::input::InputSystems));
 
     let (io, end) = PipeIo::new();
     app.insert_resource(NetBridge(end));
@@ -360,6 +372,7 @@ pub fn add(app: &mut App, cfg: OnlineConfig) {
     crate::casino::add(app);
     crate::chaos::add(app);
     crate::games::add(app);
+    crate::people::add(app);
     app.add_systems(Startup, (setup_bar, setup_hud, crate::outside::setup_outside, crate::dressing::setup_dressing));
     app.add_systems(
         Update,
@@ -374,6 +387,7 @@ pub fn add(app: &mut App, cfg: OnlineConfig) {
             animate_gait,
             bob_markers,
             hide_page_panels,
+            apply_fov,
             crate::look::cull_far,
             dress_puddles,
             follow_camera.in_set(CameraSet),
@@ -436,6 +450,19 @@ struct OutcomeScreen;
 
 #[derive(Component)]
 struct OutcomeText;
+
+/// Mouse clicks this frame (left, right). In the browser they come from the
+/// page's click counters (web.rs); natively from the engine's buttons.
+#[derive(Resource, Default, Clone, Copy)]
+pub struct Clicks {
+    pub left: bool,
+    pub right: bool,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn native_clicks(mouse: Res<ButtonInput<MouseButton>>, mut clicks: ResMut<Clicks>) {
+    *clicks = Clicks { left: mouse.just_pressed(MouseButton::Left), right: mouse.just_pressed(MouseButton::Right) };
+}
 
 /// A game text the browser page draws itself, under this key
 /// (`tablePanel`-style, in `window.__lastCall.panels`; web/hud.js). In the
@@ -812,24 +839,7 @@ pub(crate) fn setup_bar(
                 Transform::default(),
             ));
         }
-        look::spawn_decor(&mut commands, assets);
-    }
-    // A neon strip per room in its accent color (bloom makes them glow).
-    for a in AREAS.iter().filter(|a| a.room != Room::Bar && !a.room.outdoors()) {
-        let accent = art::palette(a.room).1;
-        let lum = accent.to_linear();
-        let neon = materials.add(StandardMaterial {
-            base_color: accent,
-            emissive: LinearRgba::rgb(lum.red * 6.0, lum.green * 6.0, lum.blue * 6.0),
-            ..default()
-        });
-        let len = ((a.x1 - a.x0) * 0.5).min(4.0);
-        commands.spawn((
-            Mesh3d(meshes.add(Capsule3d::new(0.025, len).mesh().longitudes(8).latitudes(4).build())),
-            MeshMaterial3d(neon),
-            Transform::from_xyz((a.x0 + a.x1) / 2.0, 2.7, a.z0 + 0.12)
-                .with_rotation(Quat::from_rotation_z(std::f32::consts::FRAC_PI_2)),
-        ));
+        look::spawn_decor(&mut commands, assets, &mut meshes, &mut materials);
     }
     // The back bar behind the counter (either side of the back room door)
     // and the beer tap on the counter.
@@ -866,12 +876,26 @@ pub(crate) fn setup_bar(
             emissive: LinearRgba::rgb(9.0, 0.9, 4.5),
             ..default()
         })),
-        Transform::from_xyz(0.0, 2.6, -bar::HALF_Z + 0.12),
+        // Centered over the left run of shelves (the back room door is
+        // right of it), above the mirror.
+        Transform::from_xyz(-2.1, 2.62, -bar::HALF_Z + 0.12),
     ));
     commands.spawn((
         PointLight { intensity: 40_000.0, range: 4.0, color: Color::srgb(1.0, 0.25, 0.65), ..default() },
-        Transform::from_xyz(0.0, 2.6, -bar::HALF_Z + 0.6),
+        Transform::from_xyz(-2.1, 2.6, -bar::HALF_Z + 0.6),
         crate::look::Far(25.0),
+    ));
+    // A lintel board over the front door (the doorway is open to the
+    // ceiling): the OPEN sign hangs on its outside face, and from inside
+    // nobody reads it backwards.
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::new(2.5, bar::WALL_HEIGHT - 2.35, 0.2))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: Color::srgb(0.16, 0.1, 0.07),
+            perceptual_roughness: 0.8,
+            ..default()
+        })),
+        Transform::from_xyz(0.0, (bar::WALL_HEIGHT + 2.35) / 2.0, bar::HALF_Z),
     ));
     // Outside: OPEN in blue neon over the front door, facing the lot.
     commands.spawn((
@@ -882,7 +906,7 @@ pub(crate) fn setup_bar(
             ..default()
         })),
         // The strokes read right from +Z, the lot.
-        Transform::from_xyz(0.0, 2.75, bar::HALF_Z + 0.14),
+        Transform::from_xyz(0.0, 2.6, bar::HALF_Z + 0.16),
     ));
     commands.spawn((
         PointLight { intensity: 60_000.0, range: 6.0, color: Color::srgb(0.3, 0.75, 1.0), ..default() },
@@ -963,6 +987,20 @@ pub(crate) fn setup_bar(
     ));
 }
 
+/// The settings' field of view (horizontal degrees) on the camera, kept as
+/// the window's shape changes.
+fn apply_fov(settings: Res<Settings>, mut cams: Query<&mut Projection, With<Camera3d>>) {
+    for mut p in &mut cams {
+        if let Projection::Perspective(pp) = &mut *p {
+            let half = (settings.fov.clamp(60.0, 110.0).to_radians() / 2.0).tan();
+            let vertical = 2.0 * (half / pp.aspect_ratio.max(0.1)).atan();
+            if (pp.fov - vertical).abs() > 1e-3 {
+                pp.fov = vertical;
+            }
+        }
+    }
+}
+
 /// An indoor lamp (the power outage turns these off).
 #[derive(Component)]
 pub struct RoomLamp;
@@ -977,6 +1015,7 @@ fn read_input(
     pads: Query<&Gamepad>,
     mut look: ResMut<Look>,
     mut input: ResMut<LocalInput>,
+    mut latch: ResMut<shared::client::TapLatch>,
 ) {
     if let Some(s) = scripted.0 {
         input.0 = s;
@@ -1034,6 +1073,10 @@ fn read_input(
         if keys.pressed(key) {
             b |= bit;
         }
+        // A tap shorter than a tick still reaches the host.
+        if keys.just_pressed(key) {
+            latch.0 |= bit;
+        }
     }
     input.0 = PlayerInput::new(mv, look.yaw, look.pitch, b);
 }
@@ -1090,6 +1133,7 @@ struct Dressed;
 /// Give every replicated player a capsule mesh once.
 fn dress_players(
     mut commands: Commands,
+    people: Option<Res<crate::people::People>>,
     players: Query<(Entity, &Player, Has<Predicted>, Has<Interpolated>), Without<Dressed>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -1101,15 +1145,28 @@ fn dress_players(
         }
         // A player's shirt is a bright colour from their id, so friends tell
         // each other apart; the rest of the outfit varies too.
-        let mut outfit = crate::art::Outfit::from_seed(player.id);
-        outfit.shirt = Color::hsl((player.id % 360) as f32, 0.7, 0.5);
-        let mut parts = crate::art::figure_parts(outfit);
-        if player.cosmetic > 0 {
-            parts.body.merge(&crate::art::hat(player.cosmetic - 1)).expect("same attributes");
-        }
         let material =
             materials.add(StandardMaterial { base_color: Color::WHITE, perceptual_roughness: 0.7, ..default() });
-        rig(&mut commands, entity, parts, &mut meshes, &material);
+        if let Some(people) = &people {
+            // A character picked by the player's id; a hat on top.
+            crate::people::dress(&mut commands, people, entity, (player.id % 1_000) as usize);
+            commands.entity(entity).insert((Gait::default(), crate::people::Motion::default()));
+            if player.cosmetic > 0 {
+                commands.entity(entity).with_child((
+                    Mesh3d(meshes.add(crate::art::hat(player.cosmetic - 1))),
+                    MeshMaterial3d(material.clone()),
+                    Transform::from_xyz(0.0, 0.12, 0.0),
+                ));
+            }
+        } else {
+            let mut outfit = crate::art::Outfit::from_seed(player.id);
+            outfit.shirt = Color::hsl((player.id % 360) as f32, 0.7, 0.5);
+            let mut parts = crate::art::figure_parts(outfit);
+            if player.cosmetic > 0 {
+                parts.body.merge(&crate::art::hat(player.cosmetic - 1)).expect("same attributes");
+            }
+            rig(&mut commands, entity, parts, &mut meshes, &material);
+        }
         let mut e = commands.entity(entity);
         e.insert((Dressed, Transform::default()));
         // First person: your own body would fill the view.
@@ -1143,17 +1200,10 @@ fn dress_props(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut cache: Local<Option<[(Handle<Mesh>, Handle<StandardMaterial>); 5]>>,
-    assets: Option<Res<AssetServer>>,
-    nodraw: Option<Res<NoDraw>>,
 ) {
     if props.is_empty() {
         return;
     }
-    // Stools draw as the scanned bar stool (its origin is on the floor; the
-    // physics body's centre is 0.38 m up).
-    let stool_model = assets
-        .filter(|_| nodraw.is_none())
-        .map(|a| a.load(GltfAssetLabel::Scene(0).from_asset("models/bar_chair_round_01/bar_chair_round_01.gltf")));
     let looks = cache.get_or_insert_with(|| {
         let white =
             materials.add(StandardMaterial { base_color: Color::WHITE, perceptual_roughness: 0.4, ..default() });
@@ -1166,19 +1216,12 @@ fn dress_props(
         [
             (meshes.add(crate::art::bottle()), white.clone()),
             (meshes.add(crate::art::chip()), white.clone()),
-            (meshes.add(crate::art::stool()), white.clone()),
+            (meshes.add(crate::art::bar_stool()), white.clone()),
             (meshes.add(crate::art::glass()), glow),
             (meshes.add(crate::art::mop()), white),
         ]
     });
     for (entity, kind) in &props {
-        if let (PropKind::Stool, Some(model)) = (kind, &stool_model) {
-            commands.entity(entity).insert((DressedProp, Transform::default(), Visibility::default())).with_child((
-                bevy::world_serialization::WorldAssetRoot(model.clone()),
-                Transform::from_xyz(0.0, -0.38, 0.0),
-            ));
-            continue;
-        }
         let (mesh, mat) = &looks[match kind {
             PropKind::Bottle => 0,
             PropKind::Chip => 1,
@@ -1273,6 +1316,7 @@ struct OrderMarker;
 /// order marker above the head.
 fn dress_customers(
     mut commands: Commands,
+    people: Option<Res<crate::people::People>>,
     customers: Query<(Entity, &Customer), (With<Interpolated>, Without<DressedCustomer>)>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -1297,9 +1341,14 @@ fn dress_customers(
     for (entity, c) in &customers {
         // Every customer dresses differently; their shirts are a little
         // duller than the players'.
-        let mut outfit = crate::art::Outfit::from_seed(u64::from(c.id) + 7);
-        outfit.shirt = outfit.shirt.mix(&Color::srgb(0.4, 0.38, 0.36), 0.35);
-        rig(&mut commands, entity, crate::art::figure_parts(outfit), &mut meshes, &cloth);
+        if let Some(people) = &people {
+            crate::people::dress(&mut commands, people, entity, c.id as usize + 3);
+            commands.entity(entity).insert((Gait::default(), crate::people::Motion::default()));
+        } else {
+            let mut outfit = crate::art::Outfit::from_seed(u64::from(c.id) + 7);
+            outfit.shirt = outfit.shirt.mix(&Color::srgb(0.4, 0.38, 0.36), 0.35);
+            rig(&mut commands, entity, crate::art::figure_parts(outfit), &mut meshes, &cloth);
+        }
         commands.entity(entity).insert((DressedCustomer, Transform::default())).with_child((
             OrderMarker,
             Mesh3d(marker.clone()),
@@ -1402,14 +1451,19 @@ fn rig(
 /// from standing to a run, arms opposite to legs.
 fn animate_gait(
     time: Res<Time>,
-    mut walkers: Query<(&Transform, &mut Gait, &Children)>,
+    mut walkers: Query<(&Transform, &mut Gait, &Children, Option<&mut crate::people::Motion>)>,
     mut limbs: Query<(&Limb, &mut Transform), Without<Gait>>,
 ) {
     let dt = time.delta_secs().max(1e-4);
-    for (t, mut gait, children) in &mut walkers {
+    for (t, mut gait, children, motion) in &mut walkers {
         let pos = t.translation;
         let speed = gait.last.map_or(0.0, |l| Vec2::new(pos.x - l.x, pos.z - l.z).length() / dt).min(8.0);
         gait.last = Some(pos);
+        if let Some(mut m) = motion {
+            // Smoothed, so a frame without movement does not flick to idle.
+            m.speed += (speed - m.speed) * (dt * 10.0).min(1.0);
+            m.seated = gait.seated;
+        }
         let target = (speed / 3.0).min(1.0);
         gait.swing += (target - gait.swing) * (dt * 8.0).min(1.0);
         gait.phase += dt * (3.0 + speed * 2.4);

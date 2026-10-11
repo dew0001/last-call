@@ -83,9 +83,10 @@ pub fn run(
         let me = who(player);
         let in_basement = room_at(pos.0.x, pos.0.z) == Some(Room::Basement);
         match *action {
-            GameAction::JoinPit { teams } if in_basement && !host.round.started => {
-                if charge(&mut pocket, pit::ENTRY) && !host.round.join(me, pit::ENTRY, teams) {
-                    pocket.0 += pit::ENTRY;
+            GameAction::JoinPit { teams, fun } if in_basement && !host.round.started => {
+                let fee = host.round.fee(fun, pit::ENTRY);
+                if (fee == 0 || charge(&mut pocket, fee)) && !host.round.join(me, fee, teams) {
+                    pocket.0 += fee;
                 }
             }
             GameAction::StartPit if host.round.fighter(me).is_some() => {

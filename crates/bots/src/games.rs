@@ -110,7 +110,7 @@ pub fn play(
             let v = hoops_v.iter().next();
             let c = v.and_then(|v| v.contest.as_ref());
             match c {
-                None => send(GameAction::JoinHoops { mode: Mode::ThreeOfFive }),
+                None => send(GameAction::JoinHoops { mode: Mode::ThreeOfFive, fun: false }),
                 Some(c) if !c.started => send(GameAction::StartHoops),
                 Some(c) if c.shooter() == Some(me) => {
                     let (yaw, pitch, power) = hoops::perfect_aim([at.x, at.z]);
@@ -128,7 +128,7 @@ pub fn play(
                 if v.shootout.entrants.iter().any(|e| e.who == me) {
                     send(GameAction::StartShootout);
                 } else {
-                    send(GameAction::JoinShootout);
+                    send(GameAction::JoinShootout { fun: false });
                 }
             } else if v.shootout.kicker() == Some(me) && !v.in_flight {
                 let aim = if (frame / 32).is_multiple_of(2) { 0.85 } else { -0.85 };
@@ -160,7 +160,9 @@ pub fn play(
             let Some(v) = pit_v.iter().next() else { return };
             let mine = v.round.fighters.iter().find(|f| f.who == me);
             match mine {
-                None if !v.round.started && frame.is_multiple_of(32) => send(GameAction::JoinPit { teams: false }),
+                None if !v.round.started && frame.is_multiple_of(32) => {
+                    send(GameAction::JoinPit { teams: false, fun: false })
+                }
                 Some(f) if f.weapon.is_none() && frame.is_multiple_of(16) => send(GameAction::Pick { weapon: w }),
                 Some(_) if !v.round.started && frame.is_multiple_of(32) => send(GameAction::StartPit),
                 Some(f) if v.round.started && f.down == 0 && frame.is_multiple_of(4) => {

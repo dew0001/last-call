@@ -12,7 +12,7 @@ use lightyear::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// Protocol version. Bump on any breaking change. Sent in [`Join`].
-pub const PROTOCOL_VERSION: u16 = 13;
+pub const PROTOCOL_VERSION: u16 = 14;
 
 // ---------- Components (host to clients) ----------
 
@@ -579,6 +579,8 @@ pub enum GameAction {
     /// Basketball: enter the next contest (pays the entry fee).
     JoinHoops {
         mode: crate::hoops::Mode,
+        /// Play for fun: no fee, no winnings (if this player starts the contest).
+        fun: bool,
     },
     StartHoops,
     /// Basketball: a shot with this charge (0 to 1000) and look.
@@ -588,7 +590,9 @@ pub enum GameAction {
         pitch: f32,
     },
     /// Penalties: enter the shootout, or stand in goal.
-    JoinShootout,
+    JoinShootout {
+        fun: bool,
+    },
     TakeGoal,
     StartShootout,
     /// Penalties: the kicker's kick from the spot.
@@ -621,6 +625,7 @@ pub enum GameAction {
     /// Fight pit: enter the next round (voting for teams or not).
     JoinPit {
         teams: bool,
+        fun: bool,
     },
     StartPit,
     /// Fight pit: take a weapon from the rack the player stands at.

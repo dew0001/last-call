@@ -140,7 +140,7 @@ impl Phase4Queries<'_, '_> {
 
 // ---------- Fixtures ----------
 
-/// The fixtures: furniture from Poly Haven where it fits, built in code
+/// The fixtures: KayKit furniture where it fits, built in code
 /// where nothing does (the jukebox, the keys, the kitchen pass). Test tabs
 /// that do not draw get nothing.
 fn setup_fixtures(
@@ -152,13 +152,14 @@ fn setup_fixtures(
 ) {
     use std::f32::consts::{FRAC_PI_2, PI};
     let (Some(assets), None) = (assets, nodraw) else { return };
-    let model = |commands: &mut Commands, name: &str, at: Vec3, yaw: f32| {
-        let scene = assets.load(GltfAssetLabel::Scene(0).from_asset(format!("models/{name}/{name}.gltf")));
+    // KayKit models (web/assets/kk), at real size.
+    let model = |commands: &mut Commands, name: &str, at: Vec3, yaw: f32, scale: f32| {
+        let scene = assets.load(GltfAssetLabel::Scene(0).from_asset(format!("kk/{name}.gltf")));
         commands.spawn((
             crate::look::Far(crate::look::FAR),
             Visibility::default(),
             bevy::world_serialization::WorldAssetRoot(scene),
-            Transform::from_translation(at).with_rotation(Quat::from_rotation_y(yaw)),
+            Transform::from_translation(at).with_rotation(Quat::from_rotation_y(yaw)).with_scale(Vec3::splat(scale)),
         ));
     };
     let paint = materials.add(StandardMaterial { base_color: Color::WHITE, perceptual_roughness: 0.5, ..default() });
@@ -179,13 +180,32 @@ fn setup_fixtures(
     for f in Fixture::all() {
         let (x, z) = f.position();
         match f {
-            Fixture::ZeenDrawer => model(&mut commands, "vintage_wooden_drawer_01", Vec3::new(x, 0.11, z), FRAC_PI_2),
-            Fixture::Shop => {
-                model(&mut commands, "side_table_01", Vec3::new(x, 0.0, z), FRAC_PI_2);
-                model(&mut commands, "classic_laptop", Vec3::new(x, 0.55, z), FRAC_PI_2);
+            // The drawer: a small cabinet against the office's west wall.
+            Fixture::ZeenDrawer => {
+                model(&mut commands, "furniture/cabinet_small", Vec3::new(x - 0.15, 0.0, z - 0.05), FRAC_PI_2, 0.6)
             }
-            Fixture::CharmShelf => model(&mut commands, "wooden_display_shelves_01", Vec3::new(x, 0.0, z), FRAC_PI_2),
-            Fixture::Breaker => model(&mut commands, "power_box_01", Vec3::new(x, 1.4, z + 0.32), PI),
+            // The upgrade terminal: a laptop on a side table.
+            Fixture::Shop => {
+                model(&mut commands, "furniture/table_small", Vec3::new(x - 0.15, 0.0, z), FRAC_PI_2, 0.6);
+                let (body, screen) = crate::art::laptop();
+                let at = Transform::from_xyz(x - 0.15, 0.6, z).with_rotation(Quat::from_rotation_y(FRAC_PI_2));
+                commands.spawn((Mesh3d(meshes.add(body)), MeshMaterial3d(paint.clone()), at)).with_child((
+                    Mesh3d(meshes.add(screen)),
+                    MeshMaterial3d(glow(&mut materials, Color::srgb(0.4, 0.8, 1.0), 2.0)),
+                    Transform::default(),
+                ));
+            }
+            // The Lucky Charm Shelf, by the front door, facing into the bar.
+            Fixture::CharmShelf => {
+                model(&mut commands, "furniture/cabinet_small_decorated", Vec3::new(x, 0.0, z + 0.2), PI, 0.75)
+            }
+            Fixture::Breaker => {
+                commands.spawn((
+                    Mesh3d(meshes.add(crate::art::breaker_box())),
+                    MeshMaterial3d(paint.clone()),
+                    Transform::from_xyz(x, 1.4, z + 0.32).with_rotation(Quat::from_rotation_y(PI)),
+                ));
+            }
             Fixture::Jukebox => {
                 let (body, bands) = crate::art::jukebox();
                 let at = Transform::from_xyz(x, 0.0, z).with_rotation(Quat::from_rotation_y(FRAC_PI_2));
@@ -249,11 +269,12 @@ const DIGITS: [KeyCode; 10] = [
     KeyCode::Digit0,
 ];
 
-/// Number keys at a fixture pick from its menu (U at a breaker or service
+/// Number keys at a fixture pick from its menu (E at a breaker or service
 /// key, whose number keys belong to the slot machine next to it). V at
 /// roulette uses a rigged die on the chosen dozen (the first if none).
 fn fixture_keys(
     keys: Res<ButtonInput<KeyCode>>,
+    settings: Res<crate::online::Settings>,
     status: Res<NetStatus>,
     choice: Res<crate::casino::RouletteChoice>,
     mut out: ResMut<OutgoingFixture>,
@@ -275,7 +296,7 @@ fn fixture_keys(
     let Some(fixture) = Fixture::nearest(pos.x, pos.z) else { return };
     let menu = fixture.menu();
     if menu == [FixtureAction::Use] {
-        if keys.just_pressed(KeyCode::KeyU) {
+        if keys.just_pressed(settings.keys.interact) {
             out.0.push(FixtureRequest { fixture, action: FixtureAction::Use });
         }
         return;
@@ -356,7 +377,7 @@ fn update_panels(
                 let one = p.menu.len() == 1 && p.menu[0] == "Use";
                 let mut s = format!("{}\n", name.to_uppercase());
                 if one {
-                    s += "U  use";
+                    s += "E  use";
                 } else {
                     for (i, line) in p.menu.iter().enumerate() {
                         s += &format!("{}  {line}\n", (i + 1) % 10);
@@ -499,36 +520,64 @@ fn chaos_color(kind: ChaosKind) -> Color {
 /// Cops and the inspector (not customers): capsules in their colors.
 fn dress_chaos_npcs(
     mut commands: Commands,
+    people: Option<Res<crate::people::People>>,
     npcs: Query<(Entity, &ChaosNpc), (Without<Customer>, Without<DressedChaos>, With<Interpolated>)>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     for (e, c) in &npcs {
-        commands.entity(e).insert((
-            DressedChaos,
-            Mesh3d(meshes.add(Capsule3d::new(0.32, shared::bar::PLAYER_HEIGHT - 0.6))),
-            MeshMaterial3d(materials.add(StandardMaterial { base_color: chaos_color(c.kind), ..default() })),
-            Transform::default(),
-        ));
+        commands.entity(e).insert((DressedChaos, Transform::default(), Visibility::default()));
+        match &people {
+            // A person (the suit for officials), with a ring of the event's
+            // colour at their feet.
+            Some(people) => {
+                crate::people::dress(&mut commands, people, e, 4 + c.kind as usize);
+                commands.entity(e).insert(crate::people::Motion::default());
+                ring(&mut commands, e, c, &mut meshes, &mut materials);
+            }
+            None => {
+                commands.entity(e).insert((
+                    Mesh3d(meshes.add(Capsule3d::new(0.32, shared::bar::PLAYER_HEIGHT - 0.6))),
+                    MeshMaterial3d(materials.add(StandardMaterial { base_color: chaos_color(c.kind), ..default() })),
+                ));
+            }
+        }
     }
 }
 
-/// Brawlers, the loan shark and the card counter are customers: recolor
-/// them, and light up the counter when the Security Camera outlines him.
+/// A glowing ring at an event character's feet, in the event's colour
+/// (bright red when the Security Camera outlines them).
+fn ring(
+    commands: &mut Commands,
+    e: Entity,
+    c: &ChaosNpc,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+) {
+    let color = if c.outlined { Color::srgb(1.0, 0.1, 0.1) } else { chaos_color(c.kind) };
+    let l = color.to_linear();
+    commands.entity(e).with_child((
+        Mesh3d(meshes.add(Torus::new(0.4, 0.46).mesh().minor_resolution(4).major_resolution(24).build())),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: color,
+            emissive: LinearRgba::rgb(l.red * 4.0, l.green * 4.0, l.blue * 4.0),
+            unlit: true,
+            ..default()
+        })),
+        Transform::from_xyz(0.0, 0.02 - shared::bar::PLAYER_HEIGHT / 2.0, 0.0).with_scale(Vec3::new(1.0, 0.15, 1.0)),
+    ));
+}
+
+/// Brawlers, the loan shark and the card counter are customers: mark them
+/// with a ring of their event's colour.
 fn tint_chaos_customers(
     mut commands: Commands,
-    npcs: Query<(Entity, &ChaosNpc, &MeshMaterial3d<StandardMaterial>), (With<Customer>, Without<DressedChaos>)>,
+    npcs: Query<(Entity, &ChaosNpc), (With<Customer>, Without<DressedChaos>)>,
+    mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    for (e, c, mat) in &npcs {
-        // Customers share one material: the tinted one gets its own copy.
-        if let Some(mut m) = materials.get(&mat.0).cloned() {
-            m.base_color = chaos_color(c.kind);
-            if c.outlined {
-                m.emissive = LinearRgba::rgb(2.0, 0.1, 0.1);
-            }
-            commands.entity(e).insert(MeshMaterial3d(materials.add(m)));
-        }
+    for (e, c) in &npcs {
+        ring(&mut commands, e, c, &mut meshes, &mut materials);
         commands.entity(e).insert(DressedChaos);
     }
 }
