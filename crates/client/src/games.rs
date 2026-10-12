@@ -654,7 +654,7 @@ fn update_panel(
                 s += &format!("A crowd! Drinks sell 20% better for {} s\n", h.crowd_secs);
             }
             s + &format!(
-                "\nE pick up a ball   LMB hold, let go: shoot (aim with the look)\n1 join 3 of 5   2 join HORSE   3 start   {}",
+                "\nE pick up a ball   LMB hold, let go: shoot (aim with the look)\n1 join five shots   2 join HORSE   3 start   {}",
                 fee_hint(fun.0, hoops::ENTRY)
             )
         }

@@ -1041,12 +1041,12 @@ pub fn hoop() -> Mesh {
     let bx = BOARD_X + BOARD.0 / 2.0;
     let by = BOARD_Y - RIM_Y;
     parts.push(part(boxy(BOARD.0, BOARD.1, BOARD.2), at(bx, by, 0.0), white));
-    let face = BOARD_X - 0.003;
-    let (sw, sh, line) = (0.59, 0.45, 0.04);
+    let face = BOARD_X - 0.008;
+    let (sw, sh, line) = (0.59, 0.45, 0.05);
     for (y, z, h, w) in
         [(sh, 0.0, line, sw), (0.0, 0.0, line, sw), (sh / 2.0, -sw / 2.0, sh, line), (sh / 2.0, sw / 2.0, sh, line)]
     {
-        parts.push(part(boxy(0.006, h, w), at(face, y + 0.02, z), orange));
+        parts.push(part(boxy(0.012, h, w), at(face, y + 0.02, z), orange));
     }
     // A dark frame round the board.
     for (y, h, w) in [(by + BOARD.1 / 2.0, 0.04, BOARD.2), (by - BOARD.1 / 2.0, 0.04, BOARD.2)] {
