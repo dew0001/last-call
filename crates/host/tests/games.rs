@@ -518,4 +518,3 @@ fn a_thrown_beer_that_hits_a_player_adds_twenty_drunk() {
     run(&mut sim, 6);
     assert_eq!(sim.world().get::<Drunk>(p).unwrap().level, 20);
 }
-
