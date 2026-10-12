@@ -30,7 +30,6 @@ pub fn add(app: &mut App) {
         (
             game_keys,
             fill_view_ticks,
-            draw_ball,
             draw_tacklers,
             draw_tracers,
             draw_bobbers,
@@ -386,11 +385,20 @@ fn game_keys(
     mut pick: ResMut<FieldGoalPick>,
     mut fun: ResMut<ForFun>,
     mut out: ResMut<OutgoingGame>,
+    session: Res<shared::client::Session>,
+    props: Query<(&PropKind, &HeldBy)>,
 ) {
     let Some(pos) = status.own_pos else { return };
-    let Some(st) = station(pos.x, pos.z) else {
-        charge.held = None;
-        return;
+    // A basketball in hand: the left button shoots it anywhere on the roof.
+    let holding_ball = session.player_id.is_some()
+        && props.iter().any(|(k, h)| *k == PropKind::Basketball && h.0 == session.player_id);
+    let st = match station(pos.x, pos.z) {
+        Some(st) => st,
+        None if holding_ball && room_at(pos.x, pos.z) == Some(Room::Roof) => Station::Court,
+        None => {
+            charge.held = None;
+            return;
+        }
     };
     let t = time.elapsed_secs();
     let pressed = |k: KeyCode| keys.just_pressed(k);
@@ -433,7 +441,7 @@ fn game_keys(
     }
 
     // Charge with the left button; let go to act. (The pit fires instead.)
-    if st != Station::Pit && !line_out && lmb {
+    if st != Station::Pit && !line_out && lmb && (st != Station::Court || holding_ball) {
         *charge.held.get_or_insert(0.0) += time.delta_secs();
     } else if let Some(held) = charge.held.take() {
         let frac = (held / FULL_CHARGE).min(1.0);
@@ -468,7 +476,8 @@ fn game_keys(
             if pressed(KeyCode::Digit2) {
                 send(GameAction::JoinHoops { mode: Mode::Horse, fun: fun.0 });
             }
-            if use_key {
+            // E picks up a ball here (the host's hands), so 3 starts.
+            if pressed(KeyCode::Digit3) {
                 send(GameAction::StartHoops);
             }
         }
@@ -645,7 +654,7 @@ fn update_panel(
                 s += &format!("A crowd! Drinks sell 20% better for {} s\n", h.crowd_secs);
             }
             s + &format!(
-                "\n1 join 3 of 5   2 join HORSE   E start   {}\nLMB hold, let go: shoot (aim with the look)",
+                "\nE pick up a ball   LMB hold, let go: shoot (aim with the look)\n1 join 3 of 5   2 join HORSE   3 start   {}",
                 fee_hint(fun.0, hoops::ENTRY)
             )
         }
@@ -741,6 +750,16 @@ fn setup_stations(
     if nodraw.is_some() {
         return;
     }
+    // The hoop: rim, net, backboard, pole (the host's colliders match).
+    commands.spawn((
+        Mesh3d(meshes.add(crate::art::hoop())),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: Color::WHITE,
+            perceptual_roughness: 0.6,
+            ..default()
+        })),
+        Transform::from_xyz(hoops::HOOP.0, hoops::RIM_Y, hoops::HOOP.1),
+    ));
     let mut mat = |c: Color| materials.add(StandardMaterial { base_color: c, ..default() });
     let white = mat(Color::srgb(0.9, 0.9, 0.9));
     let orange = mat(Color::srgb(1.0, 0.45, 0.1));
@@ -752,20 +771,6 @@ fn setup_stations(
             Transform::from_translation(at),
         ));
     };
-    // The hoop: pole, backboard, rim.
-    post(
-        &mut commands,
-        Vec3::new(0.15, hoops::RIM_Y, 0.15),
-        Vec3::new(hoops::HOOP.0 + 0.9, hoops::RIM_Y / 2.0, hoops::HOOP.1),
-        &white,
-    );
-    post(
-        &mut commands,
-        Vec3::new(0.05, 1.05, 1.8),
-        Vec3::new(hoops::HOOP.0 + 0.4, hoops::RIM_Y + 0.4, hoops::HOOP.1),
-        &white,
-    );
-    post(&mut commands, Vec3::new(0.46, 0.03, 0.46), Vec3::new(hoops::HOOP.0, hoops::RIM_Y, hoops::HOOP.1), &orange);
     // The goal frame.
     let (gx, gz) = kicks::GOAL;
     for side in [-1.0, 1.0] {
@@ -802,57 +807,6 @@ fn setup_stations(
     }
     for (_, x, z) in pit::RACKS {
         post(&mut commands, Vec3::new(0.8, 1.6, 0.3), Vec3::new(x, 0.8, z), &wood);
-    }
-}
-
-/// The basketball, flying the last shot's path (the shared flight).
-#[derive(Component)]
-struct Ball {
-    shots: u32,
-    path: Vec<[f32; 3]>,
-    started: f32,
-}
-
-#[allow(clippy::type_complexity)]
-fn draw_ball(
-    mut commands: Commands,
-    time: Res<Time>,
-    nodraw: Option<Res<NoDraw>>,
-    views: Query<&HoopsView>,
-    mut ball: Query<(&mut Ball, &mut Transform, &mut Visibility)>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-) {
-    if nodraw.is_some() {
-        return;
-    }
-    let Some(v) = views.iter().next() else { return };
-    let Ok((mut b, mut t, mut vis)) = ball.single_mut() else {
-        commands.spawn((
-            Ball { shots: v.shots, path: Vec::new(), started: 0.0 },
-            Mesh3d(meshes.add(Sphere::new(0.12))),
-            MeshMaterial3d(materials.add(StandardMaterial { base_color: Color::srgb(0.9, 0.4, 0.1), ..default() })),
-            Transform::default(),
-            Visibility::Hidden,
-        ));
-        return;
-    };
-    if b.shots != v.shots
-        && let Some(s) = v.last
-    {
-        b.shots = v.shots;
-        b.path = hoops::fly(&s.shot).points;
-        b.started = time.elapsed_secs();
-    }
-    let i = ((time.elapsed_secs() - b.started) * shared::TICK_HZ as f32) as usize;
-    match b.path.get(i) {
-        Some(p) => {
-            t.translation = Vec3::from_array(*p);
-            vis.set_if_neq(Visibility::Inherited);
-        }
-        None => {
-            vis.set_if_neq(Visibility::Hidden);
-        }
     }
 }
 

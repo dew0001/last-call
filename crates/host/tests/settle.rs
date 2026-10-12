@@ -1,6 +1,7 @@
-//! Props start asleep. Woken all at once (as if the room were shaken), every
-//! prop comes to rest and falls asleep again within 6 seconds, so resting
-//! props cost no CPU and no bandwidth.
+//! Props start asleep (the roof's basketballs start awake). Woken all at
+//! once (as if the room were shaken), every prop comes to rest and falls
+//! asleep again within 6 seconds, so resting props cost no CPU and no
+//! bandwidth.
 
 use avian3d::prelude::*;
 use bevy::prelude::Has;
@@ -24,9 +25,14 @@ fn props_settle_and_sleep() {
     let world = sim.world_mut();
     let mut q = world.query::<(&PropKind, &PropPose, Has<Sleeping>)>();
     let rows: Vec<_> = q.iter(world).map(|(k, p, s)| (*k, *p, s)).collect();
-    assert_eq!(rows.len(), 131);
+    let balls = shared::hoops::RACK.len();
+    assert_eq!(rows.len(), 131 + balls);
     for (kind, pose, sleeping) in &rows {
         assert!(*sleeping, "{kind:?} at {:?} is still awake", pose.pos);
+        if *kind == PropKind::Basketball {
+            assert!((pose.pos.y - shared::hoops::BALL_RADIUS).abs() < 0.02, "a ball rests on the roof: {:?}", pose.pos);
+            continue;
+        }
         // Nothing fell off the counter: bottles and chips rest on top of it.
         if !matches!(kind, PropKind::Stool | PropKind::Mop) {
             assert!(pose.pos.y > shared::bar::COUNTER_HEIGHT - 0.05, "{kind:?} fell to {:?}", pose.pos);

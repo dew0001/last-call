@@ -985,6 +985,80 @@ pub fn floor(w: f32, d: f32, color: Color) -> Mesh {
     m
 }
 
+/// A thin bar from `a` to `b`.
+fn strand(a: Vec3, b: Vec3, thick: f32, color: Color) -> Mesh {
+    let d = b - a;
+    let t = Transform::from_translation((a + b) / 2.0).with_rotation(Quat::from_rotation_arc(Vec3::Y, d.normalize()));
+    part(boxy(thick, d.length(), thick), t, color)
+}
+
+/// A ring in the XZ plane.
+fn ring(radius: f32, tube: f32, at_y: f32, color: Color) -> Mesh {
+    let torus = Torus { minor_radius: tube, major_radius: radius };
+    part(torus.mesh().minor_resolution(6).major_resolution(24), at(0.0, at_y, 0.0), color)
+}
+
+/// A basketball (a size 7, 12 cm), with its black seams.
+pub fn basketball() -> Mesh {
+    let r = shared::hoops::BALL_RADIUS;
+    let seam = Color::srgb(0.12, 0.06, 0.04);
+    let torus =
+        || Torus { minor_radius: 0.004, major_radius: r + 0.001 }.mesh().minor_resolution(4).major_resolution(20);
+    combine(vec![
+        part(Sphere::new(r).mesh().uv(16, 12), Transform::IDENTITY, Color::srgb(0.93, 0.42, 0.1)),
+        part(torus(), Transform::IDENTITY, seam),
+        part(torus(), Transform::from_rotation(Quat::from_rotation_x(FRAC_PI_2)), seam),
+        part(torus(), Transform::from_rotation(Quat::from_rotation_z(FRAC_PI_2)), seam),
+    ])
+}
+
+/// The roof hoop, centered on the rim: an orange rim, a white net, a white
+/// backboard with the shooter's square, the arm and the pole behind it (+X).
+pub fn hoop() -> Mesh {
+    use shared::hoops::{BOARD, BOARD_X, BOARD_Y, RIM_RADIUS, RIM_TUBE, RIM_Y};
+    let orange = Color::srgb(0.95, 0.38, 0.08);
+    let white = Color::srgb(0.95, 0.95, 0.92);
+    let steel = Color::srgb(0.22, 0.24, 0.27);
+    let mut parts = vec![ring(RIM_RADIUS, RIM_TUBE, 0.0, orange)];
+    // The net: strands from the rim down to a narrower ring, crossed.
+    let (n, drop, bottom) = (12, 0.42, 0.14);
+    for i in 0..n {
+        let a = i as f32 / n as f32 * std::f32::consts::TAU;
+        let b = (i as f32 + 0.5) / n as f32 * std::f32::consts::TAU;
+        let top = Vec3::new(a.cos() * RIM_RADIUS, -0.01, a.sin() * RIM_RADIUS);
+        let low = Vec3::new(b.cos() * bottom, -drop, b.sin() * bottom);
+        let low2 = Vec3::new(
+            (b - std::f32::consts::TAU / n as f32).cos() * bottom,
+            -drop,
+            (b - std::f32::consts::TAU / n as f32).sin() * bottom,
+        );
+        parts.push(strand(top, low, 0.008, white));
+        parts.push(strand(top, low2, 0.008, white));
+    }
+    parts.push(ring((RIM_RADIUS + bottom) / 2.0, 0.006, -drop / 2.0, white));
+    parts.push(ring(bottom, 0.006, -drop, white));
+    // The backboard and its square (facing -X, toward the court).
+    let bx = BOARD_X + BOARD.0 / 2.0;
+    let by = BOARD_Y - RIM_Y;
+    parts.push(part(boxy(BOARD.0, BOARD.1, BOARD.2), at(bx, by, 0.0), white));
+    let face = BOARD_X - 0.003;
+    let (sw, sh, line) = (0.59, 0.45, 0.04);
+    for (y, z, h, w) in
+        [(sh, 0.0, line, sw), (0.0, 0.0, line, sw), (sh / 2.0, -sw / 2.0, sh, line), (sh / 2.0, sw / 2.0, sh, line)]
+    {
+        parts.push(part(boxy(0.006, h, w), at(face, y + 0.02, z), orange));
+    }
+    // A dark frame round the board.
+    for (y, h, w) in [(by + BOARD.1 / 2.0, 0.04, BOARD.2), (by - BOARD.1 / 2.0, 0.04, BOARD.2)] {
+        parts.push(part(boxy(BOARD.0 + 0.01, h, w), at(bx, y, 0.0), steel));
+    }
+    // The arm to the pole, the pole, its base.
+    parts.push(part(boxy(0.5, 0.1, 0.1), at(0.65, by - 0.1, 0.0), steel));
+    parts.push(part(boxy(0.15, RIM_Y + 0.4, 0.15), at(0.9, (0.4 - RIM_Y) / 2.0 + 0.05, 0.0), steel));
+    parts.push(part(boxy(0.5, 0.12, 0.5), at(0.9, -RIM_Y + 0.06, 0.0), steel));
+    combine(parts)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

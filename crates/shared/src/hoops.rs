@@ -1,10 +1,15 @@
 //! Basketball on the roof (plan section 5.6).
 //!
-//! A shot: charge (0 to 1000) sets the release speed, the look sets the
-//! direction. The host draws the aim error (drink, Focus) and simulates the
-//! ball as a point under gravity and the roof's wind (stronger each week),
-//! in fixed 64 Hz steps. It is made when it drops through the rim. Clients
-//! run the same flight to draw the ball.
+//! The balls are real physics bodies. Anyone on the roof picks one up (E),
+//! aims with the look, and holds and lets go of the left button: the charge
+//! (0 to 1000) sets the release speed. The host adds the aim error (drink,
+//! Focus) and lets the ball fly under gravity and the roof's wind (stronger
+//! each week). It bounces off the rim, the backboard and the floor, and it
+//! is made when its center drops through the rim. In a contest the host
+//! hands the shooter a ball.
+//!
+//! [`fly`] is the same flight without the rim and the board: the aim a
+//! perfect shooter takes ([`perfect_aim`]) is solved and tested with it.
 //!
 //! Contests: "3 of 5" (each entrant shoots five; most makes take the pot)
 //! and HORSE (2 to 4 players; match the leader's make from the same spot or
@@ -21,6 +26,34 @@ pub const HOOP: (f32, f32) = (22.0, 2.0);
 pub const RIM_Y: f32 = 3.05;
 /// Rim radius less a margin for the ball.
 pub const MAKE_RADIUS: f32 = 0.18;
+/// The rim: radius of its ring (a regulation 46 cm hoop) and of its tube.
+pub const RIM_RADIUS: f32 = 0.235;
+pub const RIM_TUBE: f32 = 0.015;
+/// The backboard: its face is this far behind the rim's center (+x), and
+/// its size (thickness, height, width) and center height.
+pub const BOARD_X: f32 = 0.38;
+pub const BOARD: (f32, f32, f32) = (0.05, 1.05, 1.8);
+pub const BOARD_Y: f32 = RIM_Y + 0.4;
+/// The ball's radius (a size 7 ball).
+pub const BALL_RADIUS: f32 = 0.12;
+/// Where the balls start, on the floor by the roof door.
+pub const RACK: [(f32, f32); 3] = [(12.0, 6.6), (12.4, 7.0), (12.8, 6.6)];
+/// A ball counts as made when its center drops through the rim's plane
+/// this close to the rim's center.
+pub const THROUGH: f32 = RIM_RADIUS - 0.03;
+/// A shot is a miss once the ball is this low without going in, or after
+/// [`MAX_FLIGHT_TICKS`].
+pub const MISS_BELOW: f32 = 0.5;
+
+/// Did a ball moving from `a` to `b` this tick drop through the rim?
+pub fn through_rim(a: [f32; 3], b: [f32; 3]) -> bool {
+    if !(a[1] >= RIM_Y && b[1] < RIM_Y) {
+        return false;
+    }
+    let t = (a[1] - RIM_Y) / (a[1] - b[1]);
+    let (x, z) = (a[0] + (b[0] - a[0]) * t, a[2] + (b[2] - a[2]) * t);
+    ((x - HOOP.0) * (x - HOOP.0) + (z - HOOP.1) * (z - HOOP.1)).sqrt() < THROUGH
+}
 /// Release height above the floor.
 pub const RELEASE_Y: f32 = 2.0;
 /// Release speed range, m/s.

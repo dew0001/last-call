@@ -12,7 +12,7 @@ use lightyear::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// Protocol version. Bump on any breaking change. Sent in [`Join`].
-pub const PROTOCOL_VERSION: u16 = 14;
+pub const PROTOCOL_VERSION: u16 = 15;
 
 // ---------- Components (host to clients) ----------
 
@@ -44,6 +44,8 @@ pub enum PropKind {
     Glass,
     /// The kitchen mop: held near vomit or a puddle, it cleans it up.
     Mop,
+    /// A basketball on the roof court (see [`crate::hoops`]).
+    Basketball,
 }
 
 /// The beer in a glass. `fill` is in percent; `perfect` records a perfect

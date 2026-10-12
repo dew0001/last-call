@@ -28,6 +28,7 @@ Kind of physics prop.
 - `Stool`
 - `Glass`: A beer glass from the tap. Carries a [`Beer`].
 - `Mop`: The kitchen mop: held near vomit or a puddle, it cleans it up.
+- `Basketball`: A basketball on the roof court (see [`crate::hoops`]).
 
 ### `Beer` (struct)
 

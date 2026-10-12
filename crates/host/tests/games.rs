@@ -109,6 +109,85 @@ fn walking_off_the_pier_loses_the_fish() {
     assert_eq!(v.last.map(|l| l.1), Some(Catch::Escaped));
 }
 
+/// Does this player hold a basketball?
+fn holds_ball(sim: &mut HostSim, e: Entity) -> bool {
+    let held = sim.world().get::<host::physics::Hands>(e).and_then(|h| h.held);
+    held.is_some_and(|b| sim.world().get::<PropKind>(b) == Some(&PropKind::Basketball))
+}
+
+/// Wait (at most a second) for `e` to hold a ball, shoot, and wait for the
+/// shot to end. The shot's result.
+fn shoot(sim: &mut HostSim, e: Entity, power: u16, yaw: f32, pitch: f32) -> bool {
+    for _ in 0..64 {
+        if holds_ball(sim, e) {
+            break;
+        }
+        run(sim, 1);
+    }
+    assert!(holds_ball(sim, e), "a ball in the shooter's hands");
+    let before = view::<HoopsView>(sim).shots;
+    act(sim, e, GameAction::Shoot { power, yaw, pitch });
+    for _ in 0..(5 * shared::TICK_HZ) {
+        let v: HoopsView = view(sim);
+        if v.shots > before {
+            return v.last.unwrap().made;
+        }
+        run(sim, 1);
+    }
+    panic!("the shot never ended");
+}
+
+fn perfect(sim: &mut HostSim, e: Entity) -> bool {
+    let p = sim.world().get::<PlayerPos>(e).unwrap().0;
+    let (yaw, pitch, power) = hoops::perfect_aim([p.x, p.z]);
+    shoot(sim, e, power, yaw, pitch)
+}
+
+#[test]
+fn a_perfect_shot_drops_through_the_real_rim_from_around_the_court() {
+    let (mut sim, ps) = room(1);
+    let a = ps[0];
+    put(&mut sim, a, (14.0, 2.0));
+    act(&mut sim, a, GameAction::JoinHoops { mode: Mode::ThreeOfFive, fun: true });
+    act(&mut sim, a, GameAction::StartHoops);
+    for at in [(14.0, 2.0), (12.0, -2.0), (17.0, 6.0), (19.5, 2.5), (15.0, -3.5)] {
+        put(&mut sim, a, at);
+        assert!(perfect(&mut sim, a), "missed from {at:?}");
+    }
+}
+
+#[test]
+fn a_ball_off_the_rim_bounces_and_a_ball_on_the_floor_can_be_picked_up() {
+    let (mut sim, ps) = room(1);
+    let a = ps[0];
+    // Walk to the rack and press E: a ball in hand.
+    let (rx, rz) = hoops::RACK[0];
+    put(&mut sim, a, (rx - 0.6, rz));
+    let e_down = PlayerInput::new(Vec2::ZERO, std::f32::consts::FRAC_PI_2, 0.0, shared::movement::buttons::INTERACT);
+    sim.set_input(a, e_down);
+    run(&mut sim, 2);
+    sim.set_input(a, PlayerInput::default());
+    run(&mut sim, 2);
+    assert!(holds_ball(&mut sim, a), "picked up from the floor");
+    // Free play: a short, flat shot hits the board or the rim and misses.
+    put(&mut sim, a, (17.0, 2.0));
+    let (yaw, _, _) = hoops::perfect_aim([17.0, 2.0]);
+    assert!(!shoot(&mut sim, a, 700, yaw, 0.15));
+    let v: HoopsView = view(&mut sim);
+    assert_eq!(v.shots, 1);
+    assert!(v.contest.is_none());
+    // The ball came back off the hoop onto the roof.
+    let w = sim.world_mut();
+    let balls: Vec<Vec3> = w
+        .query::<(&PropKind, &avian3d::prelude::Position)>()
+        .iter(w)
+        .filter(|(k, _)| **k == PropKind::Basketball)
+        .map(|(_, p)| p.0)
+        .collect();
+    assert_eq!(balls.len(), hoops::RACK.len());
+    assert!(balls.iter().all(|b| shared::world::room_at(b.x, b.z) == Some(shared::world::Room::Roof)));
+}
+
 #[test]
 fn five_of_five_wins_the_pot_and_draws_a_crowd() {
     let (mut sim, ps) = room(2);
@@ -121,10 +200,9 @@ fn five_of_five_wins_the_pot_and_draws_a_crowd() {
     assert_eq!(pa, 1000 - hoops::ENTRY);
     act(&mut sim, a, GameAction::StartHoops);
     for _ in 0..5 {
-        let (yaw, pitch, power) = hoops::perfect_aim([14.0, 2.0]);
-        act(&mut sim, a, GameAction::Shoot { power, yaw, pitch });
+        assert!(perfect(&mut sim, a));
         // b throws it at the floor.
-        act(&mut sim, b, GameAction::Shoot { power: 0, yaw: 0.0, pitch: -1.0 });
+        assert!(!shoot(&mut sim, b, 0, 0.0, -1.0));
     }
     let v: HoopsView = view(&mut sim);
     assert!(v.contest.is_none(), "over");
@@ -150,10 +228,9 @@ fn horse_takes_two() {
         let shooter = c.shooter().unwrap();
         // a always makes it; b always misses.
         if shooter == shared::minigame::Who::Player(0x100) {
-            let (yaw, pitch, power) = hoops::perfect_aim([14.0, 2.0]);
-            act(&mut sim, a, GameAction::Shoot { power, yaw, pitch });
+            perfect(&mut sim, a);
         } else {
-            act(&mut sim, b, GameAction::Shoot { power: 0, yaw: 0.0, pitch: -1.0 });
+            shoot(&mut sim, b, 0, 0.0, -1.0);
         }
         guard += 1;
     }

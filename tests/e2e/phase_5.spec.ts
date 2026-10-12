@@ -69,7 +69,8 @@ test('three of five on the roof: five perfect shots win the pot and draw a crowd
   await game(host, 'StartHoops');
   await waitFor(host, 'started', (s) => s.game.games.hoops.started);
   for (let i = 1; i <= 5; i++) {
-    const p = (await status(host)).ownPos!;
+    // The host hands the shooter a ball once the last one is down.
+    const p = (await waitFor(host, `ball ${i} in hand`, (s) => !!s.holding, 10_000)).ownPos!;
     await game(host, { Shoot: perfectAim(p[0], p[2]) });
     await waitFor(host, `shot ${i}`, (s) => s.game.games.hoops.shots === i, 10_000);
   }

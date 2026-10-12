@@ -85,7 +85,41 @@ fn spawn_room(mut commands: Commands) {
     for b in bar::BLOCKS.iter().chain(shared::world::walls()) {
         solid(Vec3::new(b.hx * 2.0, b.height, b.hz * 2.0), Vec3::new(b.cx, b.height / 2.0, b.cz));
     }
+    spawn_hoop(&mut commands);
 }
+
+/// The roof hoop for the real ball: the backboard, a ring of small spheres
+/// for the rim (balls bounce off it and roll round it), and the pole.
+fn spawn_hoop(commands: &mut Commands) {
+    use shared::hoops::{BOARD, BOARD_X, BOARD_Y, HOOP, RIM_RADIUS, RIM_TUBE, RIM_Y};
+    let bouncy = Restitution::new(0.55).with_combine_rule(CoefficientCombine::Max);
+    commands.spawn((
+        RigidBody::Static,
+        Collider::cuboid(BOARD.0, BOARD.1, BOARD.2),
+        bouncy,
+        Transform::from_xyz(HOOP.0 + BOARD_X + BOARD.0 / 2.0, BOARD_Y, HOOP.1),
+    ));
+    const RIM_POINTS: usize = 32;
+    for i in 0..RIM_POINTS {
+        let a = i as f32 / RIM_POINTS as f32 * std::f32::consts::TAU;
+        let (s, c) = shared::math::sin_cos(a);
+        commands.spawn((
+            RigidBody::Static,
+            Collider::sphere(RIM_TUBE),
+            bouncy,
+            Transform::from_xyz(HOOP.0 + c * RIM_RADIUS, RIM_Y, HOOP.1 + s * RIM_RADIUS),
+        ));
+    }
+    commands.spawn((
+        RigidBody::Static,
+        Collider::cuboid(0.15, RIM_Y, 0.15),
+        Transform::from_xyz(HOOP.0 + 0.9, RIM_Y / 2.0, HOOP.1),
+    ));
+}
+
+/// Where a basketball goes back to when it leaves the roof.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct BallHome(pub Vec3);
 
 /// Collider and mass for each prop kind.
 pub fn prop_body(kind: PropKind) -> (Collider, f32) {
@@ -96,6 +130,7 @@ pub fn prop_body(kind: PropKind) -> (Collider, f32) {
         PropKind::Stool => (Collider::cuboid(0.4, 0.75, 0.4), 5.0),
         PropKind::Glass => (Collider::cylinder(0.045, 0.15), 0.5),
         PropKind::Mop => (Collider::cuboid(0.06, 1.3, 0.06), 1.2),
+        PropKind::Basketball => (Collider::sphere(shared::hoops::BALL_RADIUS), 0.6),
     }
 }
 
@@ -118,6 +153,9 @@ pub fn prop_layout() -> Vec<(PropKind, Vec3)> {
     }
     let (mx, mz) = shared::fixtures::MOP_CLOSET;
     out.push((PropKind::Mop, Vec3::new(mx, 0.66, mz)));
+    for (x, z) in shared::hoops::RACK {
+        out.push((PropKind::Basketball, Vec3::new(x, shared::hoops::BALL_RADIUS, z)));
+    }
     out
 }
 
@@ -142,6 +180,22 @@ fn spawn_props(mut commands: Commands) {
             // Thin discs in tall stacks jitter forever at the default sleep
             // threshold. Damp them and let them sleep a little sooner.
             e.insert((SleepThreshold { linear: 0.3, angular: 0.6 }, LinearDamping(0.8), AngularDamping(1.5)));
+        }
+        if kind == PropKind::Basketball {
+            // A lively bounce and a little roll resistance; no air drag, so
+            // it flies like [`shared::hoops::fly`].
+            e.insert((
+                Restitution::new(0.78).with_combine_rule(CoefficientCombine::Max),
+                Friction::new(0.6),
+                AngularDamping(0.6),
+                SweptCcd::default(),
+                // No look-ahead contacts: with a bounce they fire before the
+                // ball touches, and a clean shot bounced off thin air above
+                // the rim. The swept collision catches what this misses.
+                SpeculativeMargin(0.0),
+                BallHome(at),
+            ));
+            e.remove::<Sleeping>();
         }
     }
 }
@@ -180,6 +234,7 @@ type PropQuery<'w, 's> = Query<
         &'static mut AngularVelocity,
         Option<&'static mut Beer>,
         Option<&'static ChipValue>,
+        Option<&'static PropKind>,
     ),
     Without<Player>,
 >;
@@ -225,11 +280,19 @@ fn hands(
             let nearest = props
                 .iter()
                 .filter(|(_, _, held, ..)| held.0.is_none())
-                .map(|(e, p, ..)| (e, p.0.distance(hand)))
+                .map(|(e, p, _, _, _, _, _, kind)| {
+                    // A ball on the floor: reach down for it.
+                    let d = if kind == Some(&PropKind::Basketball) {
+                        Vec2::new(p.0.x - pos.0.x, p.0.z - pos.0.z).length().max(p.0.y - 2.2) * 0.8
+                    } else {
+                        p.0.distance(hand)
+                    };
+                    (e, d)
+                })
                 .filter(|(_, d)| *d <= REACH)
                 .min_by(|a, b| a.1.total_cmp(&b.1));
             if let Some((e, _)) = nearest
-                && let Ok((_, _, mut held, _, _, _, chips)) = props.get_mut(e)
+                && let Ok((_, _, mut held, _, _, _, chips, _)) = props.get_mut(e)
             {
                 // A chip stack with money on it goes straight into the pocket.
                 if let Some(value) = chips
@@ -249,7 +312,7 @@ fn hands(
         }
 
         if let Some(e) = hands.held {
-            let Ok((_, p, mut held, mut lin, mut ang, beer, _)) = props.get_mut(e) else {
+            let Ok((_, p, mut held, mut lin, mut ang, beer, _, _)) = props.get_mut(e) else {
                 hands.held = None;
                 continue;
             };

@@ -1203,7 +1203,7 @@ fn dress_props(
     props: Query<(Entity, &PropKind), (With<Interpolated>, Without<DressedProp>)>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut cache: Local<Option<[(Handle<Mesh>, Handle<StandardMaterial>); 5]>>,
+    mut cache: Local<Option<[(Handle<Mesh>, Handle<StandardMaterial>); 6]>>,
 ) {
     if props.is_empty() {
         return;
@@ -1222,7 +1222,8 @@ fn dress_props(
             (meshes.add(crate::art::chip()), white.clone()),
             (meshes.add(crate::art::bar_stool()), white.clone()),
             (meshes.add(crate::art::glass()), glow),
-            (meshes.add(crate::art::mop()), white),
+            (meshes.add(crate::art::mop()), white.clone()),
+            (meshes.add(crate::art::basketball()), white),
         ]
     });
     for (entity, kind) in &props {
@@ -1232,6 +1233,7 @@ fn dress_props(
             PropKind::Stool => 2,
             PropKind::Glass => 3,
             PropKind::Mop => 4,
+            PropKind::Basketball => 5,
         }];
         commands.entity(entity).insert((
             DressedProp,

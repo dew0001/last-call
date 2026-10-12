@@ -55,6 +55,9 @@ test('real mouse: shoot a hoop, cast a line, join for fun', async ({ page }) => 
   console.log('fun join: pot', j.game.games.hoops.pot, 'pocket', j.game.pocket);
   expect(j.game.games.hoops.pot).toBe(0);
   expect(j.game.pocket).toBe(100);
+  // 3 starts it, and the host hands the shooter a ball.
+  await page.keyboard.press('Digit3');
+  await waitFor(page, 'a ball in hand', (s) => !!s.holding, 10_000);
   await hold(800);
   const shot = await waitFor(page, 'a shot', (s) => (s.game?.games?.hoops?.shots ?? 0) >= 1, 10_000);
   console.log('shots', shot.game.games.hoops.shots, JSON.stringify(shot.game.games.hoops.last));

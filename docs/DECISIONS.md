@@ -385,7 +385,7 @@ Fixtures are colored posts. A panel at the top right lists the nearest fixture's
 
 ### Side games are arithmetic, not rigid bodies
 
-The plan simulates the basketball with the same avian settings on host and client, with client prediction. Here the ball is a point under gravity and wind, stepped at 64 Hz in shared code (`shared::hoops::fly`), so the host decides a shot at once and every client replays the identical flight to draw it. Kicks are arithmetic too (`shared::kicks`): where the ball crosses the goal line, and when. This keeps every outcome deterministic and replayable, and the ball cannot be knocked by a stray prop. The cost: no rebounds off the rim, and the ball is not a prop players can pick up. A physical ball can come with the art pass.
+The plan simulates the basketball with the same avian settings on host and client, with client prediction. Here the ball is a point under gravity and wind, stepped at 64 Hz in shared code (`shared::hoops::fly`), so the host decides a shot at once and every client replays the identical flight to draw it. Kicks are arithmetic too (`shared::kicks`): where the ball crosses the goal line, and when. This keeps every outcome deterministic and replayable, and the ball cannot be knocked by a stray prop. The cost: no rebounds off the rim, and the ball is not a prop players can pick up. A physical ball can come with the art pass. (Superseded for basketball: see "Physical side games".)
 
 ### Charge, aim and timing travel as one request
 
@@ -518,3 +518,11 @@ A playtest found the game hard to play: drinking did nothing, the music could no
 - **Art direction** (the user chose cartoony low-poly, like the co-op games they named): one consistent style instead of photo-scanned textures beside toy figures. KayKit CC0 furniture, kitchen and street pieces; Quaternius CC0 rigged and animated people (idle, walk, run; a seated pose bent in code); stylized floor and wall textures generated in code; the rest built in code in the same flat style. The Poly Haven models and textures are gone (the night sky stays).
 - **Furniture in one list** (`shared::layout`): the client draws each piece and movement collides with its footprint, so what you see is what blocks you. Tests keep doors, stations and fixtures reachable.
 - **FOV setting** (Graphics tab, 60 to 110 degrees horizontal).
+
+### Physical side games, inspired by Gamble With Your Friends and How to Fish (2026-10-12)
+
+The user asked for side games that play like those two co-op games (their feel and controls, not their art or assets). The station games did the math on a simulated ball while the player stood on a spot; they now become things in the world.
+
+**Basketball** (done first). The balls are real physics props on the roof (three, by the door). E picks one up (also off the floor), the look aims, holding and letting go of the left button sets the release speed. The host adds the aim error, releases the ball over the head and lets avian fly it: it bounces off a real rim (a ring of 32 small static spheres, the regulation 46 cm hoop), the backboard and the floor, and anyone can grab the rebound. A make is the ball's center dropping through the rim (`shared::hoops::through_rim`). Free play needs nothing; 3 of 5 and HORSE still run on top (3 starts, since E now picks up), and the host hands the shooter a ball once the last contest shot is down. `shared::hoops::fly` stays as the reference flight: `perfect_aim` is solved with it and a host test checks that its aim drops through the real rim from five spots.
+
+Two avian findings. Balls spawned asleep on the floor panicked the island solver on the first contact ("Neither body is in an island"), so they spawn awake and fall asleep on their own. And a speculative (look-ahead) contact with a bounce fired before the ball touched: a clean shot bounced off thin air above the front of the rim. The ball has `SpeculativeMargin(0)` and swept collision instead.

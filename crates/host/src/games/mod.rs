@@ -74,6 +74,7 @@ impl Plugin for GamesPlugin {
                 collect,
                 pit::record_history,
                 fishing::run,
+                hoops::follow,
                 hoops::run,
                 field::penalties,
                 field::field_goals,
