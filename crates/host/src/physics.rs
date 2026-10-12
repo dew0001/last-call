@@ -86,6 +86,65 @@ fn spawn_room(mut commands: Commands) {
         solid(Vec3::new(b.hx * 2.0, b.height, b.hz * 2.0), Vec3::new(b.cx, b.height / 2.0, b.cz));
     }
     spawn_hoop(&mut commands);
+    spawn_lot_goals(&mut commands);
+}
+
+/// The parking lot's goals for the real balls: the soccer goal (posts, bar,
+/// and a dead net that stops the ball), the field goal posts, and the
+/// goalkeeper's body (moved by [`crate::games::field`]).
+fn spawn_lot_goals(commands: &mut Commands) {
+    use shared::kicks::{
+        BAR, CROSSBAR, GOAL, GOAL_HALF_WIDTH, GOALIE_SPOT, NET_DEPTH, UPRIGHT_HALF, UPRIGHT_HEIGHT, UPRIGHTS,
+    };
+    let mut solid = |size: Vec3, at: Vec3, bounce: f32| {
+        let r = if bounce > 0.0 {
+            Restitution::new(bounce).with_combine_rule(CoefficientCombine::Max)
+        } else {
+            Restitution::new(0.0).with_combine_rule(CoefficientCombine::Min)
+        };
+        commands.spawn((
+            RigidBody::Static,
+            Collider::cuboid(size.x, size.y, size.z),
+            r,
+            Transform::from_translation(at),
+        ));
+    };
+    let (gx, gz) = GOAL;
+    let post = 0.12;
+    for side in [-1.0, 1.0] {
+        solid(Vec3::new(post, BAR, post), Vec3::new(gx + side * (GOAL_HALF_WIDTH + post / 2.0), BAR / 2.0, gz), 0.5);
+        // The net's sides.
+        solid(
+            Vec3::new(0.04, BAR, NET_DEPTH),
+            Vec3::new(gx + side * (GOAL_HALF_WIDTH + post / 2.0), BAR / 2.0, gz + NET_DEPTH / 2.0),
+            0.0,
+        );
+    }
+    let width = 2.0 * GOAL_HALF_WIDTH + 2.0 * post;
+    solid(Vec3::new(width, post, post), Vec3::new(gx, BAR + post / 2.0, gz), 0.5);
+    // The net's back and roof.
+    solid(Vec3::new(width, BAR, 0.04), Vec3::new(gx, BAR / 2.0, gz + NET_DEPTH), 0.0);
+    solid(Vec3::new(width, 0.04, NET_DEPTH), Vec3::new(gx, BAR + 0.02, gz + NET_DEPTH / 2.0), 0.0);
+    // Field goal posts: the post, the crossbar, two uprights.
+    let (ux, uz) = UPRIGHTS;
+    solid(Vec3::new(0.15, CROSSBAR, 0.15), Vec3::new(ux, CROSSBAR / 2.0, uz + 0.6), 0.4);
+    solid(Vec3::new(2.0 * UPRIGHT_HALF, 0.1, 0.1), Vec3::new(ux, CROSSBAR, uz), 0.4);
+    for side in [-1.0, 1.0] {
+        solid(
+            Vec3::new(0.1, UPRIGHT_HEIGHT, 0.1),
+            Vec3::new(ux + side * UPRIGHT_HALF, CROSSBAR + UPRIGHT_HEIGHT / 2.0, uz),
+            0.4,
+        );
+    }
+    // The keeper: a body the size of a goalie, standing in the goal.
+    let (kx, kz) = GOALIE_SPOT;
+    commands.spawn((
+        crate::games::field::Keeper,
+        RigidBody::Kinematic,
+        Collider::capsule(0.32, 1.2),
+        Restitution::new(0.3),
+        Transform::from_xyz(kx, 0.92, kz),
+    ));
 }
 
 /// The roof hoop for the real ball: the backboard, a ring of small spheres
@@ -131,6 +190,8 @@ pub fn prop_body(kind: PropKind) -> (Collider, f32) {
         PropKind::Glass => (Collider::cylinder(0.045, 0.15), 0.5),
         PropKind::Mop => (Collider::cuboid(0.06, 1.3, 0.06), 1.2),
         PropKind::Basketball => (Collider::sphere(shared::hoops::BALL_RADIUS), 0.6),
+        PropKind::SoccerBall => (Collider::sphere(shared::kicks::SOCCER_RADIUS), 0.43),
+        PropKind::Football => (Collider::sphere(shared::kicks::FOOTBALL_RADIUS), 0.42),
     }
 }
 
@@ -156,6 +217,10 @@ pub fn prop_layout() -> Vec<(PropKind, Vec3)> {
     for (x, z) in shared::hoops::RACK {
         out.push((PropKind::Basketball, Vec3::new(x, shared::hoops::BALL_RADIUS, z)));
     }
+    let (px, pz) = shared::kicks::PENALTY_SPOT;
+    out.push((PropKind::SoccerBall, Vec3::new(px, shared::kicks::SOCCER_RADIUS, pz)));
+    let (tx, tz) = shared::kicks::TEE;
+    out.push((PropKind::Football, Vec3::new(tx, shared::kicks::FOOTBALL_RADIUS, tz)));
     out
 }
 
@@ -181,11 +246,16 @@ fn spawn_props(mut commands: Commands) {
             // threshold. Damp them and let them sleep a little sooner.
             e.insert((SleepThreshold { linear: 0.3, angular: 0.6 }, LinearDamping(0.8), AngularDamping(1.5)));
         }
-        if kind == PropKind::Basketball {
+        if kind.is_ball() {
+            let bounce = match kind {
+                PropKind::Basketball => 0.78,
+                PropKind::SoccerBall => 0.6,
+                _ => 0.45,
+            };
             // A lively bounce and a little roll resistance; no air drag, so
             // it flies like [`shared::hoops::fly`].
             e.insert((
-                Restitution::new(0.78).with_combine_rule(CoefficientCombine::Max),
+                Restitution::new(bounce).with_combine_rule(CoefficientCombine::Max),
                 Friction::new(0.6),
                 AngularDamping(0.6),
                 SweptCcd::default(),
@@ -282,7 +352,7 @@ fn hands(
                 .filter(|(_, _, held, ..)| held.0.is_none())
                 .map(|(e, p, _, _, _, _, _, kind)| {
                     // A ball on the floor: reach down for it.
-                    let d = if kind == Some(&PropKind::Basketball) {
+                    let d = if kind.is_some_and(|k| k.is_ball()) {
                         Vec2::new(p.0.x - pos.0.x, p.0.z - pos.0.z).length().max(p.0.y - 2.2) * 0.8
                     } else {
                         p.0.distance(hand)

@@ -46,6 +46,17 @@ pub enum PropKind {
     Mop,
     /// A basketball on the roof court (see [`crate::hoops`]).
     Basketball,
+    /// The parking lot's balls (see [`crate::kicks`]).
+    SoccerBall,
+    Football,
+}
+
+impl PropKind {
+    /// A ball: picked up off the floor, thrown along the look, and (the
+    /// lot's) kicked.
+    pub fn is_ball(self) -> bool {
+        matches!(self, PropKind::Basketball | PropKind::SoccerBall | PropKind::Football)
+    }
 }
 
 /// The beer in a glass. `fill` is in percent; `perfect` records a perfect
@@ -325,9 +336,21 @@ pub struct PenaltyView {
     /// Bets on the next kick: (player, goal, amount).
     pub bets: Vec<(u64, bool, i64)>,
     pub paid: Vec<(u64, i64)>,
+    /// The goalkeeper, for drawing: across the goal (x), the dive under
+    /// way and how far it has gone (0 to 1), and whether it is the house's.
+    pub keeper: KeeperView,
 }
 
-/// A field goal attempt's result.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Default)]
+pub struct KeeperView {
+    pub x: f32,
+    pub dive: Option<crate::kicks::Dive>,
+    pub progress: f32,
+    pub npc: bool,
+}
+
+/// A field goal attempt's result: where the ball crossed the uprights'
+/// plane (x off the middle, and whether it was over the bar).
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
 pub struct FieldGoalResult {
     pub by: u64,
@@ -612,7 +635,6 @@ pub enum GameAction {
     },
     /// Football: a field goal from the tee, at this distance, for this stake.
     FieldGoal {
-        yards: u8,
         stake: i64,
         kick: crate::kicks::Kick,
     },

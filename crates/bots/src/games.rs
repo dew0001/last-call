@@ -21,7 +21,7 @@ pub enum SideGame {
     Hoops,
     /// Enter the penalty shootout and kick for the corner.
     Kicks,
-    /// Kick 20-yard field goals for $10.
+    /// Kick 15-yard field goals for $10.
     FieldGoal,
     /// Run the gauntlet for $10, steering like the scripted runner.
     Gauntlet,
@@ -42,13 +42,14 @@ pub fn route(game: SideGame) -> Vec<(f32, f32)> {
             r.extend([(0.0, 26.0), (x, z - 1.0), (x, z)]);
         }
         SideGame::Hoops => r.extend([(0.0, 3.4), (9.0, 3.4), (11.5, 3.4), (14.0, 2.0)]),
+        // Behind the ball (it sits on the spot or the tee).
         SideGame::Kicks => {
             r.extend(OUT_FRONT);
-            r.push(kicks::PENALTY_SPOT);
+            r.push((kicks::PENALTY_SPOT.0, kicks::PENALTY_SPOT.1 - 0.8));
         }
         SideGame::FieldGoal => {
             r.extend(OUT_FRONT);
-            r.push(kicks::TEE);
+            r.push((kicks::TEE.0, kicks::TEE.1 - 0.8));
         }
         SideGame::Gauntlet => {
             r.extend(OUT_FRONT);
@@ -131,13 +132,24 @@ pub fn play(
                     send(GameAction::JoinShootout { fun: false });
                 }
             } else if v.shootout.kicker() == Some(me) && !v.in_flight {
-                let aim = if (frame / 32).is_multiple_of(2) { 0.85 } else { -0.85 };
-                send(GameAction::Kick { kick: Kick { aim, power: 65, curve: 0.0 } });
+                // Low into a corner, alternating sides.
+                let side = if (frame / 32).is_multiple_of(2) { 2.6 } else { -2.6 };
+                let ball = [kicks::PENALTY_SPOT.0, kicks::SOCCER_RADIUS, kicks::PENALTY_SPOT.1];
+                let target = [kicks::GOAL.0 + side, 0.6, kicks::GOAL.1];
+                if let Some((yaw, pitch)) = kicks::aim_at(ball, target, 65) {
+                    send(GameAction::Kick { kick: Kick { power: 65, yaw, pitch, curve: 0.0 } });
+                }
             }
         }
         SideGame::FieldGoal => {
-            if frame.is_multiple_of(64) {
-                send(GameAction::FieldGoal { yards: 20, stake: 10, kick: Kick { aim: 0.0, power: 45, curve: 0.0 } });
+            // Try often: the host only takes the kick once the ball is back
+            // on the tee at the bot's feet.
+            if frame.is_multiple_of(16) {
+                let ball = [kicks::TEE.0, kicks::FOOTBALL_RADIUS, kicks::TEE.1];
+                let over = [kicks::UPRIGHTS.0, kicks::CROSSBAR + 1.5, kicks::UPRIGHTS.1];
+                if let Some((yaw, pitch)) = kicks::aim_at(ball, over, 75) {
+                    send(GameAction::FieldGoal { stake: 10, kick: Kick { power: 75, yaw, pitch, curve: 0.0 } });
+                }
             }
         }
         SideGame::Gauntlet => {

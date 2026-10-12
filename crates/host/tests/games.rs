@@ -238,63 +238,164 @@ fn horse_takes_two() {
     assert_eq!(v.paid, vec![(0x100, 2 * hoops::ENTRY)], "after {guard} shots");
 }
 
+/// Where a lot ball of this kind is.
+fn ball_at(sim: &mut HostSim, kind: PropKind) -> Vec3 {
+    let w = sim.world_mut();
+    w.query::<(&PropKind, &avian3d::prelude::Position)>().iter(w).find(|(k, _)| **k == kind).unwrap().1.0
+}
+
+/// Stand behind the ball on its spot (it may still be on its way back),
+/// and kick it at `target` (x, height, z) with `power` and `curve`.
+fn kick_at(
+    sim: &mut HostSim,
+    e: Entity,
+    kind: PropKind,
+    spot: (f32, f32),
+    target: [f32; 3],
+    power: u8,
+    curve: f32,
+    stake: Option<i64>,
+) {
+    for _ in 0..(3 * shared::TICK_HZ) {
+        let b = ball_at(sim, kind);
+        if (b.x - spot.0).hypot(b.z - spot.1) < 0.05 && b.y < 0.2 {
+            break;
+        }
+        run(sim, 1);
+    }
+    // (A put moves the player's body over one tick: one put right next to
+    // the ball would sweep through it. Come in from behind and settle.)
+    let b = ball_at(sim, kind);
+    put(sim, e, (b.x, b.z - 3.0));
+    run(sim, 2);
+    put(sim, e, (b.x, b.z - 0.7));
+    run(sim, 4);
+    let b = ball_at(sim, kind);
+    let (yaw, pitch) = kicks::aim_at(b.to_array(), target, power).expect("in range");
+    let kick = Kick { power, yaw, pitch, curve };
+    match stake {
+        Some(stake) => act(sim, e, GameAction::FieldGoal { stake, kick }),
+        None => act(sim, e, GameAction::Kick { kick }),
+    }
+}
+
+/// Run until the penalty view counts another kick (at most 4 s).
+fn next_kick(sim: &mut HostSim, before: u32) -> KickView {
+    for _ in 0..(4 * shared::TICK_HZ) {
+        let v: PenaltyView = view(sim);
+        if v.kicks > before {
+            return v.last.unwrap();
+        }
+        run(sim, 1);
+    }
+    panic!("the kick was never judged");
+}
+
+fn corner(x: f32, h: f32) -> [f32; 3] {
+    [kicks::GOAL.0 + x, h, kicks::GOAL.1]
+}
+
 #[test]
-fn a_shootout_against_the_npc_goalie_pays_the_best_kicker() {
-    let (mut sim, ps) = room(2);
-    let (a, b) = (ps[0], ps[1]);
-    put(&mut sim, a, kicks::PENALTY_SPOT);
-    put(&mut sim, b, (kicks::PENALTY_SPOT.0 + 0.5, kicks::PENALTY_SPOT.1));
+fn a_shootout_against_a_goalie_who_stands_still_pays_the_best_kicker() {
+    let (mut sim, ps) = room(3);
+    let (a, b, keeper) = (ps[0], ps[1], ps[2]);
+    put(&mut sim, keeper, kicks::GOALIE_SPOT);
+    act(&mut sim, keeper, GameAction::TakeGoal);
+    put(&mut sim, a, (kicks::PENALTY_SPOT.0 - 1.5, kicks::PENALTY_SPOT.1 - 2.0));
+    put(&mut sim, b, (kicks::PENALTY_SPOT.0 + 1.5, kicks::PENALTY_SPOT.1 - 2.0));
     act(&mut sim, a, GameAction::JoinShootout { fun: false });
     act(&mut sim, b, GameAction::JoinShootout { fun: false });
     act(&mut sim, a, GameAction::StartShootout);
     for _ in 0..5 {
-        for (e, aim) in [(a, 0.9f32), (b, 1.0)] {
-            let kick = Kick { aim, power: 60, curve: if e == b { 1.0 } else { 0.0 } };
-            act(&mut sim, e, GameAction::Kick { kick });
-            run(&mut sim, kicks::flight_ticks(60) + 2);
-            assert!(!view::<PenaltyView>(&mut sim).in_flight);
+        for (e, target, curve) in [(a, corner(2.6, 0.6), 0.0), (b, corner(3.4, 0.6), -1.0)] {
+            let before = view::<PenaltyView>(&mut sim).kicks;
+            put(&mut sim, keeper, kicks::GOALIE_SPOT);
+            kick_at(&mut sim, e, PropKind::SoccerBall, kicks::PENALTY_SPOT, target, 70, curve, None);
+            let k = next_kick(&mut sim, before);
+            // a slots it in the corner past the keeper; b's curl goes wide.
+            let want = if e == a { KickResult::Goal } else { KickResult::Wide };
+            assert_eq!(k.result, want, "{k:?}");
         }
     }
     let v: PenaltyView = view(&mut sim);
     assert_eq!(v.kicks, 10);
     assert!(!v.shootout.started, "over");
-    // b's curve takes every kick wide: a wins unless the goalie saved all five.
-    assert_eq!(v.paid.iter().map(|p| p.1).sum::<i64>(), 2 * kicks::ENTRY);
-    assert!(v.paid.iter().all(|p| p.0 == 0x100) || v.paid.len() == 2);
+    assert_eq!(v.paid, vec![(0x100, 2 * kicks::ENTRY)]);
 }
 
 #[test]
-fn a_player_goalie_saves_with_an_early_dive_and_bettors_settle() {
+fn a_dive_the_right_way_saves_and_bettors_settle() {
     let (mut sim, ps) = room(3);
     let (kicker, goalie, punter) = (ps[0], ps[1], ps[2]);
-    put(&mut sim, kicker, kicks::PENALTY_SPOT);
     put(&mut sim, goalie, kicks::GOALIE_SPOT);
     put(&mut sim, punter, (-10.0, 12.0));
     act(&mut sim, goalie, GameAction::TakeGoal);
     act(&mut sim, punter, GameAction::BetKick { goal: true, amount: 40 });
-    act(&mut sim, goalie, GameAction::Dive { dive: Dive::Left });
     let gp = pocket(&sim, goalie);
-    act(&mut sim, kicker, GameAction::Kick { kick: Kick { aim: -0.7, power: 50, curve: 0.0 } });
-    run(&mut sim, kicks::flight_ticks(50) + 2);
-    let v: PenaltyView = view(&mut sim);
-    assert_eq!(v.last.unwrap().result, KickResult::Saved);
+    // A low kick to the keeper's right (the kicker's left, +x), and he goes that way.
+    kick_at(&mut sim, kicker, PropKind::SoccerBall, kicks::PENALTY_SPOT, corner(1.6, 0.4), 55, 0.0, None);
+    act(&mut sim, goalie, GameAction::Dive { dive: Dive::Left });
+    let k = next_kick(&mut sim, 0);
+    assert_eq!(k.result, KickResult::Saved, "{k:?}");
     assert_eq!(pocket(&sim, punter), 1000 - 40, "lost the bet");
-    // A practice kick (no shootout): the save earns the goalie nothing; in a
-    // paid shootout it pays the entry fee.
+    // A practice kick (no shootout): the save earns the goalie nothing.
     assert_eq!(pocket(&sim, goalie), gp, "a practice save pays nothing");
+    // The ball goes back to the spot.
+    run(&mut sim, 3 * shared::TICK_HZ);
+    let b = ball_at(&mut sim, PropKind::SoccerBall);
+    assert!((b.x - kicks::PENALTY_SPOT.0).hypot(b.z - kicks::PENALTY_SPOT.1) < 0.05, "back on the spot: {b}");
 }
 
 #[test]
 fn field_goals_pay_by_distance() {
     let (mut sim, ps) = room(1);
     let p = ps[0];
-    put(&mut sim, p, kicks::TEE);
-    act(&mut sim, p, GameAction::FieldGoal { yards: 40, stake: 50, kick: Kick { aim: 0.0, power: 76, curve: 0.0 } });
-    let v: FieldGoalView = view(&mut sim);
-    assert!(v.last.unwrap().good);
+    let wait = |sim: &mut HostSim, before: u32| {
+        for _ in 0..(5 * shared::TICK_HZ) {
+            let v: FieldGoalView = view(sim);
+            if v.kicks > before {
+                return v.last.unwrap();
+            }
+            run(sim, 1);
+        }
+        panic!("the kick was never judged");
+    };
+    // The football sits on the 15-yard tee: carry it to the 20.
+    let (_, tx, tz, _) = kicks::TEES[2];
+    let b = ball_at(&mut sim, PropKind::Football);
+    put(&mut sim, p, (b.x, b.z - 3.0));
+    run(&mut sim, 2);
+    put(&mut sim, p, (b.x, b.z - 0.7));
+    run(&mut sim, 4);
+    sim.set_input(p, PlayerInput::new(Vec2::ZERO, std::f32::consts::PI, 0.0, shared::movement::buttons::INTERACT));
+    run(&mut sim, 2);
+    // Facing the uprights (+z) the whole way.
+    let facing = PlayerInput::new(Vec2::ZERO, std::f32::consts::PI, 0.0, 0);
+    sim.set_input(p, facing);
+    run(&mut sim, 2);
+    assert!(sim.world().get::<host::physics::Hands>(p).unwrap().held.is_some(), "picked up the football");
+    // Walk it over (in steps: a long put would fling it out of the hands).
+    for i in 1..=20 {
+        let f = i as f32 / 20.0;
+        put(&mut sim, p, (b.x + (tx - b.x) * f, (b.z - 0.7) + (tz - b.z) * f));
+        run(&mut sim, 2);
+    }
+    sim.set_input(p, PlayerInput::new(Vec2::ZERO, std::f32::consts::PI, 0.0, shared::movement::buttons::DROP));
+    run(&mut sim, 2);
+    sim.set_input(p, facing);
+    run(&mut sim, 64);
+    let b = ball_at(&mut sim, PropKind::Football);
+    assert_eq!(kicks::tee_at(b.x, b.z).map(|t| t.0), Some(20), "dropped on the 20: {b}");
+    let over = [kicks::UPRIGHTS.0, kicks::CROSSBAR + 1.5, kicks::UPRIGHTS.1];
+    kick_at(&mut sim, p, PropKind::Football, (b.x, b.z), over, 85, 0.0, Some(50));
+    let r = wait(&mut sim, 0);
+    assert!(r.good && r.yards == 20, "{r:?}");
     assert_eq!(pocket(&sim, p), 1000 + 4 * 50);
-    act(&mut sim, p, GameAction::FieldGoal { yards: 40, stake: 50, kick: Kick { aim: 0.0, power: 60, curve: 0.0 } });
-    assert!(!view::<FieldGoalView>(&mut sim).last.unwrap().good, "short");
+    // Under the bar: no good. (The ball comes back to the 20.)
+    let low = [kicks::UPRIGHTS.0, 1.0, kicks::UPRIGHTS.1];
+    kick_at(&mut sim, p, PropKind::Football, (b.x, b.z), low, 85, 0.0, Some(50));
+    let r = wait(&mut sim, 1);
+    assert!(!r.good && !r.cleared, "under the bar: {r:?}");
     assert_eq!(pocket(&sim, p), 1000 + 3 * 50);
 }
 
@@ -417,3 +518,4 @@ fn a_thrown_beer_that_hits_a_player_adds_twenty_drunk() {
     run(&mut sim, 6);
     assert_eq!(sim.world().get::<Drunk>(p).unwrap().level, 20);
 }
+

@@ -29,6 +29,8 @@ Kind of physics prop.
 - `Glass`: A beer glass from the tap. Carries a [`Beer`].
 - `Mop`: The kitchen mop: held near vomit or a puddle, it cleans it up.
 - `Basketball`: A basketball on the roof court (see [`crate::hoops`]).
+- `SoccerBall`: The parking lot's balls (see [`crate::kicks`]).
+- `Football`
 
 ### `Beer` (struct)
 
@@ -156,9 +158,12 @@ A penalty as it crossed the line.
 
 The penalty spot and goal.
 
+### `KeeperView` (struct)
+
+
 ### `FieldGoalResult` (struct)
 
-A field goal attempt's result.
+A field goal attempt's result: where the ball crossed the uprights' plane (x off the middle, and whether it was over the bar).
 
 ### `FieldGoalView` (struct)
 

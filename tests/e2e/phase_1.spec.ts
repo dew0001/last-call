@@ -50,11 +50,11 @@ const THROW = 1 << 4;
 
 test('a player picks up a bottle and throws it; the host sees it land', async ({ browser }) => {
   const { host, room } = await createRoom(browser);
-  // Slot 1 spawns at x = -3, in front of bottles on the counter. 134 props:
-  // 131 in the bar and 3 basketballs on the roof.
+  // Slot 1 spawns at x = -3, in front of bottles on the counter. 136 props:
+  // 131 in the bar, 3 basketballs on the roof, a soccer ball and a football.
   const player = await openTab(browser, `${room.link}&gpu=webgl2&name=Thrower`, 'player');
-  await waitFor(player, 'player sees all props', (s) => s.propsSeen === 134 && !!s.ownPos);
-  const before = (await waitFor(host, 'host sees all props', (s) => s.propsSeen === 134)).propsOnFloor ?? 0;
+  await waitFor(player, 'player sees all props', (s) => s.propsSeen === 136 && !!s.ownPos);
+  const before = (await waitFor(host, 'host sees all props', (s) => s.propsSeen === 136)).propsOnFloor ?? 0;
 
   // Walk into the counter, grab, turn around, charge and throw.
   await setInput(player, { mx: 0, my: 1, yaw: 0, pitch: 0, buttons: 0 });

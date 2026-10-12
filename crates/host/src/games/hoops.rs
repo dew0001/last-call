@@ -58,13 +58,12 @@ type Balls<'w, 's> = Query<
 >;
 
 /// Follow each shot ball: through the rim is a make; landing, being caught
-/// or a long flight is a miss. The roof's wind pushes balls in the air. A
-/// ball that leaves the roof goes back to its spot by the door.
+/// or a long flight is a miss. The roof's wind pushes balls in the air.
 pub fn follow(mut commands: Commands, timer: Res<ShiftTimer>, mut court: Query<&mut HoopsHost>, mut balls: Balls) {
     let Ok(mut host) = court.single_mut() else { return };
     let wind = hoops::wind(timer.calendar.week);
     let dt = shared::TICK.as_secs_f32();
-    for (e, kind, mut pos, mut lin, mut ang, held, flight, home) in &mut balls {
+    for (e, kind, pos, mut lin, _, held, flight, _) in &mut balls {
         if *kind != PropKind::Basketball {
             continue;
         }
@@ -88,40 +87,8 @@ pub fn follow(mut commands: Commands, timer: Res<ShiftTimer>, mut court: Query<&
                 }
             }
         }
-        // Rolling on the floor: the physics has no rolling resistance, so a
-        // ball would roll on forever. Slow it down (about half its speed a
-        // second) so it comes to rest and sleeps.
-        // (Only a moving ball: writing the velocity wakes a sleeping one.)
-        let rolling = held.0.is_none() && pos.0.y < hoops::BALL_RADIUS + 0.03;
-        let moving = lin.0.length_squared() > 1e-4 || ang.0.length_squared() > 1e-3;
-        if rolling && moving && !bouncing(&lin) {
-            lin.0.x *= ROLL_DRAG;
-            lin.0.z *= ROLL_DRAG;
-            ang.0 *= ROLL_DRAG;
-        }
-        let (x0, x1, z0, z1) = ROOF;
-        let off = pos.0.y < -1.0 || !(x0..=x1).contains(&pos.0.x) || !(z0..=z1).contains(&pos.0.z);
-        if off
-            && held.0.is_none()
-            && let Some(home) = home
-        {
-            pos.0 = home.0;
-            lin.0 = Vec3::ZERO;
-            ang.0 = Vec3::ZERO;
-        }
     }
 }
-
-/// A rolling ball keeps this much of its speed each tick.
-const ROLL_DRAG: f32 = 0.99;
-
-/// Bouncing off the floor (moving up or down fast) is not rolling.
-fn bouncing(lin: &LinearVelocity) -> bool {
-    lin.0.y.abs() > 0.5
-}
-
-/// The roof's floor, with a margin: a ball outside it has fallen off.
-const ROOF: (f32, f32, f32, f32) = (9.0, 25.0, -6.0, 10.0);
 
 pub fn on_court(x: f32, z: f32) -> bool {
     let (x0, x1, z0, z1) = hoops::COURT;

@@ -23,7 +23,7 @@ use shared::world::{Room, room_at};
 use crate::online::{Look, NetStatus, NoDraw};
 
 pub fn add(app: &mut App) {
-    app.init_resource::<Charge>().init_resource::<FieldGoalPick>().init_resource::<ForFun>();
+    app.init_resource::<Charge>().init_resource::<ForFun>();
     app.add_systems(Startup, setup_stations);
     app.add_systems(
         Update,
@@ -33,6 +33,7 @@ pub fn add(app: &mut App) {
             draw_tacklers,
             draw_tracers,
             draw_bobbers,
+            draw_keeper,
             update_panel.run_if(resource_changed::<NetStatus>),
         )
             .chain()
@@ -61,7 +62,9 @@ pub fn station(x: f32, z: f32) -> Option<Station> {
         Room::Roof => Some(Station::Court),
         Room::Basement => Some(Station::Pit),
         Room::ParkingLot if near(kicks::GOALIE_SPOT, kicks::SPOT_REACH) => Some(Station::Goal),
-        Room::ParkingLot if near(kicks::TEE, kicks::SPOT_REACH) => Some(Station::Tee),
+        Room::ParkingLot if kicks::TEES.iter().any(|(_, tx, tz, _)| near((*tx, *tz), kicks::SPOT_REACH)) => {
+            Some(Station::Tee)
+        }
         Room::ParkingLot if x >= gauntlet::LANE_X.0 - 1.0 => Some(Station::Lane),
         Room::ParkingLot => Some(Station::Penalty),
         _ => None,
@@ -198,7 +201,6 @@ pub struct GamesQueries<'w, 's> {
     field: Query<'w, 's, &'static FieldGoalView>,
     gauntlet: Query<'w, 's, &'static GauntletView>,
     pit: Query<'w, 's, &'static PitView>,
-    pick: Res<'w, FieldGoalPick>,
 }
 
 impl GamesQueries<'_, '_> {
@@ -270,7 +272,12 @@ impl GamesQueries<'_, '_> {
             .map(|v| FieldGoalStatus {
                 last: v.last.map(|r| (hex(r.by), r.yards, r.good, r.returned)),
                 kicks: v.kicks,
-                yards: self.pick.0,
+                // The tee this player stands at.
+                yards: own
+                    .and_then(|o| {
+                        kicks::TEES.iter().find(|(_, tx, tz, _)| (o.x - tx).hypot(o.z - tz) <= kicks::SPOT_REACH + 0.8)
+                    })
+                    .map_or(0, |t| t.0),
             })
             .unwrap_or_default();
         let gauntlet = self
@@ -345,16 +352,6 @@ struct Charge {
     last_d: f32,
 }
 
-/// The field goal distance picked at the tee.
-#[derive(Resource)]
-pub struct FieldGoalPick(pub u8);
-
-impl Default for FieldGoalPick {
-    fn default() -> Self {
-        Self(20)
-    }
-}
-
 /// Seconds of holding for a full charge.
 const FULL_CHARGE: f32 = 1.5;
 /// Stake for a field goal or a run, and a spectator's bet, from the keys.
@@ -382,19 +379,33 @@ fn game_keys(
     status: Res<NetStatus>,
     look: Res<Look>,
     mut charge: ResMut<Charge>,
-    mut pick: ResMut<FieldGoalPick>,
     mut fun: ResMut<ForFun>,
     mut out: ResMut<OutgoingGame>,
     session: Res<shared::client::Session>,
-    props: Query<(&PropKind, &HeldBy)>,
+    props: Query<(&PropKind, &HeldBy, &PropPose)>,
 ) {
     let Some(pos) = status.own_pos else { return };
-    // A basketball in hand: the left button shoots it anywhere on the roof.
-    let holding_ball = session.player_id.is_some()
-        && props.iter().any(|(k, h)| *k == PropKind::Basketball && h.0 == session.player_id);
+    // A ball in hand: the left button shoots (the roof) or throws it.
+    let held = session
+        .player_id
+        .and_then(|id| props.iter().find(|(k, h, _)| k.is_ball() && h.0 == Some(id)).map(|(k, ..)| *k));
+    let holding_ball = held == Some(PropKind::Basketball);
+    let holding_lot_ball = matches!(held, Some(PropKind::SoccerBall | PropKind::Football));
+    // A lot ball at this player's feet, in front of them: the left button kicks it.
+    let fwd = Vec2::new(-look.yaw.sin(), -look.yaw.cos());
+    let at_feet = props
+        .iter()
+        .filter(|(k, h, p)| matches!(k, PropKind::SoccerBall | PropKind::Football) && h.0.is_none() && p.pos.y < 0.6)
+        .map(|(k, _, p)| (*k, p.pos, Vec2::new(p.pos.x - pos.x, p.pos.z - pos.z)))
+        .filter(|(_, _, off)| off.length() <= kicks::KICK_REACH && off.dot(fwd) > -0.2)
+        .min_by(|a, b| a.2.length().total_cmp(&b.2.length()))
+        .map(|(k, p, _)| (k, p));
     let st = match station(pos.x, pos.z) {
         Some(st) => st,
         None if holding_ball && room_at(pos.x, pos.z) == Some(Room::Roof) => Station::Court,
+        None if (holding_lot_ball || at_feet.is_some()) && room_at(pos.x, pos.z) == Some(Room::ParkingLot) => {
+            Station::Penalty
+        }
         None => {
             charge.held = None;
             return;
@@ -441,7 +452,13 @@ fn game_keys(
     }
 
     // Charge with the left button; let go to act. (The pit fires instead.)
-    if st != Station::Pit && !line_out && lmb && (st != Station::Court || holding_ball) {
+    let can_charge = match st {
+        Station::Fishing(_) => !line_out,
+        Station::Court => holding_ball,
+        Station::Pit => false,
+        _ => holding_lot_ball || at_feet.is_some(),
+    };
+    if can_charge && lmb {
         *charge.held.get_or_insert(0.0) += time.delta_secs();
     } else if let Some(held) = charge.held.take() {
         let frac = (held / FULL_CHARGE).min(1.0);
@@ -453,18 +470,22 @@ fn game_keys(
             Station::Court => {
                 send(GameAction::Shoot { power: (frac * 1000.0) as u16, yaw: look.yaw, pitch: look.pitch })
             }
-            Station::Penalty => {
-                // Aim: the look's angle off the line to the goal.
-                let to_goal = shared::math::atan2(-(kicks::GOAL.0 - pos.x), -(kicks::GOAL.1 - pos.z));
-                let aim = ((to_goal - look.yaw) / 0.35).clamp(-1.0, 1.0);
-                send(GameAction::Kick { kick: Kick { aim, power, curve } });
+            Station::Pit => {}
+            // The lot: throw the ball in hand, or kick the one at the feet
+            // along the look (a football on a tee is a field goal).
+            _ if holding_lot_ball => {
+                send(GameAction::Shoot { power: (frac * 1000.0) as u16, yaw: look.yaw, pitch: look.pitch })
             }
-            Station::Tee => {
-                let to_posts = shared::math::atan2(-(kicks::UPRIGHTS.0 - pos.x), -(kicks::UPRIGHTS.1 - pos.z));
-                let aim = ((to_posts - look.yaw) / 0.35).clamp(-1.0, 1.0);
-                send(GameAction::FieldGoal { yards: pick.0, stake, kick: Kick { aim, power, curve } });
+            _ => {
+                let kick = Kick { power, yaw: look.yaw, pitch: look.pitch, curve };
+                match at_feet {
+                    Some((PropKind::Football, b)) if kicks::tee_at(b.x, b.z).is_some() => {
+                        send(GameAction::FieldGoal { stake, kick })
+                    }
+                    Some(_) => send(GameAction::Kick { kick }),
+                    None => {}
+                }
             }
-            _ => {}
         }
     }
     match st {
@@ -495,6 +516,7 @@ fn game_keys(
                 send(GameAction::BetKick { goal: false, amount: KEY_BET });
             }
         }
+        Station::Tee => {}
         Station::Goal => {
             if use_key {
                 send(GameAction::TakeGoal);
@@ -506,12 +528,16 @@ fn game_keys(
                     send(GameAction::Dive { dive });
                 }
             }
-        }
-        Station::Tee => {
-            for (k, (y, _)) in [KeyCode::Digit1, KeyCode::Digit2, KeyCode::Digit3].into_iter().zip(kicks::FIELD_GOALS) {
-                if pressed(k) {
-                    pick.0 = y;
-                }
+            // RMB dives toward the side held. The goalie faces the kicker,
+            // and dives are named from the kicker's side: A (the goalie's
+            // left) is the kicker's right.
+            if rmb {
+                let dive = match (keys.pressed(KeyCode::KeyA), keys.pressed(KeyCode::KeyD)) {
+                    (true, false) => Dive::Right,
+                    (false, true) => Dive::Left,
+                    _ => Dive::Center,
+                };
+                send(GameAction::Dive { dive });
             }
         }
         Station::Lane => {
@@ -672,21 +698,18 @@ fn update_panel(
                 s += &format!("Last kick: {} {}\n", name(&Some(who.clone())), r.to_uppercase());
             }
             if g.station.as_deref() == Some("Goal") {
-                s + "\nE stand in goal\n1 dive left   2 stay in the middle   3 dive right"
+                s + "\nE stand in goal\nRMB dive (hold A or D for a side)"
             } else {
                 s + &format!(
-                    "\n1 join   E start   {}\nLMB hold, let go: kick (hold A or D to curve)\n7 bet $10 goal   8 bet $10 miss",
+                    "\nLMB hold, let go: kick the ball at your feet (aim with the look, A or D curls it)\n1 join   E start   {}   7 bet $10 goal   8 bet $10 miss",
                     fee_hint(fun.0, kicks::ENTRY)
                 )
             }
         }
         Some("Tee") => {
             let f = &g.field_goal;
-            let mut s = format!(
-                "FIELD GOAL  {} yards (pays {} to 1), stake $20\n",
-                f.yards,
-                kicks::FIELD_GOALS.iter().find(|(y, _)| *y == f.yards).map_or(1, |x| x.1)
-            );
+            let odds = kicks::TEES.iter().find(|(y, ..)| *y == f.yards).map_or(1, |t| t.3);
+            let mut s = format!("FIELD GOAL  {} yard tee (pays {odds} to 1)\n", f.yards);
             if let Some((who, y, good, ret)) = &f.last {
                 s += &format!(
                     "Last: {} from {y}: {} (${ret})\n",
@@ -694,7 +717,10 @@ fn update_panel(
                     if *good { "GOOD" } else { "no good" }
                 );
             }
-            s + &format!("\n1 20 yd   2 30 yd   3 40 yd   {}\nLMB hold, let go: kick", fee_hint(fun.0, KEY_STAKE))
+            s + &format!(
+                "\nLMB hold, let go: kick it over the bar   {}\nE pick up the ball, Q put it down: carry it to the 10, 15 or 20 yard tee",
+                fee_hint(fun.0, KEY_STAKE)
+            )
         }
         Some("Lane") => {
             let r = &g.gauntlet;
@@ -764,6 +790,12 @@ fn setup_stations(
     let white = mat(Color::srgb(0.9, 0.9, 0.9));
     let orange = mat(Color::srgb(1.0, 0.45, 0.1));
     let wood = mat(Color::srgb(0.35, 0.22, 0.12));
+    let goal = meshes.add(crate::art::soccer_goal());
+    commands.spawn((
+        Mesh3d(goal),
+        MeshMaterial3d(white.clone()),
+        Transform::from_xyz(kicks::GOAL.0, 0.0, kicks::GOAL.1),
+    ));
     let mut post = |commands: &mut Commands, size: Vec3, at: Vec3, m: &Handle<StandardMaterial>| {
         commands.spawn((
             Mesh3d(meshes.add(Cuboid::from_size(size))),
@@ -771,29 +803,36 @@ fn setup_stations(
             Transform::from_translation(at),
         ));
     };
-    // The goal frame.
-    let (gx, gz) = kicks::GOAL;
-    for side in [-1.0, 1.0] {
-        post(
-            &mut commands,
-            Vec3::new(0.12, kicks::BAR, 0.12),
-            Vec3::new(gx + side * kicks::GOAL_HALF_WIDTH, kicks::BAR / 2.0, gz),
-            &white,
-        );
-    }
-    post(&mut commands, Vec3::new(kicks::GOAL_HALF_WIDTH * 2.0, 0.12, 0.12), Vec3::new(gx, kicks::BAR, gz), &white);
-    // The uprights, at the lot's north end straight up from the tee: a
-    // post, the crossbar, two uprights.
+    // The goal: posts, bar and net (the host's colliders match), the spot.
+    post(
+        &mut commands,
+        Vec3::new(0.3, 0.01, 0.3),
+        Vec3::new(kicks::PENALTY_SPOT.0, 0.005, kicks::PENALTY_SPOT.1),
+        &white,
+    );
+    // The uprights, at the lot's north end straight up from the tees: a
+    // post behind the bar's plane, the crossbar, two uprights.
     let (ux, uz) = kicks::UPRIGHTS;
-    post(&mut commands, Vec3::new(0.15, kicks::CROSSBAR, 0.15), Vec3::new(ux, kicks::CROSSBAR / 2.0, uz), &orange);
+    post(
+        &mut commands,
+        Vec3::new(0.15, kicks::CROSSBAR, 0.15),
+        Vec3::new(ux, kicks::CROSSBAR / 2.0, uz + 0.6),
+        &orange,
+    );
+    post(&mut commands, Vec3::new(0.1, 0.1, 0.6), Vec3::new(ux, kicks::CROSSBAR, uz + 0.3), &orange);
     post(&mut commands, Vec3::new(kicks::UPRIGHT_HALF * 2.0, 0.1, 0.1), Vec3::new(ux, kicks::CROSSBAR, uz), &orange);
     for side in [-1.0, 1.0] {
         post(
             &mut commands,
-            Vec3::new(0.1, 6.0, 0.1),
-            Vec3::new(ux + side * kicks::UPRIGHT_HALF, kicks::CROSSBAR + 3.0, uz),
+            Vec3::new(0.1, kicks::UPRIGHT_HEIGHT, 0.1),
+            Vec3::new(ux + side * kicks::UPRIGHT_HALF, kicks::CROSSBAR + kicks::UPRIGHT_HEIGHT / 2.0, uz),
             &orange,
         );
+    }
+    // The tees: a yard line and an orange tee on each.
+    for (_, tx, tz, _) in kicks::TEES {
+        post(&mut commands, Vec3::new(3.0, 0.01, 0.1), Vec3::new(tx, 0.005, tz), &white);
+        post(&mut commands, Vec3::new(0.12, 0.04, 0.12), Vec3::new(tx, 0.02, tz), &orange);
     }
     // Gauntlet lane end zone, fishing spots, pit racks.
     post(
@@ -808,6 +847,41 @@ fn setup_stations(
     for (_, x, z) in pit::RACKS {
         post(&mut commands, Vec3::new(0.8, 1.6, 0.3), Vec3::new(x, 0.8, z), &wood);
     }
+}
+
+/// The house keeper in the penalty goal (when no player is in goal): a
+/// person who leans out and drops into the dive the host is making.
+#[derive(Component)]
+struct KeeperFigure;
+
+fn draw_keeper(
+    mut commands: Commands,
+    people: Option<Res<crate::people::People>>,
+    views: Query<&PenaltyView>,
+    mut keeper: Query<(&mut Transform, &mut Visibility), With<KeeperFigure>>,
+) {
+    let Some(v) = views.iter().next() else { return };
+    let Ok((mut t, mut vis)) = keeper.single_mut() else {
+        if let Some(people) = people {
+            let body = commands
+                .spawn((KeeperFigure, Transform::default(), Visibility::Hidden, crate::people::Motion::default()))
+                .id();
+            crate::people::dress(&mut commands, &people, body, 6);
+        }
+        return;
+    };
+    let k = v.keeper;
+    vis.set_if_neq(if k.npc { Visibility::Inherited } else { Visibility::Hidden });
+    // The same pose the host gives the keeper's body.
+    let side = k.dive.map_or(0.0, |d| d.side());
+    let half = shared::bar::PLAYER_HEIGHT / 2.0;
+    let (x, y) = if side != 0.0 {
+        (k.x + side * 1.4 * k.progress, half - 0.45 * k.progress)
+    } else {
+        (k.x, half - 0.2 * k.progress)
+    };
+    t.translation = Vec3::new(x, y, kicks::GOALIE_SPOT.1);
+    t.rotation = Quat::from_rotation_z(-side * std::f32::consts::FRAC_PI_2 * k.progress);
 }
 
 #[derive(Component)]

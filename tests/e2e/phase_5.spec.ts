@@ -84,16 +84,19 @@ test('three of five on the roof: five perfect shots win the pot and draw a crowd
 test('the parking lot: a field goal, a penalty and a gauntlet run', async ({ browser }) => {
   test.setTimeout(180_000);
   const { host } = await createRoom(browser, undefined, '&chaos=off&preset=casino');
-  await walkToOnHost(host, [...OUT_FRONT, [0, 10]]);
+  // Behind the football on the 15-yard tee (0, 12.88): kick it straight
+  // at the uprights, up over the bar (crates/shared/src/kicks.rs).
+  await walkToOnHost(host, [...OUT_FRONT, [0, 12.1]]);
   await waitFor(host, 'at the tee', (s) => s.game?.games?.station === 'Tee');
   const before = (await status(host)).game.pocket;
-  await game(host, { FieldGoal: { yards: 20, stake: 10, kick: { aim: 0, power: 45, curve: 0 } } });
-  const fg = await waitFor(host, 'kicked', (s) => s.game.games.fieldGoal.kicks === 1);
-  expect(fg.game.games.fieldGoal.last).toEqual([fg.playerId, 20, true, 20]);
-  expect(fg.game.pocket).toBe(before + 10);
+  await game(host, { FieldGoal: { stake: 10, kick: { power: 75, yaw: Math.PI, pitch: 0.35, curve: 0 } } });
+  const fg = await waitFor(host, 'kicked', (s) => s.game.games.fieldGoal.kicks === 1, 10_000);
+  expect(fg.game.games.fieldGoal.last).toEqual([fg.playerId, 15, true, 30]);
+  expect(fg.game.pocket).toBe(before + 20);
 
-  await walkToOnHost(host, [[-7, 14.5]]);
-  await game(host, { Kick: { kick: { aim: 0.85, power: 60, curve: 0 } } });
+  // Behind the ball on the penalty spot (-7, 14.5): low for the left corner.
+  await walkToOnHost(host, [[-7, 13.7]]);
+  await game(host, { Kick: { kick: { power: 60, yaw: Math.atan2(-2.6, -11), pitch: 0.05, curve: 0 } } });
   const k = await waitFor(host, 'a penalty', (s) => s.game.games.penalties.kicks === 1, 10_000);
   expect(['goal', 'saved']).toContain(k.game.games.penalties.last[1]);
 

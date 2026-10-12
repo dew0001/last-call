@@ -1059,6 +1059,85 @@ pub fn hoop() -> Mesh {
     combine(parts)
 }
 
+/// A soccer ball: white, with the 12 black pentagons of the classic ball
+/// (at the corners of an icosahedron).
+pub fn soccer_ball() -> Mesh {
+    let r = shared::kicks::SOCCER_RADIUS;
+    let black = Color::srgb(0.08, 0.08, 0.09);
+    let mut parts = vec![part(Sphere::new(r).mesh().uv(16, 12), Transform::IDENTITY, Color::srgb(0.96, 0.96, 0.94))];
+    let g = (1.0 + 5f32.sqrt()) / 2.0;
+    for (a, b) in [(1.0, g), (-1.0, g), (1.0, -g), (-1.0, -g)] {
+        for v in [Vec3::new(0.0, a, b), Vec3::new(a, b, 0.0), Vec3::new(b, 0.0, a)] {
+            let n = v.normalize();
+            let t = Transform::from_translation(n * (r - 0.006)).with_rotation(Quat::from_rotation_arc(Vec3::Y, n));
+            parts.push(part(Cylinder::new(0.036, 0.016).mesh().resolution(5).build(), t, black));
+        }
+    }
+    combine(parts)
+}
+
+/// A football: a brown prolate ball along Z, white stripes near the ends,
+/// white laces on top.
+pub fn football() -> Mesh {
+    let r = shared::kicks::FOOTBALL_RADIUS;
+    let brown = Color::srgb(0.45, 0.2, 0.08);
+    let white = Color::srgb(0.95, 0.94, 0.9);
+    let stretch = 1.65;
+    let mut parts =
+        vec![part(Sphere::new(r).mesh().uv(16, 12), Transform::from_scale(Vec3::new(1.0, 1.0, stretch)), brown)];
+    for z in [-0.6, 0.6] {
+        let torus = Torus { minor_radius: 0.006, major_radius: r * 0.8 };
+        let t = Transform::from_xyz(0.0, 0.0, z * r * stretch).with_rotation(Quat::from_rotation_x(FRAC_PI_2));
+        parts.push(part(torus.mesh().minor_resolution(4).major_resolution(16), t, white));
+    }
+    parts.push(part(boxy(0.012, 0.01, 0.1), at(0.0, r - 0.002, 0.0), white));
+    for i in -2..=2 {
+        parts.push(part(boxy(0.04, 0.01, 0.008), at(0.0, r - 0.002, i as f32 * 0.02), white));
+    }
+    combine(parts)
+}
+
+/// The soccer goal, centered on its goal line (the ball comes from -Z):
+/// white posts and bar, and a net of thin cords behind.
+pub fn soccer_goal() -> Mesh {
+    use shared::kicks::{BAR, GOAL_HALF_WIDTH, NET_DEPTH};
+    let white = Color::srgb(0.96, 0.96, 0.96);
+    let cord = Color::srgb(0.85, 0.86, 0.88);
+    let post = 0.12;
+    let half = GOAL_HALF_WIDTH + post / 2.0;
+    let mut parts = vec![part(boxy(2.0 * half + post, post, post), at(0.0, BAR + post / 2.0, 0.0), white)];
+    for side in [-1.0, 1.0] {
+        parts.push(part(boxy(post, BAR, post), at(side * half, BAR / 2.0, 0.0), white));
+        // Back supports.
+        parts.push(part(boxy(0.05, BAR, 0.05), at(side * half, BAR / 2.0, NET_DEPTH), cord));
+    }
+    // The net: a grid on the back, the sides and the roof.
+    let step = 0.3;
+    let mut x = -half;
+    while x <= half + 1e-3 {
+        parts.push(part(boxy(0.012, BAR, 0.012), at(x, BAR / 2.0, NET_DEPTH), cord));
+        parts.push(part(boxy(0.012, 0.012, NET_DEPTH), at(x, BAR, NET_DEPTH / 2.0), cord));
+        x += step;
+    }
+    let mut y = step;
+    while y <= BAR + 1e-3 {
+        parts.push(part(boxy(2.0 * half, 0.012, 0.012), at(0.0, y, NET_DEPTH), cord));
+        for side in [-1.0, 1.0] {
+            parts.push(part(boxy(0.012, 0.012, NET_DEPTH), at(side * half, y, NET_DEPTH / 2.0), cord));
+        }
+        y += step;
+    }
+    let mut z = step;
+    while z <= NET_DEPTH + 1e-3 {
+        parts.push(part(boxy(2.0 * half, 0.012, 0.012), at(0.0, BAR, z), cord));
+        for side in [-1.0, 1.0] {
+            parts.push(part(boxy(0.012, BAR, 0.012), at(side * half, BAR / 2.0, z), cord));
+        }
+        z += step;
+    }
+    combine(parts)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

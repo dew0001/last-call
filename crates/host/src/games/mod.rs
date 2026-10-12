@@ -13,6 +13,7 @@ use shared::minigame::Who;
 use shared::protocol::*;
 use shared::rng::{StreamId, TableRng};
 
+pub mod balls;
 pub mod field;
 pub mod fishing;
 pub mod hoops;
@@ -74,10 +75,11 @@ impl Plugin for GamesPlugin {
                 collect,
                 pit::record_history,
                 fishing::run,
+                balls::care,
+                balls::throw,
                 hoops::follow,
                 hoops::run,
                 field::penalties,
-                field::field_goals,
                 field::gauntlet,
                 pit::run,
                 beer_hits,

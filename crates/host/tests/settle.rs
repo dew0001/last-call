@@ -1,4 +1,4 @@
-//! Props start asleep (the roof's basketballs start awake). Woken all at
+//! Props start asleep (the balls start awake). Woken all at
 //! once (as if the room were shaken), every prop comes to rest and falls
 //! asleep again within 6 seconds, so resting props cost no CPU and no
 //! bandwidth.
@@ -25,12 +25,18 @@ fn props_settle_and_sleep() {
     let world = sim.world_mut();
     let mut q = world.query::<(&PropKind, &PropPose, Has<Sleeping>)>();
     let rows: Vec<_> = q.iter(world).map(|(k, p, s)| (*k, *p, s)).collect();
-    let balls = shared::hoops::RACK.len();
+    // Three basketballs, a soccer ball and a football.
+    let balls = shared::hoops::RACK.len() + 2;
     assert_eq!(rows.len(), 131 + balls);
     for (kind, pose, sleeping) in &rows {
         assert!(*sleeping, "{kind:?} at {:?} is still awake", pose.pos);
-        if *kind == PropKind::Basketball {
-            assert!((pose.pos.y - shared::hoops::BALL_RADIUS).abs() < 0.02, "a ball rests on the roof: {:?}", pose.pos);
+        if kind.is_ball() {
+            let r = match kind {
+                PropKind::Basketball => shared::hoops::BALL_RADIUS,
+                PropKind::SoccerBall => shared::kicks::SOCCER_RADIUS,
+                _ => shared::kicks::FOOTBALL_RADIUS,
+            };
+            assert!((pose.pos.y - r).abs() < 0.02, "{kind:?} rests on the floor: {:?}", pose.pos);
             continue;
         }
         // Nothing fell off the counter: bottles and chips rest on top of it.
