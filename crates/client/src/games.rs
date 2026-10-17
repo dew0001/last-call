@@ -789,7 +789,6 @@ fn setup_stations(
     let mut mat = |c: Color| materials.add(StandardMaterial { base_color: c, ..default() });
     let white = mat(Color::srgb(0.9, 0.9, 0.9));
     let orange = mat(Color::srgb(1.0, 0.45, 0.1));
-    let wood = mat(Color::srgb(0.35, 0.22, 0.12));
     let goal = meshes.add(crate::art::soccer_goal());
     commands.spawn((
         Mesh3d(goal),
@@ -842,10 +841,31 @@ fn setup_stations(
         &white,
     );
     for (x, z) in fishing::SPOTS {
-        post(&mut commands, Vec3::new(0.6, 0.4, 0.6), Vec3::new(x, 0.2, z), &wood);
+        commands.spawn((
+            Mesh3d(meshes.add(crate::art::fishing_spot())),
+            MeshMaterial3d(materials.add(StandardMaterial {
+                base_color: Color::WHITE,
+                perceptual_roughness: 0.7,
+                ..default()
+            })),
+            Transform::from_xyz(x, 0.0, z),
+        ));
     }
-    for (_, x, z) in pit::RACKS {
-        post(&mut commands, Vec3::new(0.8, 1.6, 0.3), Vec3::new(x, 0.8, z), &wood);
+    // The pit's weapon racks, each facing the middle of the pit.
+    let center = Vec3::new(-25.0, 0.0, 0.0);
+    for (weapon, x, z) in pit::RACKS {
+        let at = Vec3::new(x, 0.0, z);
+        let to = center - at;
+        let yaw = shared::math::atan2(to.x, to.z);
+        commands.spawn((
+            Mesh3d(meshes.add(crate::art::weapon_rack(weapon))),
+            MeshMaterial3d(materials.add(StandardMaterial {
+                base_color: Color::WHITE,
+                perceptual_roughness: 0.7,
+                ..default()
+            })),
+            Transform::from_translation(at).with_rotation(Quat::from_rotation_y(yaw)),
+        ));
     }
 }
 

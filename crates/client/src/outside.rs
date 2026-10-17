@@ -94,10 +94,13 @@ pub(crate) fn setup_outside(
     // The sea, out to the horizon.
     commands.spawn((
         Mesh3d(meshes.add(Plane3d::new(Vec3::Y, Vec2::splat(450.0)).mesh().build())),
+        // Deep blue with a faint glow of its own: at night an unlit sea was
+        // black and looked like nothing at all.
         MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.004, 0.012, 0.03),
-            perceptual_roughness: 0.3,
-            reflectance: 0.15,
+            base_color: Color::srgb(0.03, 0.12, 0.2),
+            emissive: LinearRgba::rgb(0.012, 0.045, 0.08),
+            perceptual_roughness: 0.15,
+            reflectance: 0.5,
             ..default()
         })),
         Transform::from_xyz(0.0, SEA, 0.0),

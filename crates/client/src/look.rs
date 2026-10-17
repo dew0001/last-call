@@ -137,7 +137,7 @@ fn texture_image(surface: Surface) -> Image {
             let c = match surface {
                 Surface::BarFloor => boards(u, v, 6, rgb(160, 98, 52), 0.25, rgb(70, 40, 22), 1),
                 Surface::OfficeFloor => boards(u, v, 8, rgb(186, 132, 80), 0.2, rgb(110, 70, 40), 2),
-                Surface::Deck => boards(u, v, 5, rgb(132, 118, 102), 0.22, rgb(60, 52, 46), 3),
+                Surface::Deck => boards(u, v, 5, rgb(150, 106, 66), 0.22, rgb(70, 46, 28), 3),
                 Surface::Wood => boards(u, v, 4, rgb(102, 58, 32), 0.2, rgb(50, 28, 16), 4),
                 Surface::Ceiling => boards(u, v, 6, rgb(92, 62, 42), 0.2, rgb(45, 30, 20), 5),
                 Surface::BackRoomWall => boards(v, u, 6, rgb(112, 74, 46), 0.25, rgb(55, 36, 22), 6),
@@ -254,6 +254,8 @@ pub enum Prop {
     Barrel,
     Aircon,
     Lifebuoy,
+    /// A framed poster (which picture).
+    Poster(u8),
 }
 
 pub const PROPS: &[(Prop, [f32; 3], f32)] = &[
@@ -262,8 +264,14 @@ pub const PROPS: &[(Prop, [f32; 3], f32)] = &[
     (Prop::Pendant, [3.4, 3.2, -4.0], 0.0),
     (Prop::Pendant, [-5.0, 3.2, 1.0], 0.0),
     (Prop::Pendant, [4.5, 3.2, 1.0], 0.0),
-    (Prop::Dartboard, [9.9, 1.73, 3.0], -QUARTER),
-    (Prop::Clock, [-4.0, 2.65, -6.9], 0.0),
+    // On the east wall clear of the roof door, by the corner table.
+    (Prop::Dartboard, [9.9, 1.73, 5.8], -QUARTER),
+    // Left of the LAST CALL sign, clear of it.
+    (Prop::Clock, [-6.3, 2.6, -6.9], 0.0),
+    (Prop::Poster(0), [-9.9, 1.9, -4.5], QUARTER),
+    (Prop::Poster(1), [9.9, 1.9, -0.6], -QUARTER),
+    (Prop::Poster(3), [-9.9, 1.8, 5.2], QUARTER),
+    (Prop::Poster(2), [-1.9, 1.8, -10.6], QUARTER),
     (Prop::WetFloor, [-6.5, 0.0, -6.4], 0.6),
     (Prop::Tv, [3.9, 0.0, -7.6], HALF),
     (Prop::Barrel, [-33.2, 0.0, -7.2], 0.0),
@@ -344,6 +352,10 @@ pub fn spawn_decor(
             Prop::Barrel => ("barrel", || (crate::art::barrel(), None)),
             Prop::Aircon => ("aircon", || (crate::art::aircon(), None)),
             Prop::Lifebuoy => ("lifebuoy", || (crate::art::lifebuoy(), None)),
+            Prop::Poster(0) => ("poster0", || (crate::art::poster(0), None)),
+            Prop::Poster(1) => ("poster1", || (crate::art::poster(1), None)),
+            Prop::Poster(2) => ("poster2", || (crate::art::poster(2), None)),
+            Prop::Poster(_) => ("poster3", || (crate::art::poster(3), None)),
         };
         let (body, lit) = cache
             .entry(name)

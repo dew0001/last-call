@@ -57,10 +57,7 @@ pub const PIECES: &[Piece] = &[
     p("kk/furniture/cactus_medium_A", [-9.4, 0.0, 6.4], 0.0, F, [0.3, 0.3]),
     p("kk/furniture/cactus_medium_B", [3.8, 0.0, 6.5], 0.6, F, [0.3, 0.3]),
     p("kk/furniture/lamp_standing", [-9.5, 0.0, -6.5], 0.0, F, [0.3, 0.3]),
-    // Pictures on the side walls.
-    p("kk/furniture/pictureframe_large_A", [-9.9, 1.9, -4.5], QUARTER, F, NONE),
-    p("kk/furniture/pictureframe_large_B", [9.9, 1.9, -0.6], -QUARTER, F, NONE),
-    p("kk/furniture/pictureframe_medium", [-9.9, 1.8, 5.2], QUARTER, F, NONE),
+    // (Posters on the side walls are built in code: client look.rs.)
     // ---- Office (x 6..10, z -7..-2; door x 7.6..8.8 on z = -2) ----
     // The desk along the east wall, its chair facing it (clear of the path
     // from the door to the safe in the far corner).
@@ -93,7 +90,6 @@ pub const PIECES: &[Piece] = &[
     p("kk/furniture/table_low", [3.4, 0.0, -12.2], 0.0, [0.6, 0.8, 0.6], [0.72, 0.45]),
     p("kk/furniture/lamp_standing", [5.5, 0.0, -14.5], 0.0, F, [0.3, 0.3]),
     p("kk/furniture/cabinet_small_decorated", [-1.5, 0.0, -14.55], 0.0, F, [0.4, 0.4]),
-    p("kk/furniture/pictureframe_large_B", [-1.9, 1.8, -10.6], QUARTER, F, NONE),
     // The TV on its stand by the door (built in code: art.rs).
     p("", [3.9, 0.0, -7.6], HALF, F, [0.6, 0.3]),
     // ---- Basement (x -34..-14, z -8..8): the keg rack, boiler, bench and

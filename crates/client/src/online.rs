@@ -768,10 +768,18 @@ pub(crate) fn setup_bar(
         look::world_uv(&mut m, surface.tile());
         surfaces.entry(surface).or_default().push(m);
     };
+    let pier = shared::world::area_of(shared::world::Room::Pier);
     for b in shared::world::walls() {
         let room = shared::world::room_at(b.cx, b.cz);
         let outside = room.is_none_or(|r| r.outdoors());
         let low = b.height < bar::WALL_HEIGHT;
+        // The pier's fence is a wooden railing over the water (the
+        // collision is the same low wall).
+        let on_pier = b.cx >= pier.x0 - 0.3 && b.cx <= pier.x1 + 0.3 && b.cz >= pier.z0 + 0.3 && b.cz <= pier.z1 + 0.3;
+        if on_pier {
+            matte.push(art::railing(b));
+            continue;
+        }
         if assets.is_some() {
             let surface = if low {
                 Surface::LowWall

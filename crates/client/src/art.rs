@@ -1138,6 +1138,148 @@ pub fn soccer_goal() -> Mesh {
     combine(parts)
 }
 
+/// A weapon rack for the fight pit, facing +Z: a wooden frame with a dark
+/// back board and the rack's weapon on two pegs.
+pub fn weapon_rack(weapon: shared::pit::Weapon) -> Mesh {
+    use shared::pit::Weapon;
+    let wood = Color::srgb(0.42, 0.26, 0.13);
+    let board = Color::srgb(0.14, 0.12, 0.11);
+    let steel = Color::srgb(0.3, 0.32, 0.35);
+    let black = Color::srgb(0.07, 0.07, 0.08);
+    let mut parts = vec![
+        part(boxy(1.1, 0.9, 0.04), at(0.0, 1.0, -0.06), board),
+        part(boxy(0.08, 1.5, 0.08), at(-0.55, 0.75, 0.0), wood),
+        part(boxy(0.08, 1.5, 0.08), at(0.55, 0.75, 0.0), wood),
+        part(boxy(1.2, 0.08, 0.1), at(0.0, 1.5, 0.0), wood),
+        part(boxy(1.2, 0.06, 0.25), at(0.0, 0.06, 0.08), wood),
+        part(tube(0.015, 0.12, 6).rotated_by(Quat::from_rotation_x(FRAC_PI_2)), at(-0.3, 0.95, 0.02), steel),
+        part(tube(0.015, 0.12, 6).rotated_by(Quat::from_rotation_x(FRAC_PI_2)), at(0.3, 0.95, 0.02), steel),
+    ];
+    let y = 1.02;
+    match weapon {
+        Weapon::Bat => {
+            let bat = Cone { radius: 0.045, height: 0.85 }.mesh().resolution(10).build();
+            parts.push(part(
+                bat,
+                Transform::from_xyz(0.0, y, 0.06).with_rotation(Quat::from_rotation_z(FRAC_PI_2)),
+                Color::srgb(0.78, 0.6, 0.38),
+            ));
+        }
+        Weapon::Pistol => {
+            parts.push(part(boxy(0.26, 0.07, 0.035), at(0.0, y, 0.06), black));
+            parts.push(part(boxy(0.06, 0.12, 0.035), at(-0.08, y - 0.08, 0.06), black));
+        }
+        Weapon::Smg => {
+            parts.push(part(boxy(0.4, 0.09, 0.04), at(0.0, y, 0.06), black));
+            parts.push(part(boxy(0.05, 0.16, 0.035), at(0.02, y - 0.1, 0.06), black));
+            parts.push(part(boxy(0.16, 0.05, 0.03), at(-0.27, y - 0.01, 0.06), steel));
+        }
+        Weapon::Shotgun => {
+            parts.push(part(
+                tube(0.02, 0.62, 8).rotated_by(Quat::from_rotation_z(FRAC_PI_2)),
+                at(0.12, y + 0.02, 0.06),
+                steel,
+            ));
+            parts.push(part(boxy(0.3, 0.08, 0.04), at(-0.3, y - 0.01, 0.06), Color::srgb(0.4, 0.22, 0.1)));
+        }
+    }
+    combine(parts)
+}
+
+/// A framed poster for the walls, facing +Z (0.8 by 1 m): a few simple
+/// pictures in the bar's palette.
+pub fn poster(which: u8) -> Mesh {
+    let frame = Color::srgb(0.18, 0.11, 0.06);
+    let (w, h) = (0.8, 1.0);
+    let mut parts = vec![
+        part(boxy(w + 0.08, 0.05, 0.04), at(0.0, h / 2.0 + 0.02, 0.0), frame),
+        part(boxy(w + 0.08, 0.05, 0.04), at(0.0, -h / 2.0 - 0.02, 0.0), frame),
+        part(boxy(0.05, h + 0.08, 0.04), at(-w / 2.0 - 0.02, 0.0, 0.0), frame),
+        part(boxy(0.05, h + 0.08, 0.04), at(w / 2.0 + 0.02, 0.0, 0.0), frame),
+    ];
+    fn paint(parts: &mut Vec<Mesh>, x: f32, y: f32, z: f32, sx: f32, sy: f32, c: Color) {
+        parts.push(part(boxy(sx, sy, 0.004), at(x, y, z), c));
+    }
+    match which % 4 {
+        // A big beer: amber glass, white head, a handle.
+        0 => {
+            paint(&mut parts, 0.0, 0.0, 0.0, w, h, Color::srgb(0.12, 0.25, 0.32));
+            paint(&mut parts, -0.05, -0.08, 0.005, 0.36, 0.5, Color::srgb(0.95, 0.62, 0.12));
+            paint(&mut parts, -0.05, 0.22, 0.006, 0.4, 0.14, Color::srgb(0.98, 0.96, 0.9));
+            paint(&mut parts, 0.19, -0.05, 0.005, 0.08, 0.28, Color::srgb(0.95, 0.62, 0.12));
+        }
+        // A sunset over water.
+        1 => {
+            for (i, c) in
+                [(0.98, 0.72, 0.3), (0.95, 0.45, 0.35), (0.7, 0.25, 0.45), (0.3, 0.15, 0.4)].into_iter().enumerate()
+            {
+                paint(&mut parts, 0.0, 0.375 - i as f32 * 0.25, 0.0, w, 0.25, Color::srgb(c.0, c.1, c.2));
+            }
+            parts.push(part(
+                tube(0.16, 0.004, 16).rotated_by(Quat::from_rotation_x(FRAC_PI_2)),
+                at(0.0, 0.05, 0.006),
+                Color::srgb(1.0, 0.9, 0.55),
+            ));
+            paint(&mut parts, 0.0, -0.32, 0.008, w, 0.36, Color::srgb(0.1, 0.18, 0.35));
+        }
+        // A fight night card: red, two black fighters' silhouettes.
+        2 => {
+            paint(&mut parts, 0.0, 0.0, 0.0, w, h, Color::srgb(0.7, 0.1, 0.1));
+            paint(&mut parts, -0.17, -0.1, 0.005, 0.18, 0.5, Color::srgb(0.08, 0.06, 0.06));
+            paint(&mut parts, 0.17, -0.1, 0.005, 0.18, 0.5, Color::srgb(0.08, 0.06, 0.06));
+            paint(&mut parts, 0.0, 0.32, 0.005, 0.6, 0.1, Color::srgb(0.98, 0.85, 0.3));
+        }
+        // A cocktail: teal, a glass and an olive.
+        _ => {
+            paint(&mut parts, 0.0, 0.0, 0.0, w, h, Color::srgb(0.1, 0.45, 0.45));
+            parts.push(part(
+                Cone { radius: 0.2, height: 0.26 }
+                    .mesh()
+                    .resolution(3)
+                    .build()
+                    .rotated_by(Quat::from_rotation_z(std::f32::consts::PI)),
+                at(0.0, 0.12, 0.02),
+                Color::srgb(0.95, 0.95, 0.9),
+            ));
+            paint(&mut parts, 0.0, -0.14, 0.005, 0.03, 0.28, Color::srgb(0.95, 0.95, 0.9));
+            paint(&mut parts, 0.0, -0.28, 0.005, 0.2, 0.03, Color::srgb(0.95, 0.95, 0.9));
+            parts.push(part(ball(0.035), at(0.05, 0.2, 0.04), Color::srgb(0.4, 0.6, 0.15)));
+        }
+    }
+    combine(parts)
+}
+
+/// A wooden railing along a low wall block (in world space): posts every
+/// metre and a half, a top rail and a mid rail.
+pub fn railing(b: &bar::Block) -> Mesh {
+    let wood = Color::srgb(0.45, 0.3, 0.17);
+    let along_x = b.hx > b.hz;
+    let (len, h) = (2.0 * b.hx.max(b.hz), b.height);
+    let dir = if along_x { Vec3::X } else { Vec3::Z };
+    let center = Vec3::new(b.cx, 0.0, b.cz);
+    let n = (len / 1.5).ceil().max(1.0) as i32;
+    let mut parts = Vec::new();
+    for i in 0..=n {
+        let p = center + dir * (-len / 2.0 + len * i as f32 / n as f32);
+        parts.push(part(boxy(0.1, h, 0.1), Transform::from_translation(p + Vec3::Y * h / 2.0), wood));
+    }
+    let (sx, sz) = if along_x { (len, 0.08) } else { (0.08, len) };
+    parts.push(part(boxy(sx, 0.08, sz), Transform::from_translation(center + Vec3::Y * (h - 0.04)), wood));
+    parts.push(part(boxy(sx * 0.999, 0.05, sz * 0.999), Transform::from_translation(center + Vec3::Y * h * 0.5), wood));
+    combine(parts)
+}
+
+/// A fishing spot on the pier: a bait bucket, a tackle box and a rod holder.
+pub fn fishing_spot() -> Mesh {
+    combine(vec![
+        part(tube(0.14, 0.3, 12), at(-0.25, 0.15, 0.1), Color::srgb(0.85, 0.85, 0.82)),
+        part(tube(0.12, 0.02, 12), at(-0.25, 0.27, 0.1), Color::srgb(0.25, 0.35, 0.3)),
+        part(boxy(0.36, 0.18, 0.22), at(0.25, 0.09, 0.05), Color::srgb(0.75, 0.15, 0.12)),
+        part(boxy(0.36, 0.03, 0.22), at(0.25, 0.19, 0.05), Color::srgb(0.6, 0.12, 0.1)),
+        part(tube(0.03, 0.9, 8), at(0.0, 0.45, -0.25), Color::srgb(0.3, 0.3, 0.33)),
+    ])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
